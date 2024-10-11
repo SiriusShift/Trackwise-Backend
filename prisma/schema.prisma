@@ -18,6 +18,7 @@ model User {
   firstName        String   @map("first_name")            // VARCHAR(100)
   lastName         String   @map("last_name")             // VARCHAR(100)
   email            String   @unique                      // VARCHAR(150) UNIQUE
+  username         String   @unique                  
   password         String   @map("password")              // VARCHAR(255)
   role             String   @default("user")              // VARCHAR(50) DEFAULT 'user'
   phoneNumber      String?  @map("phone_number")          // VARCHAR(15) (optional)

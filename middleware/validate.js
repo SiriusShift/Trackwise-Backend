@@ -16,7 +16,7 @@ const validateCreateRequest = (requestType) => {
     if (error) {
       const msg = error.details.map((el) => el.message).join(",");
       // Instead of throwing an error directly, call next with the error
-      return next(error); // Call next with an instance of ExpressError
+      throw new ExpressError(msg, 400);
     } else {
       next(); // If no error, call next
     }
