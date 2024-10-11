@@ -1,0 +1,27 @@
+const Joi = require("joi");
+const {
+    roles,
+    defRole,
+    phonePattern,
+    phoneError,
+    passwordPattern,
+    passwordError
+} = require("../constants/user");
+
+const userSchema = Joi.object({
+    first_name: Joi.string().required(),
+    last_name: Joi.string().required(),
+    username: Joi.string().required(),
+    email: Joi.string().email().required(),
+    phone_number: Joi.string().pattern(phonePattern).messages({
+        "string.pattern.base": phoneError,
+    }),
+    password: Joi.string().required().pattern(passwordPattern).messages({
+        "string.pattern.base": passwordError,
+    }),
+    role: Joi.string().valid(...roles).optional().default(defRole),
+});
+
+module.exports = {
+    userSchema
+}

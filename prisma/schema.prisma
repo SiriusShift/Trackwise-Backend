@@ -1,0 +1,30 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int      @id @default(autoincrement()) // SERIAL in SQL
+  firstName        String   @map("first_name")            // VARCHAR(100)
+  lastName         String   @map("last_name")             // VARCHAR(100)
+  email            String   @unique                      // VARCHAR(150) UNIQUE
+  password         String   @map("password")              // VARCHAR(255)
+  role             String   @default("user")              // VARCHAR(50) DEFAULT 'user'
+  phoneNumber      String?  @map("phone_number")          // VARCHAR(15) (optional)
+  profileImageUrl  String?  @map("profile_image_url")     // TEXT (optional)
+  isActive         Boolean  @default(true)                // BOOLEAN DEFAULT TRUE
+  createdAt        DateTime @default(now()) @map("created_at") // TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updatedAt        DateTime @updatedAt @map("updated_at") // TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
+  @@map("users")  // This maps the Prisma model to the SQL 'users' table
+}
