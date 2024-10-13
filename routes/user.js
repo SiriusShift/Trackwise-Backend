@@ -7,10 +7,12 @@ const {
     validateUserUpdateRequest,
   } = require("../middleware/validate");
   
-const { register } = require("../controllers/user");
+const { register, verifyEmail, sendEmailCode } = require("../controllers/user");
  
 const router = Router();
 
 router.route("/").post(validateCreateRequest("user"), catchAsync(register));
+router.route("/verify").post(catchAsync(verifyEmail))
+router.route("/email-code").post(catchAsync(sendEmailCode));
 
 module.exports = router
