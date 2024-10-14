@@ -1,16 +1,8 @@
-const AWS = require('aws-sdk');
-
 const {
     SES
 } = require("@aws-sdk/client-ses");
 
 require('dotenv').config();
-
-AWS.config.update({
-    accessKeyId: process.env.AWS_ACCESS_KEY,
-    secretAccessKey: process.env.AWS_SECRET_KEY,
-    region: process.env.AWS_REGION
-});
 
 const ses = new SES({
     credentials: {
@@ -36,11 +28,11 @@ const verifyEmailAddress = async (emails) => {
 }
 
 
-const sendEmail = async (emails, message) => {
+const sendEmail = async (email, message) => {
     const params = {
         Source: "lagmanmarquez@gmail.com",
         Destination: {
-            ToAddresses: emails
+            ToAddresses: email
         },
         Message: {
             Subject: {

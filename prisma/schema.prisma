@@ -14,18 +14,34 @@ datasource db {
 }
 
 model User {
-  id               Int      @id @default(autoincrement()) // SERIAL in SQL
-  firstName        String   @map("first_name")            // VARCHAR(100)
-  lastName         String   @map("last_name")             // VARCHAR(100)
-  email            String   @unique                      // VARCHAR(150) UNIQUE
-  username         String   @unique                  
-  password         String   @map("password")              // VARCHAR(255)
-  role             String   @default("user")              // VARCHAR(50) DEFAULT 'user'
-  phoneNumber      String?  @map("phone_number")          // VARCHAR(15) (optional)
-  profileImageUrl  String?  @map("profile_image_url")     // TEXT (optional)
-  isActive         Boolean  @default(true)                // BOOLEAN DEFAULT TRUE
-  createdAt        DateTime @default(now()) @map("created_at") // TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-  updatedAt        DateTime @updatedAt @map("updated_at") // TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  id                String                @id @default(uuid()) @db.VarChar(36)
+  firstName         String                @map("first_name")            // VARCHAR(100)
+  lastName          String                @map("last_name")             // VARCHAR(100)
+  email             String                @unique                       // VARCHAR(150) UNIQUE
+  username          String                @unique
+  password          String                @map("password")              // VARCHAR(255)
+  role              String                @default("user")              // VARCHAR(50) DEFAULT 'user'
+  phoneNumber       String?               @map("phone_number")          // VARCHAR(15) (optional)
+  profileImageUrl   String?               @map("profile_image_url")     // TEXT (optional)
+  isActive          Boolean               @default(false)                // BOOLEAN DEFAULT TRUE
+  createdAt         DateTime              @default(now()) @map("created_at") // TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  updatedAt         DateTime              @default(now()) @updatedAt @map("updated_at") // TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  
+  emailVerifications EmailVerification[]  @relation("UserEmailVerifications")
 
   @@map("users")  // This maps the Prisma model to the SQL 'users' table
+}
+
+model EmailVerification {
+  id                String      @id @default(uuid()) @db.VarChar(36)
+  userId            String
+  email             String      @unique
+  verificationCode  String
+  expirationTime    DateTime
+  isVerified        Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @default(now()) @updatedAt
+  user              User        @relation(name: "UserEmailVerifications", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("email_verifications")
 }

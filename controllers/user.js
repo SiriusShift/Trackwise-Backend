@@ -50,7 +50,6 @@ const verifyEmail = async (req, res, next) => {
 
 const sendEmailCode = async (req, res, next) => {
     const { email, message } = req.body;
-    console.log(req.body)
     if(!email || !Array.isArray(email)){
         return res.status(400).json({
             message: 'Invalid format'
