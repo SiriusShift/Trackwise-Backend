@@ -2,6 +2,7 @@ const ExpressError = require("../utils/expressError");
 const bcrypt = require("bcrypt");
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const crypto = require("crypto");
 const { sendEmail, verifyEmailAddress } = require("../utils/emailService");
 
 const register = async (req, res, next) => {
@@ -49,14 +50,17 @@ const verifyEmail = async (req, res, next) => {
 }
 
 const sendEmailCode = async (req, res, next) => {
-    const { email, message } = req.body;
+    const { email } = req.body;
+    const message = crypto.randomInt(0, Math.pow(10, 6)).toString().padStart(6, '0');
+    const title = 'Email verification code';
+
     if(!email || !Array.isArray(email)){
         return res.status(400).json({
             message: 'Invalid format'
         })
     }
     try{
-       await sendEmail(email, message);
+       await sendEmail(email, message, title);
         return res.status(200).json({
             success: true,
             message: 'Email sent'

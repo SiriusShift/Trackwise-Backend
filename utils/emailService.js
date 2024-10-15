@@ -28,7 +28,7 @@ const verifyEmailAddress = async (emails) => {
 }
 
 
-const sendEmail = async (email, message) => {
+const sendEmail = async (email, message, subject) => {
     const params = {
         Source: "lagmanmarquez@gmail.com",
         Destination: {
@@ -36,7 +36,7 @@ const sendEmail = async (email, message) => {
         },
         Message: {
             Subject: {
-                Data: 'Verification code'
+                Data: subject
             },
             Body: {
                 Text: {
