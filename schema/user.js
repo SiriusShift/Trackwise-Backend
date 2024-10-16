@@ -9,8 +9,8 @@ const {
 } = require("../constants/user");
 
 const userSchema = Joi.object({
-    first_name: Joi.string().required(),
-    last_name: Joi.string().required(),
+    firstName: Joi.string().required(),
+    lastName: Joi.string().required(),
     username: Joi.string().required(),
     email: Joi.string().email().required(),
     phone_number: Joi.string().pattern(phonePattern).messages({
