@@ -1,5 +1,6 @@
 const ExpressError = require("../utils/expressError");
-const { userSchema } = require("../schema/user");
+const { signupSchema } = require("../schema/user");
+const { decryptString } = require("../utils/customFunction");
 
 const validateCreateRequest = (requestType) => {
   return (req, res, next) => {
@@ -7,7 +8,7 @@ const validateCreateRequest = (requestType) => {
 
     switch (requestType) {
       case "user":
-        error = userSchema.validate(req.body).error;
+        error = signupSchema.validate({...req.body, password: decryptString(req.body.password)}).error;
         break;
       default:
         console.log(`No validation for ${requestType}`);

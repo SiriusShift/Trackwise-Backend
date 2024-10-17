@@ -8,20 +8,21 @@ const {
     passwordError
 } = require("../constants/user");
 
-const userSchema = Joi.object({
+const signupSchema = Joi.object({
     firstName: Joi.string().required(),
     lastName: Joi.string().required(),
     username: Joi.string().required(),
     email: Joi.string().email().required(),
-    phone_number: Joi.string().pattern(phonePattern).messages({
-        "string.pattern.base": phoneError,
-    }),
+    otp: Joi.string().required(),
+    // phone_number: Joi.string().pattern(phonePattern).messages({
+    //     "string.pattern.base": phoneError,
+    // }),
     password: Joi.string().required().pattern(passwordPattern).messages({
         "string.pattern.base": passwordError,
     }),
-    role: Joi.string().valid(...roles).optional().default(defRole),
+    // role: Joi.string().valid(...roles).optional().default(defRole),
 });
 
 module.exports = {
-    userSchema
+    signupSchema
 }

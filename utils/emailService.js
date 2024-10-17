@@ -1,7 +1,6 @@
 const {
     SES
 } = require("@aws-sdk/client-ses");
-
 require('dotenv').config();
 
 const ses = new SES({
@@ -28,22 +27,17 @@ const verifyEmailAddress = async (emails) => {
 }
 
 
-const sendEmail = async (email, message, subject) => {
+const sendEmail = async (email, message, subject, fullName) => {
     const params = {
         Source: "lagmanmarquez@gmail.com",
+        Template: "Verification_Code",
         Destination: {
             ToAddresses: email
         },
-        Message: {
-            Subject: {
-                Data: subject
-            },
-            Body: {
-                Text: {
-                    Data: message
-                }
-            }
-        }
+        TemplateData: JSON.stringify({
+            code: code,
+            name: fullName,
+        })
     }
     try{
         const data = await ses.sendEmail(params);
@@ -53,5 +47,6 @@ const sendEmail = async (email, message, subject) => {
         throw err;
     }
 }
+
 
 module.exports = { verifyEmailAddress, sendEmail };
