@@ -2,7 +2,7 @@
 const UserRouter = require("./user");
 const EmailRouter = require("./email");
 const runRouters = (app) => {
-  app.use("/sign-up", UserRouter);
+  app.use("/", UserRouter);
   app.use("/aws-ses", EmailRouter);
 };
 
