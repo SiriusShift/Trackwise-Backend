@@ -1,5 +1,6 @@
 const CryptoJS = require("crypto-js");
 const {saltkey} = require("./saltkey");
+const crypto = require("crypto");
 
 const decryptString = (data) => {
   if (!data) return null;
@@ -17,4 +18,8 @@ const encryptString = (data) => {
   return ciphertext;
 };
 
-module.exports = { decryptString, encryptString };
+const generateToken = () => {
+  return crypto.randomBytes(32).toString('hex');
+}
+
+module.exports = { decryptString, encryptString, generateToken };

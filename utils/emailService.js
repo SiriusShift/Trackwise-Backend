@@ -27,18 +27,14 @@ const verifyEmailAddress = async (emails) => {
 }
 
 
-const sendEmail = async (email, code) => {
-    const year = new Date().getFullYear();
+const sendEmail = async (email, data, template) => {
     const params = {
         Source: "lagmanmarquez@gmail.com",
-        Template: "Verification_Code",
+        Template: `${template}`,
         Destination: {
             ToAddresses: [email]
         },
-        TemplateData: JSON.stringify({
-            code: code,
-            year: year
-        })
+        TemplateData: JSON.stringify(data)
     }
     try{
         const data = await ses.sendTemplatedEmail(params);

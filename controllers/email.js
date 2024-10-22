@@ -2,8 +2,11 @@ const ExpressError = require("../utils/expressError");
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const crypto = require("crypto");
-const { decryptString } = require("../utils/customFunction");
+const { decryptString, generateToken } = require("../utils/customFunction");
 const { sendEmail, verifyEmailAddress } = require("../utils/emailService");
+
+const year = new Date().getFullYear();
+
 const sendEmailCode = async (req, res, next) => {
   const { email, username } = req.body;
   // Generate a 6-digit verification code
@@ -39,8 +42,12 @@ const sendEmailCode = async (req, res, next) => {
     });
   }
   try {
+    const data = {
+      code: code,
+      year: year,
+    }
     // Send a verification email using Amazon SES
-    await sendEmail(email, code);
+    await sendEmail(email, data, "Verification_Code");
     // add the otp code to database to be used later for comparing
     await prisma.emailVerification.create({
       data: {
@@ -59,6 +66,53 @@ const sendEmailCode = async (req, res, next) => {
     });
   } catch (err) {
     console.log("Error while sending email", err);
+    return res.json(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
+const forgotPassword = async (req, res, next) => {
+  email = req.body
+  if (!email || !Array.isArray(email)) {
+    return res.status(400).json({
+      message: "Invalid format",
+    });
+  }
+  try {
+    let token = generateToken();
+    // 15 minutes expiration
+    const expirationTime = new Date(Date.now() + 15 * 60 * 1000);
+    const user = await prisma.user.findFirst({
+      where: {
+        email: email[0],
+      },
+    })
+    console.log(user.id);
+    await prisma.resetToken.create({
+      data: {
+        token,
+        expiresAt: new Date(expirationTime),
+        createdAt: new Date(),
+        user: {
+          connect: {
+            id: user.id
+          }
+        }
+      },
+    })
+    token = `http://localhost:5173/reset-password?email=${email[0]}&token=${token}`
+    data = {
+      link: token,
+      year: year
+    }
+    await sendEmail(email[0], data, "Reset_Password");
+    return res.status(200).json({
+      success: true,
+      message: "Email sent",
+    });
+  } catch (err) {
+    console.log("Error while verifying email address", err);
     return res.json(500).json({
       error: "Internal server error",
     });
@@ -97,4 +151,5 @@ const verifyEmail = async (req, res, next) => {
 module.exports = {
   sendEmailCode,
   verifyEmail,
+  forgotPassword
 };

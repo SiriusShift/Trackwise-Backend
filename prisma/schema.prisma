@@ -26,7 +26,8 @@ model User {
   isActive        Boolean  @default(false) // BOOLEAN DEFAULT TRUE
   createdAt       DateTime @default(now()) @map("created_at") // TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   updatedAt       DateTime @default(now()) @updatedAt @map("updated_at") // TIMESTAMP DEFAULT CURRENT_TIMESTAMP  
-
+  resetTokens ResetToken[] // Relation to ResetToken model
+  
   // emailVerifications EmailVerification[]  @relation("UserEmailVerifications")
   @@map("users") // This maps the Prisma model to the SQL 'users' table
 }
@@ -43,4 +44,15 @@ model EmailVerification {
   // user              User        @relation(name: "UserEmailVerifications", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("email_verifications")
+}
+
+model ResetToken {
+  id          Int      @id @default(autoincrement()) // Primary key
+  token       String   @unique                       // Unique token string
+  userId      Int                                     
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime // Expiration time for the token
+  createdAt   DateTime @default(now()) // Timestamp when the token is created
+
+  @@index([token]) // Optional index for token lookups
 }
