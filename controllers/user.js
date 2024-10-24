@@ -99,10 +99,82 @@ const register = async (req, res, next) => {
 };
 
 const login = async (req, res, next) => {
-  return res.status(200).json({ message: 'Login successful', user: req.user });
+  console.log(req.user)
+  console.log("authenticated: ",req.isAuthenticated())
+  console.log("req.session: ",req.session)
+  return res.status(200).json({ message: 'Login successful' });
+}
+
+const resetPassword = async (req, res, next) => {
+  const { id, password, token } = req.body;
+  console.log(id,password,token)
+  const hashedPassword = await bcrypt.hash(password, 10);
+  const findToken = await prisma.resetToken.findFirst({
+    where: {
+      token: token,
+      userId: id,
+    },
+  })
+
+  
+  if (!findToken) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid token",
+    });
+  }
+
+
+  const currentTime = new Date();
+  if (currentTime > findToken.expiresAt) {
+    return res.status(400).json({
+      success: false,
+      message: "OTP has expired",
+    });
+  }
+
+  await prisma.user.update({
+    where: {
+      id: id
+    },
+    data: {
+      password: hashedPassword,
+    },
+  })
+
+  await prisma.resetToken.delete({
+    where: {
+      token: token
+    }
+  })
+
+  return res.status(200).json({
+    success: true,
+    message: "Password reset successful",
+  });
+}
+
+const isAuthenticated = (req, res, next) => {
+  console.log("authenticated1: ",req.isAuthenticated())
+  console.log("req.session1: ",req.session)
+  if (req.isAuthenticated()) {
+    return res.status(200).json({ authenticated: true, user: {
+      id: req.user.id,
+      firstName: req.user.firstName,
+      lastName: req.user.lastName,
+      email: req.user.email,
+      username: req.user.username,
+      role: req.user.role,
+      phoneNumber: req.user.phoneNumber,
+      profileImage: req.user.profileImageUrl
+    } });
+  }
+  return res.status(401).json({ authenticated: false, message: "Unauthorized" });
 }
 
 module.exports = {
   register,
-  login
+  login,
+  resetPassword,
+  isAuthenticated
 };

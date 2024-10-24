@@ -80,7 +80,21 @@ const forgotPassword = async (req, res, next) => {
     });
   }
   try {
-    let token = generateToken();
+    let valid = false;
+    let token;
+    while(valid === false){
+      token = generateToken();
+      const tokenExist = await prisma.resetToken.findUnique(
+        {
+          where: {
+            token: token
+          }
+        }
+      )
+      if(!tokenExist){
+        valid = true;
+      }
+    }
     // 15 minutes expiration
     const expirationTime = new Date(Date.now() + 15 * 60 * 1000);
     const user = await prisma.user.findFirst({
@@ -88,7 +102,11 @@ const forgotPassword = async (req, res, next) => {
         email: email[0],
       },
     })
-    console.log(user.id);
+    if(!user){
+      return res.status(400).json({
+        message: "Email doesn't exist"
+      })
+    }
     await prisma.resetToken.create({
       data: {
         token,
@@ -101,7 +119,7 @@ const forgotPassword = async (req, res, next) => {
         }
       },
     })
-    token = `http://localhost:5173/reset-password?email=${email[0]}&token=${token}`
+    token = `http://localhost:5173/reset-password?id=${user.id}&token=${token}`
     data = {
       link: token,
       year: year

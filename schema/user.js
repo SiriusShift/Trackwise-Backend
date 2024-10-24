@@ -23,6 +23,15 @@ const signupSchema = Joi.object({
     // role: Joi.string().valid(...roles).optional().default(defRole),
 });
 
+const resetPasswordSchema = Joi.object({
+    id: Joi.number().required(),
+    password: Joi.string().required().pattern(passwordPattern).messages({
+        "string.pattern.base": passwordError,
+    }),
+    token: Joi.string().required()
+});
+
 module.exports = {
-    signupSchema
+    signupSchema,
+    resetPasswordSchema
 }

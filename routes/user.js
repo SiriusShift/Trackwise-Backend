@@ -9,7 +9,7 @@ const {
     validateUserUpdateRequest,
   } = require("../middleware/validate");
   
-const { register, verifyEmail, login } = require("../controllers/user");
+const { register, resetPassword , login, isAuthenticated } = require("../controllers/user");
  
 const router = Router();
 router.route("/sign-up").post(validateCreateRequest("user"), catchAsync(register));
@@ -35,5 +35,8 @@ router.route("/sign-in").post(
     })(req, res, next); // Pass req, res, next to the passport.authenticate call
   })
 );
+
+router.route("/reset-password").post(validateUserUpdateRequest("password"), catchAsync(resetPassword));
+router.route("/auth-status").get(isAuthenticated);
 
 module.exports = router
