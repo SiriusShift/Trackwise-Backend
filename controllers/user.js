@@ -100,8 +100,8 @@ const register = async (req, res, next) => {
 
 const login = async (req, res, next) => {
   console.log(req.user)
-  console.log("authenticated: ",req.isAuthenticated())
-  console.log("req.session: ",req.session)
+  console.log("login authenticated: ",req.isAuthenticated())
+  console.log("login req.session: ",req.session)
   return res.status(200).json({ message: 'Login successful' });
 }
 
@@ -172,9 +172,25 @@ const isAuthenticated = (req, res, next) => {
   return res.status(401).json({ authenticated: false, message: "Unauthorized" });
 }
 
+const logout = (req, res, next) => {
+  req.logout((err) => {
+    if (err) {
+      return next(err);
+    }
+    console.log(req.isAuthenticated());
+    console.log(req.session);
+    req.session.destroy(() => {
+      res.clearCookie('trackwise_session'); // Clear the session cookie
+      res.status(200).json({ message: "Logout successful" });
+    });
+  });
+}
+
+
 module.exports = {
   register,
   login,
   resetPassword,
-  isAuthenticated
+  isAuthenticated,
+  logout
 };

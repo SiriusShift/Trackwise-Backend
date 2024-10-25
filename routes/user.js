@@ -9,7 +9,7 @@ const {
     validateUserUpdateRequest,
   } = require("../middleware/validate");
   
-const { register, resetPassword , login, isAuthenticated } = require("../controllers/user");
+const { register, resetPassword , login, isAuthenticated, logout } = require("../controllers/user");
  
 const router = Router();
 router.route("/sign-up").post(validateCreateRequest("user"), catchAsync(register));
@@ -38,5 +38,6 @@ router.route("/sign-in").post(
 
 router.route("/reset-password").post(validateUserUpdateRequest("password"), catchAsync(resetPassword));
 router.route("/auth-status").get(isAuthenticated);
+router.route("/sign-out").get(logout);
 
 module.exports = router
