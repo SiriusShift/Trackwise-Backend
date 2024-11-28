@@ -22,6 +22,16 @@ const createAsset = async (req, res, next) => {
   });
 };
 
+const getAsset = async (req, res, next) => {
+  const data = await prisma.asset.findMany();
+  res.status(200).json({
+    success: true,
+    message: "Assets fetched successfully",
+    data: data,
+  });
+};
+
 module.exports = {
   createAsset,
+  getAsset
 };
