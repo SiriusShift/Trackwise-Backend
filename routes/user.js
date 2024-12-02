@@ -88,7 +88,8 @@ router.route("/sign-in").post(
         if (err) {
           return next(err);
         }
-        return login(req, res, next);
+
+        return login(req, res, next, user);
       });
     })(req, res, next);
   })

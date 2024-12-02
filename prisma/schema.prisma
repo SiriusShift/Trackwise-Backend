@@ -61,6 +61,7 @@ model Expense {
   status      String // "Paid", "Pending", etc.
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  recurring   Boolean  
 }
 
 model Category {
