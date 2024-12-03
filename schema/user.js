@@ -1,9 +1,9 @@
 const Joi = require("joi");
 const {
-    roles,
-    defRole,
-    phonePattern,
-    phoneError,
+    // roles,
+    // defRole,
+    // phonePattern,
+    // phoneError,
     passwordPattern,
     passwordError
 } = require("../constants/user");
