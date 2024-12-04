@@ -52,13 +52,13 @@ model Expense {
   date        DateTime @default(now())
   categoryId  Int // Foreign key to Category
   category    Category @relation(fields: [categoryId], references: [id])
-  description String? // Optional description
+  description String // Optional description
   amount      Float // Expense amount
   sourceId    Int? // Foreign key to Asset
   source      Asset?   @relation(fields: [sourceId], references: [id])
   userId      Int // Foreign key to User
   user        User     @relation(fields: [userId], references: [id])
-  status      String // "Paid", "Pending", etc.
+  status      String? // "Paid", "Pending", etc.
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   recurring   Boolean  
