@@ -68,6 +68,23 @@ const postExpense = async (req, res, next) => {
       },
     });
 
+    await prisma.asset.findFirst({
+      where: {
+        id: req.body.source,
+      },
+    }).then((asset) => {
+      if (asset) {
+        prisma.asset.update({
+          where: {
+            id: req.body.source,
+          },
+          data: {
+            balance: asset.balance - req.body.amount,
+          },
+        });
+      }
+    });
+
     res.status(200).json({
       success: true,
       message: "Expense created successfully",
@@ -81,6 +98,58 @@ const postExpense = async (req, res, next) => {
   }
 };
 
+const getExpenses = async (req, res, next) => {
+  const { userId, active } = req.query;
+  const recurring = active === "Regular" ? false : true;
+
+  try {
+    const expenses = await prisma.expense.findMany({
+      where: {
+        userId: parseInt(userId),
+        recurring: recurring,
+      },
+    });
+
+    if (expenses.length < 1) {
+      return res.status(400).json({
+        success: false,
+        message: "User doesn't have existing expenses",
+      });
+    }
+
+    // Fetch additional details for each expense
+    const detailedExpenses = await Promise.all(
+      expenses.map(async (expense) => {
+        const asset = await prisma.asset.findFirst({
+          where: { id: expense.sourceId }, // Use `expense.sourceId`
+        });
+        const category = await prisma.category.findFirst({
+          where: { id: expense.categoryId }, // Use `expense.categoryId`
+        });
+
+        return {
+          ...expense,
+          asset,
+          category,
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Expenses fetched successfully",
+      data: detailedExpenses,
+    });
+  } catch (err) {
+    console.error("Error while fetching expenses", err);
+    res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
+
 module.exports = {
   postExpense,
+  getExpenses
 };
