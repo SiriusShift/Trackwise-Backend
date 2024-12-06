@@ -5,20 +5,20 @@ const postExpense = async (req, res, next) => {
   console.log("hello", req.body);
   try {
     await prisma.asset
-    .findFirst({
-      where: {
-        id: req.body.category,
-      },
-    })
-    .then((category) => {
-      if (!category) {
-        res.status(400).json({
-          success: false,
-          message: "Category not found",
-        });
-      }
-    });
-    
+      .findFirst({
+        where: {
+          id: req.body.category,
+        },
+      })
+      .then((category) => {
+        if (!category) {
+          res.status(400).json({
+            success: false,
+            message: "Category not found",
+          });
+        }
+      });
+
     await prisma.asset
       .findFirst({
         where: {
@@ -26,7 +26,20 @@ const postExpense = async (req, res, next) => {
         },
       })
       .then((asset) => {
-        if (asset) {
+        if (asset && req.body.recurring === false) {
+          prisma.asset.update({
+            where: {
+              id: req.body.source,
+            },
+            data: {
+              balance: asset.balance - req.body.amount,
+            },
+          });
+        } else if (
+          asset &&
+          req.body.recurring === true &&
+          req.body.status === "Paid"
+        ) {
           prisma.asset.update({
             where: {
               id: req.body.source,
@@ -66,23 +79,6 @@ const postExpense = async (req, res, next) => {
           },
         },
       },
-    });
-
-    await prisma.asset.findFirst({
-      where: {
-        id: req.body.source,
-      },
-    }).then((asset) => {
-      if (asset) {
-        prisma.asset.update({
-          where: {
-            id: req.body.source,
-          },
-          data: {
-            balance: asset.balance - req.body.amount,
-          },
-        });
-      }
     });
 
     res.status(200).json({
@@ -148,8 +144,7 @@ const getExpenses = async (req, res, next) => {
   }
 };
 
-
 module.exports = {
   postExpense,
-  getExpenses
+  getExpenses,
 };

@@ -27,51 +27,73 @@ model User {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @default(now()) @updatedAt
 
-  assets      Asset[] // One-to-many relationship with Asset
-  expenses    Expense[] // One-to-many relationship with Expense
-  incomes     Income[] // One-to-many relationship with Income
-  resetTokens ResetToken[]
+  assets           Asset[] // One-to-many relationship with Asset
+  expenses         Expense[] // One-to-many relationship with Expense
+  incomes          Income[] // One-to-many relationship with Income
+  resetTokens      ResetToken[]
+  RecurringExpense RecurringExpense[]
 
   @@map("users")
 }
 
 model Asset {
-  id        Int       @id @default(autoincrement())
-  name      String // Name of the asset (e.g., "Cash", "Bonds")
-  balance   Float // Current balance of the asset
-  userId    Int // Foreign key to User
-  user      User      @relation(fields: [userId], references: [id])
-  expenses  Expense[] // One-to-many relationship with Expense
-  incomes   Income[] // One-to-many relationship with Income
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id               Int                @id @default(autoincrement())
+  name             String // Name of the asset (e.g., "Cash", "Bonds")
+  balance          Float // Current balance of the asset
+  userId           Int // Foreign key to User
+  user             User               @relation(fields: [userId], references: [id])
+  expenses         Expense[] // One-to-many relationship with Expense
+  incomes          Income[] // One-to-many relationship with Income
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  RecurringExpense RecurringExpense[]
 }
 
 model Expense {
-  id          Int      @id @default(autoincrement())
-  date        DateTime @default(now())
+  id                 Int               @id @default(autoincrement())
+  date               DateTime          @default(now())
+  categoryId         Int // Foreign key to Category
+  category           Category          @relation(fields: [categoryId], references: [id])
+  description        String // Description of the expense
+  amount             Float // Expense amount
+  sourceId           Int? // Foreign key to Asset
+  source             Asset?            @relation(fields: [sourceId], references: [id])
+  userId             Int // Foreign key to User
+  user               User              @relation(fields: [userId], references: [id])
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  recurringExpenseId Int? // Foreign key to RecurringExpense
+  recurringExpense   RecurringExpense? @relation(fields: [recurringExpenseId], references: [id])
+}
+
+model RecurringExpense {
+  id          Int       @id @default(autoincrement())
   categoryId  Int // Foreign key to Category
-  category    Category @relation(fields: [categoryId], references: [id])
-  description String // Optional description
-  amount      Float // Expense amount
-  sourceId    Int? // Foreign key to Asset
-  source      Asset?   @relation(fields: [sourceId], references: [id])
+  category    Category  @relation(fields: [categoryId], references: [id])
+  description String // Description of the recurring expense
+  amount      Float // Recurring expense amount
   userId      Int // Foreign key to User
-  user        User     @relation(fields: [userId], references: [id])
-  status      String? // "Paid", "Pending", etc.
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  recurring   Boolean  
+  user        User      @relation(fields: [userId], references: [id])
+  frequency   String // E.g., "Monthly", "Weekly"
+  paymentDay  Int? // Specific day of payment (e.g., 1-31 for monthly or 0-6 for weekly)
+  startDate   DateTime // When the recurring expense starts
+  endDate     DateTime? // When the recurring expense ends (optional)
+  status      String? // "Paid", "Pending", "Overdue" - Tracks recurring expense payment status
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  expenses Expense[] // One-to-many relationship with Expense
 }
 
 model Category {
-  id        Int       @id @default(autoincrement())
-  name      String // Name of the category (e.g., "Food & Dining", "Salary")
-  type      String // "Expense" or "Income"
-  expenses  Expense[] // One-to-many relationship with Expense
-  incomes   Income[] // One-to-many relationship with Income
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id               Int                @id @default(autoincrement())
+  name             String // Name of the category (e.g., "Food & Dining", "Salary")
+  type             String // "Expense" or "Income"
+  expenses         Expense[] // One-to-many relationship with Expense
+  incomes          Income[] // One-to-many relationship with Income
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  RecurringExpense RecurringExpense[]
 }
 
 model Income {
