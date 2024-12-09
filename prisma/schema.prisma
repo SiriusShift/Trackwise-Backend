@@ -4,6 +4,9 @@
 // Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
 // Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
 
+//npx prisma migrate dev --name <migration-name>
+
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -46,7 +49,6 @@ model Asset {
   incomes          Income[] // One-to-many relationship with Income
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
-  RecurringExpense RecurringExpense[]
 }
 
 model Expense {
@@ -62,8 +64,10 @@ model Expense {
   user               User              @relation(fields: [userId], references: [id])
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
+  status      String?  // "Paid", "Pending", etc.
   recurringExpenseId Int? // Foreign key to RecurringExpense
   recurringExpense   RecurringExpense? @relation(fields: [recurringExpenseId], references: [id])
+  recurring          Boolean @default(false)
 }
 
 model RecurringExpense {
@@ -75,7 +79,6 @@ model RecurringExpense {
   userId      Int // Foreign key to User
   user        User      @relation(fields: [userId], references: [id])
   frequency   String // E.g., "Monthly", "Weekly"
-  paymentDay  Int? // Specific day of payment (e.g., 1-31 for monthly or 0-6 for weekly)
   startDate   DateTime // When the recurring expense starts
   endDate     DateTime? // When the recurring expense ends (optional)
   status      String? // "Paid", "Pending", "Overdue" - Tracks recurring expense payment status

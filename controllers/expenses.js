@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 const postExpense = async (req, res, next) => {
   console.log("hello", req.body);
   try {
-    await prisma.asset
+    await prisma.category
       .findFirst({
         where: {
           id: req.body.category,
@@ -26,20 +26,7 @@ const postExpense = async (req, res, next) => {
         },
       })
       .then((asset) => {
-        if (asset && req.body.recurring === false) {
-          prisma.asset.update({
-            where: {
-              id: req.body.source,
-            },
-            data: {
-              balance: asset.balance - req.body.amount,
-            },
-          });
-        } else if (
-          asset &&
-          req.body.recurring === true &&
-          req.body.status === "Paid"
-        ) {
+        if (asset) {
           prisma.asset.update({
             where: {
               id: req.body.source,
@@ -70,9 +57,9 @@ const postExpense = async (req, res, next) => {
             id: req.body.source, // Source is required and connected via id
           },
         },
+        recurring: false,
         date: req.body.date, // Date is required
-        recurring: req.body.recurring, // Recurring is required
-        status: req.body.status || null, // Status is optional, defaulting to null if not provided
+        status: req.body.status,
         user: {
           connect: {
             id: req.user.id, // User is required and connected via user id
@@ -94,9 +81,22 @@ const postExpense = async (req, res, next) => {
   }
 };
 
+const postRecurringExpense = async (req, res, next) => {
+  try {
+
+  }catch(err){
+    console.error("Error while fetching expenses", err);
+    res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+}
+
 const getExpenses = async (req, res, next) => {
   const { userId, active } = req.query;
   const recurring = active === "Regular" ? false : true;
+
+  console.log("recurring", recurring);
 
   try {
     const expenses = await prisma.expense.findMany({
@@ -107,9 +107,10 @@ const getExpenses = async (req, res, next) => {
     });
 
     if (expenses.length < 1) {
-      return res.status(400).json({
+      return res.status(200).json({
         success: false,
         message: "User doesn't have existing expenses",
+        data: []
       });
     }
 
