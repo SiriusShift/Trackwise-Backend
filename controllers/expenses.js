@@ -1,4 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
+const { skip } = require("@prisma/client/runtime/library");
 const prisma = new PrismaClient();
 
 const postExpense = async (req, res, next) => {
@@ -19,23 +20,26 @@ const postExpense = async (req, res, next) => {
         }
       });
 
+      console.log("source:",req.body.source);
+
     await prisma.asset
       .findFirst({
         where: {
           id: req.body.source,
         },
       })
-      .then((asset) => {
-        if (asset) {
-          prisma.asset.update({
-            where: {
-              id: req.body.source,
-            },
-            data: {
-              balance: asset.balance - req.body.amount,
-            },
-          });
-        } else {
+      .then(async (asset) => {
+        // if (asset) {
+        //   const response = await prisma.asset.update({
+        //     where: {
+        //       id: req.body.source,
+        //     },
+        //     data: {
+        //       balance: asset.balance - req.body.amount,
+        //     },
+        //   });
+        //   console.log("updated asset: ", response);
+        if(!asset) {
           return res.status(400).json({
             success: false,
             message: "Asset not found",
@@ -59,7 +63,8 @@ const postExpense = async (req, res, next) => {
         },
         recurring: false,
         date: req.body.date, // Date is required
-        status: req.body.status,
+        status: req.body.status ? req.body.status : "Paid",
+        recipient: req.body.recipient,
         user: {
           connect: {
             id: req.user.id, // User is required and connected via user id
@@ -94,9 +99,14 @@ const postRecurringExpense = async (req, res, next) => {
 
 const getExpenses = async (req, res, next) => {
   const { userId, active } = req.query;
-  const recurring = active === "Regular" ? false : true;
+  const recurring = active === "All" ? false : true;
 
-  console.log("recurring", recurring);
+  const page = parseInt(req.query.pageIndex) || 1;
+  const pageSize = parseInt(req.query.pageSize) || 5;
+
+  const skip = (page-1) * pageSize
+
+  console.log("recurring", req.query.pageSize);
 
   try {
     const expenses = await prisma.expense.findMany({
@@ -104,7 +114,15 @@ const getExpenses = async (req, res, next) => {
         userId: parseInt(userId),
         recurring: recurring,
       },
+      orderBy: {
+        date: "desc"
+      },
+      skip: skip,
+      take: pageSize
     });
+
+    const totalCount = expenses.length;
+    const totalPages = Math.ceil(totalCount / pageSize);
 
     if (expenses.length < 1) {
       return res.status(200).json({

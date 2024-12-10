@@ -67,6 +67,7 @@ model Expense {
   status      String?  // "Paid", "Pending", etc.
   recurringExpenseId Int? // Foreign key to RecurringExpense
   recurringExpense   RecurringExpense? @relation(fields: [recurringExpenseId], references: [id])
+  recipient          String
   recurring          Boolean @default(false)
 }
 
