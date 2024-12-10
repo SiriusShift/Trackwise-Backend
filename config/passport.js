@@ -24,7 +24,7 @@ const runPassport = (app) => {
           const user = await prisma.user.findUnique({ where: { email } });
           if (!user) {
             return done(null, false, {
-              message: "Incorrect username or password.",
+              message: "User doesn't exist",
             });
           }
           console.log(password);
