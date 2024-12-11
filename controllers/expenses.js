@@ -101,34 +101,44 @@ const getExpenses = async (req, res, next) => {
   const { userId, active } = req.query;
   const recurring = active === "All" ? false : true;
 
-  const page = parseInt(req.query.pageIndex) || 1;
-  const pageSize = parseInt(req.query.pageSize) || 5;
+  const page = parseInt(req.query.pageIndex) + 1;
+  console.log(page);
+  const pageSize = parseInt(req.query.pageSize);
 
-  const skip = (page-1) * pageSize
-
-  console.log("recurring", req.query.pageSize);
+  const skip = (page - 1) * pageSize;
 
   try {
+    // Fetch total count of matching expenses
+    const totalCount = await prisma.expense.count({
+      where: {
+        userId: parseInt(userId),
+        recurring: recurring,
+      },
+    });
+
+    // Fetch paginated expenses
     const expenses = await prisma.expense.findMany({
       where: {
         userId: parseInt(userId),
         recurring: recurring,
       },
       orderBy: {
-        date: "desc"
+        date: "desc",
       },
       skip: skip,
-      take: pageSize
+      take: pageSize,
     });
 
-    const totalCount = expenses.length;
     const totalPages = Math.ceil(totalCount / pageSize);
+    // console.log("total pages: ", totalPages, totalCount);
 
     if (expenses.length < 1) {
       return res.status(200).json({
         success: false,
         message: "User doesn't have existing expenses",
-        data: []
+        data: [],
+        totalCount,
+        totalPages,
       });
     }
 
@@ -136,10 +146,10 @@ const getExpenses = async (req, res, next) => {
     const detailedExpenses = await Promise.all(
       expenses.map(async (expense) => {
         const asset = await prisma.asset.findFirst({
-          where: { id: expense.sourceId }, // Use `expense.sourceId`
+          where: { id: expense.sourceId },
         });
         const category = await prisma.category.findFirst({
-          where: { id: expense.categoryId }, // Use `expense.categoryId`
+          where: { id: expense.categoryId },
         });
 
         return {
@@ -154,6 +164,8 @@ const getExpenses = async (req, res, next) => {
       success: true,
       message: "Expenses fetched successfully",
       data: detailedExpenses,
+      totalCount,
+      totalPages,
     });
   } catch (err) {
     console.error("Error while fetching expenses", err);
@@ -162,6 +174,7 @@ const getExpenses = async (req, res, next) => {
     });
   }
 };
+
 
 module.exports = {
   postExpense,
