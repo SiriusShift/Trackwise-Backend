@@ -29,16 +29,6 @@ const postExpense = async (req, res, next) => {
         },
       })
       .then(async (asset) => {
-        // if (asset) {
-        //   const response = await prisma.asset.update({
-        //     where: {
-        //       id: req.body.source,
-        //     },
-        //     data: {
-        //       balance: asset.balance - req.body.amount,
-        //     },
-        //   });
-        //   console.log("updated asset: ", response);
         if(!asset) {
           return res.status(400).json({
             success: false,
@@ -88,7 +78,41 @@ const postExpense = async (req, res, next) => {
 
 const postRecurringExpense = async (req, res, next) => {
   try {
+    await prisma.category
+    .findFirst({
+      where: {
+        id: req.body.category,
+      },
+    })
+    .then((category) => {
+      if (!category) {
+        res.status(400).json({
+          success: false,
+          message: "Category not found",
+        });
+      }
+    });
 
+    if(req.body.status === "Paid") {
+      await prisma.recurringExpense.create({
+        data: {
+          amount: req.body.amount, // Amount is required
+          description: req.body.description, // Description is required
+          category: {
+            connect: {
+              id: req.body.category, // Category is required and connected via id
+            },
+          },
+          startDate: req.body.date, // Date is required
+          status: req.body.status,
+          user: {
+            connect: {
+              id: req.user.id, // User is required and connected via user id
+            },
+          }
+        },
+      });
+    }
   }catch(err){
     console.error("Error while fetching expenses", err);
     res.status(500).json({
@@ -179,4 +203,5 @@ const getExpenses = async (req, res, next) => {
 module.exports = {
   postExpense,
   getExpenses,
+  postRecurringExpense
 };
