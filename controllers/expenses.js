@@ -28,7 +28,11 @@ const postExpense = async (req, res, next) => {
         },
       })
       .then(async (asset) => {
+<<<<<<< HEAD
         if (!asset) {
+=======
+        if(!asset) {
+>>>>>>> bfb587206b4eaec472118780c28019a08845cbfb
           return res.status(400).json({
             success: false,
             message: "Asset not found",
@@ -78,6 +82,7 @@ const postExpense = async (req, res, next) => {
 const postRecurringExpense = async (req, res, next) => {
   try {
     await prisma.category
+<<<<<<< HEAD
       .findFirst({
         where: {
           id: req.body.category.id,
@@ -117,6 +122,43 @@ const postRecurringExpense = async (req, res, next) => {
       data: data,
     })
   } catch (err) {
+=======
+    .findFirst({
+      where: {
+        id: req.body.category,
+      },
+    })
+    .then((category) => {
+      if (!category) {
+        res.status(400).json({
+          success: false,
+          message: "Category not found",
+        });
+      }
+    });
+
+    if(req.body.status === "Paid") {
+      await prisma.recurringExpense.create({
+        data: {
+          amount: req.body.amount, // Amount is required
+          description: req.body.description, // Description is required
+          category: {
+            connect: {
+              id: req.body.category, // Category is required and connected via id
+            },
+          },
+          startDate: req.body.date, // Date is required
+          status: req.body.status,
+          user: {
+            connect: {
+              id: req.user.id, // User is required and connected via user id
+            },
+          }
+        },
+      });
+    }
+  }catch(err){
+>>>>>>> bfb587206b4eaec472118780c28019a08845cbfb
     console.error("Error while fetching expenses", err);
     res.status(500).json({
       error: "Internal server error",
@@ -271,6 +313,10 @@ const getRecurringExpenses = async (req, res, next) => {
 module.exports = {
   postExpense,
   getExpenses,
+<<<<<<< HEAD
   postRecurringExpense,
   getRecurringExpenses
+=======
+  postRecurringExpense
+>>>>>>> bfb587206b4eaec472118780c28019a08845cbfb
 };
