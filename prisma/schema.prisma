@@ -64,11 +64,11 @@ model Expense {
   user               User              @relation(fields: [userId], references: [id])
   createdAt          DateTime          @default(now())
   updatedAt          DateTime          @updatedAt
-  status      String?  // "Paid", "Pending", etc.
+  // status      String?  // "Paid", "Pending", etc.
   recurringExpenseId Int? // Foreign key to RecurringExpense
   recurringExpense   RecurringExpense? @relation(fields: [recurringExpenseId], references: [id])
   recipient          String
-  recurring          Boolean @default(false)
+  // recurring          Boolean @default(false)
 }
 
 model RecurringExpense {
@@ -80,7 +80,8 @@ model RecurringExpense {
   userId      Int // Foreign key to User
   user        User      @relation(fields: [userId], references: [id])
   frequency   String // E.g., "Monthly", "Weekly"
-  date   DateTime // When the recurring expense starts
+  date        DateTime // When the recurring expense starts
+  recipient   String
   // endDate     DateTime? // When the recurring expense ends (optional)
   status      String? // "Paid", "Pending", "Overdue" - Tracks recurring expense payment status
   createdAt   DateTime  @default(now())

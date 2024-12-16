@@ -19,23 +19,6 @@ const postExpense = async (req, res, next) => {
         }
       });
 
-    console.log("source:", req.body.source);
-
-    await prisma.asset
-      .findFirst({
-        where: {
-          id: req.body.source,
-        },
-      })
-      .then(async (asset) => {
-        if (!asset) {
-          return res.status(400).json({
-            success: false,
-            message: "Asset not found",
-          });
-        }
-      });
-
     const data = await prisma.expense.create({
       data: {
         amount: req.body.amount, // Amount is required
@@ -50,9 +33,9 @@ const postExpense = async (req, res, next) => {
             id: req.body.source, // Source is required and connected via id
           },
         },
-        recurring: false,
+        // recurring: false,
         date: req.body.date, // Date is required
-        status: req.body.status ? req.body.status : "Paid",
+        // status: req.body.status ? req.body.status : "Paid",
         recipient: req.body.recipient,
         user: {
           connect: {
@@ -60,6 +43,51 @@ const postExpense = async (req, res, next) => {
           },
         },
       },
+    });
+
+    await prisma.asset
+    .findFirst({
+      where: {
+        id: req.body.source,
+      },
+    })
+    .then(async (asset) => {
+      if (!asset) {
+        return res.status(400).json({
+          success: false,
+          message: "Asset not found",
+        });
+      }
+  
+      // Check if the balance is sufficient
+      if (asset.balance < req.body.amount) {
+        return res.status(400).json({
+          success: false,
+          message: "Insufficient balance",
+        });
+      }
+  
+      // Deduct the balance
+      await prisma.asset.update({
+        where: { id: req.body.source },
+        data: {
+          balance: asset.balance - req.body.amount,
+        },
+      });
+  
+      // Optionally, return success message
+      res.status(200).json({
+        success: true,
+        message: "Asset balance updated successfully",
+      });
+    })
+    .catch((error) => {
+      // Handle errors
+      console.error(error);
+      res.status(500).json({
+        success: false,
+        message: "An error occurred while updating the asset balance",
+      });
     });
 
     res.status(200).json({
@@ -107,6 +135,7 @@ const postRecurringExpense = async (req, res, next) => {
         status: new Date > new Date(req.body.startDate) ? "Overdue" : "Unpaid",
         date: req.body.startDate, // Start Date is required
         frequency: req.body.frequency, // Frequency is required
+        recipient: req.body.recipient,
         user: {
           connect: {
             id: req.body.userId, // User is required and connected via user id

@@ -42,10 +42,8 @@ const getAssetRemainingBalance = async (req, res) => {
             description: true,
             amount: true,
             sourceId: true,
-            status: true,
             recurringExpenseId: true,
             recipient: true,
-            recurring: true, // Include recurring field if needed
           },
         },
         incomes: {
