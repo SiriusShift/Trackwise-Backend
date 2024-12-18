@@ -21,6 +21,7 @@ model User {
   firstName       String   @map("first_name")
   lastName        String   @map("last_name")
   email           String   @unique
+  googleId        String?  @map("google_id")
   username        String   @unique
   password        String   @map("password")
   role            String   @default("user")

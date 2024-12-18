@@ -150,4 +150,19 @@ router.route("/auth-status").get(isAuthenticated);
  */
 router.route("/sign-out").get(logout);
 
+
+router.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
+
+router.get('/auth/google/callback', 
+  passport.authenticate('google', { failureRedirect: '/login' }), 
+  catchAsync(async (req, res) => {
+    // After successful Google sign-in or sign-up
+    if (req.user) {
+      return res.redirect('/profile'); // Redirect to profile after successful login/signup
+    } else {
+      return res.redirect('/profile'); // Handle user signup with Google if necessary
+    }
+  })
+);
+
 module.exports = router;

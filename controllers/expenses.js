@@ -157,40 +157,66 @@ const postRecurringExpense = async (req, res, next) => {
 };
 
 const getExpenses = async (req, res, next) => {
-  const { userId, active } = req.query;
+  const { userId, Search, pageIndex, pageSize, Categories } = req.query;
 
-  const page = parseInt(req.query.pageIndex) + 1;
-  const pageSize = parseInt(req.query.pageSize);
+  // Validate userId
+  if (!userId) {
+    return res.status(400).json({
+      success: false,
+      message: "User ID is required",
+    });
+  }
 
-  const skip = (page - 1) * pageSize;
+  // Validate and parse pagination inputs
+  const page = parseInt(pageIndex) >= 0 ? parseInt(pageIndex) + 1 : 1;
+  const size = parseInt(pageSize) > 0 ? parseInt(pageSize) : 10; // Default to 10 if invalid
+  const skip = (page - 1) * size;
 
   try {
+    // Build filters
+    const filters = {
+      userId: parseInt(userId),
+    };
+
+    // Apply search filter if provided
+    if (Search) {
+      filters.description = {
+        startsWith: Search, // Use `startsWith` for matching the beginning of the string
+        mode: "insensitive", // Case-insensitive search
+      };
+    }
+
+    if(Categories !== undefined){
+      filters.categoryId = {
+        in: JSON.parse(Categories)
+      };
+    }
+
+    console.log("Filters applied:", filters);
+
     // Fetch total count of matching expenses
     const totalCount = await prisma.expense.count({
-      where: {
-        userId: parseInt(userId),
-      },
+      where: filters,
     });
 
     // Fetch paginated expenses
     const expenses = await prisma.expense.findMany({
-      where: {
-        userId: parseInt(userId),
-      },
+      where: filters,
       orderBy: {
         date: "desc",
       },
-      skip: skip,
-      take: pageSize,
+      skip,
+      take: size,
     });
 
-    const totalPages = Math.ceil(totalCount / pageSize);
-    // console.log("total pages: ", totalPages, totalCount);
+    console.log("Fetched expenses:", expenses);
+
+    const totalPages = Math.ceil(totalCount / size);
 
     if (expenses.length < 1) {
       return res.status(200).json({
         success: false,
-        message: "User doesn't have existing expenses",
+        message: "No expenses found for the given criteria",
         data: [],
         totalCount,
         totalPages,
@@ -215,7 +241,8 @@ const getExpenses = async (req, res, next) => {
       })
     );
 
-    res.status(200).json({
+    // Return response
+    return res.status(200).json({
       success: true,
       message: "Expenses fetched successfully",
       data: detailedExpenses,
@@ -223,12 +250,15 @@ const getExpenses = async (req, res, next) => {
       totalPages,
     });
   } catch (err) {
-    console.error("Error while fetching expenses", err);
-    res.status(500).json({
+    console.error("Error while fetching expenses:", err);
+    return res.status(500).json({
+      success: false,
       error: "Internal server error",
     });
   }
 };
+
+
 
 const getRecurringExpenses = async (req, res, next) => {
   const { userId } = req.query;
