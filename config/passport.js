@@ -48,51 +48,82 @@ const runPassport = (app) => {
     )
   );
 
-  passport.use(
-    new GoogleStrategy(
-      {
-        clientID: process.env.GOOGLE_CLIENT_ID,
-        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: process.env.GOOGLE_CALLBACK_URL,
-      },
-      async (accessToken, refreshToken, profile, done) => {
-        try {
-          // Check if the user already exists using the googleId
-          let user = await prisma.user.findUnique({
-            where: { googleId: profile.id },
+  passport.use('google-sign-in', new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: "/auth/google/sign-in/callback", // Specify sign-in callback
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      console.log("profile", profile);
+      try {
+        // Check if the user is already linked with Google
+        const user = await prisma.user.findFirst({
+          where: { google_id: profile.id },
+        });
+  
+        if (!user) {
+          console.log("user not found");
+          // If no user exists with the Google ID, check by email
+          const existingUser = await prisma.user.findUnique({
+            where: { email: profile.emails[0].value },
           });
-
-          if (!user) {
-            // If user doesn't exist, check if they exist by email
-            user = await prisma.user.findUnique({
-              where: { email: profile.emails[0].value },
+  
+          if (existingUser) {
+            console.log("existing user found with same email");
+            return done(null, false, {
+              message:
+                "This email is already registered but not linked to Google. Please sign in with your email and password.",
             });
-
-            if (user) {
-              // If the user exists by email, link Google to their account
-              user = await prisma.user.update({
-                where: { email: profile.emails[0].value },
-                data: { googleId: profile.id },
-              });
-            } else {
-              // If no user exists, create a new one
-              user = await prisma.user.create({
-                data: {
-                  googleId: profile.id,
-                  email: profile.emails[0].value,
-                  username: profile.displayName,
-                },
-              });
-            }
           }
-
-          return done(null, user);
-        } catch (err) {
-          return done(err);
+  
+          return done(null, false, { message: "Account does not exist." });
         }
+  
+        return done(null, user); // Successful sign-in
+      } catch (err) {
+        return done(err, null);
       }
-    )
-  );
+    }
+  ));
+  
+  passport.use('google-sign-up', new GoogleStrategy(
+    {
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: "/auth/google/sign-up/callback", // Specify sign-up callback
+    },
+    async (accessToken, refreshToken, profile, done) => {
+      try {
+        // Check if the user already exists
+        const existingUser = await prisma.user.findUnique({
+          where: { email: profile.emails[0].value },
+        });
+  
+        if (existingUser) {
+          return done(null, false, {
+            message:
+              "An account with this email already exists. Please sign in using your email and password.",
+          });
+        }
+  
+        // Create a new user with Google account linked
+        const user = await prisma.user.create({
+          data: {
+            google_id: profile.id,
+            firstName: profile.name.givenName || "",
+            lastName: profile.name.familyName || "",
+            email: profile.emails[0].value,
+            profileImageUrl: profile._json.picture,
+          },
+        });
+  
+        return done(null, user); // Successful sign-up
+      } catch (err) {
+        return done(err, null);
+      }
+    }
+  ));
 
   // Serialize user to store user ID in session
   passport.serializeUser((user, done) => {

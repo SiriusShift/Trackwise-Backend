@@ -6,7 +6,6 @@
 
 //npx prisma migrate dev --name <migration-name>
 
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -18,12 +17,12 @@ datasource db {
 
 model User {
   id              Int      @id @default(autoincrement())
-  firstName       String   @map("first_name")
-  lastName        String   @map("last_name")
+  firstName       String?  @map("first_name")
+  lastName        String?  @map("last_name")
   email           String   @unique
-  googleId        String?  @map("google_id")
-  username        String   @unique
-  password        String   @map("password")
+  google_id       String?  @unique
+  username        String?  @unique
+  password        String?  @map("password")
   role            String   @default("user")
   phoneNumber     String?  @map("phone_number")
   profileImageUrl String?  @map("profile_image_url")
@@ -31,9 +30,9 @@ model User {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @default(now()) @updatedAt
 
-  assets           Asset[] // One-to-many relationship with Asset
-  expenses         Expense[] // One-to-many relationship with Expense
-  incomes          Income[] // One-to-many relationship with Income
+  assets           Asset[]
+  expenses         Expense[]
+  incomes          Income[]
   resetTokens      ResetToken[]
   RecurringExpense RecurringExpense[]
 
@@ -41,15 +40,15 @@ model User {
 }
 
 model Asset {
-  id               Int                @id @default(autoincrement())
-  name             String // Name of the asset (e.g., "Cash", "Bonds")
-  balance          Float // Current balance of the asset
-  userId           Int // Foreign key to User
-  user             User               @relation(fields: [userId], references: [id])
-  expenses         Expense[] // One-to-many relationship with Expense
-  incomes          Income[] // One-to-many relationship with Income
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id        Int       @id @default(autoincrement())
+  name      String // Name of the asset (e.g., "Cash", "Bonds")
+  balance   Float // Current balance of the asset
+  userId    Int // Foreign key to User
+  user      User      @relation(fields: [userId], references: [id])
+  expenses  Expense[] // One-to-many relationship with Expense
+  incomes   Income[] // One-to-many relationship with Income
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 }
 
 model Expense {
@@ -73,20 +72,20 @@ model Expense {
 }
 
 model RecurringExpense {
-  id          Int       @id @default(autoincrement())
+  id          Int      @id @default(autoincrement())
   categoryId  Int // Foreign key to Category
-  category    Category  @relation(fields: [categoryId], references: [id])
+  category    Category @relation(fields: [categoryId], references: [id])
   description String // Description of the recurring expense
   amount      Float // Recurring expense amount
   userId      Int // Foreign key to User
-  user        User      @relation(fields: [userId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
   frequency   String // E.g., "Monthly", "Weekly"
   date        DateTime // When the recurring expense starts
   recipient   String
   // endDate     DateTime? // When the recurring expense ends (optional)
   status      String? // "Paid", "Pending", "Overdue" - Tracks recurring expense payment status
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   expenses Expense[] // One-to-many relationship with Expense
 }

@@ -23,6 +23,14 @@ const signupSchema = Joi.object({
     // role: Joi.string().valid(...roles).optional().default(defRole),
 });
 
+const googleSignupSchema = Joi.object({
+    firstName: Joi.string().required(),
+    google_id: Joi.string().required(),
+    profileImageUrl: Joi.string(),
+    lastName: Joi.string().required(),
+    email: Joi.string().email().required(),
+});
+
 const resetPasswordSchema = Joi.object({
     id: Joi.number().required(),
     password: Joi.string().required().pattern(passwordPattern).messages({
@@ -33,5 +41,6 @@ const resetPasswordSchema = Joi.object({
 
 module.exports = {
     signupSchema,
-    resetPasswordSchema
+    resetPasswordSchema,
+    googleSignupSchema
 }

@@ -150,19 +150,89 @@ router.route("/auth-status").get(isAuthenticated);
  */
 router.route("/sign-out").get(logout);
 
-
-router.get('/auth/google', passport.authenticate('google', { scope: ['profile', 'email'] }));
-
-router.get('/auth/google/callback', 
-  passport.authenticate('google', { failureRedirect: '/login' }), 
-  catchAsync(async (req, res) => {
-    // After successful Google sign-in or sign-up
-    if (req.user) {
-      return res.redirect('/profile'); // Redirect to profile after successful login/signup
-    } else {
-      return res.redirect('/profile'); // Handle user signup with Google if necessary
-    }
-  })
+// Sign-In with Google
+router.get(
+  "/auth/google/sign-in",
+  passport.authenticate("google-sign-in", { scope: ["profile", "email"] })
 );
+
+router.get(
+  "/auth/google/sign-in",
+  passport.authenticate("google-sign-in", { scope: ["profile", "email"] })
+);
+
+router.get(
+  "/auth/google/sign-in/callback",
+  // Handle authentication response and error explicitly
+  (req, res, next) => {
+    passport.authenticate("google-sign-in", (err, user, info) => {
+
+      console.log("test",err);
+      if (err) {
+        // If there’s an error (for example, database issue, network issue, etc.)
+        console.error("Authentication error:", err);
+        return res.status(500).json({ message: "Internal server error" });
+      }
+
+      if (!user) {
+        // Redirect to login page with specific message if user is not authenticated
+        return res.redirect(`${process.env.CLIENT_URL}/sign-in?error=true&message=${encodeURIComponent(info.message || "Unauthorized")}`);
+      }
+
+      req.logIn(user, (err) => {
+        if (err) {
+          console.error("Login error:", err);
+          return next(err);
+        }
+
+        // Optionally redirect after successful login
+        res.redirect(`${process.env.CLIENT_URL}/`);
+      });
+    })(req, res, next);
+  }
+);
+
+// Sign-Up with Google
+router.get(
+  "/auth/google/sign-up",
+  passport.authenticate("google-sign-up", { scope: ["profile", "email"] })
+);
+
+router.get(
+  "/auth/google/sign-up/callback",
+  (req, res, next) => {
+    passport.authenticate("google-sign-up", (err, user, info) => {
+      console.log("test", err);
+      if (err) {
+        // Handle server-side error
+        console.error("Authentication error:", err);
+        return res.redirect(
+          `${process.env.CLIENT_URL}/sign-in?error=true&message=${"Internal server error"}`
+        );
+      }
+
+      if (!user) {
+        // Redirect to login with error if authentication failed
+        return res.redirect(
+          `${process.env.CLIENT_URL}/sign-in?error=true&message=${encodeURIComponent(
+            info?.message || "Unauthorized"
+          )}`
+        );
+      }
+
+      // Log the user in (creates a session)
+      req.logIn(user, (err) => {
+        if (err) {
+          console.error("Login error:", err);
+          return next(err);
+        }
+
+        // Optionally redirect after successful login
+        res.redirect(`${process.env.CLIENT_URL}/`);
+      });
+    })(req, res, next);
+  }
+);
+
 
 module.exports = router;

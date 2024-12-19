@@ -13,6 +13,11 @@ const validateCreateRequest = (requestType) => {
           password: decryptString(req.body.password),
         }).error;
         break;
+      case "user-google": 
+        error = signupSchema.validate({
+          ...req.body,
+        }).error;
+        break;
       default:
         console.log(`No validation for ${requestType}`);
     }
