@@ -4,6 +4,7 @@ const LocalStrategy = require("passport-local").Strategy;
 const { PrismaClient } = require("@prisma/client");
 const bcrypt = require("bcrypt"); // Ensure you have bcrypt for password hashing
 const { decryptString } = require("../utils/customFunction");
+const { exist } = require("joi");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 
 const prisma = new PrismaClient();
@@ -63,7 +64,6 @@ const runPassport = (app) => {
         });
   
         if (!user) {
-          console.log("user not found");
           // If no user exists with the Google ID, check by email
           const existingUser = await prisma.user.findUnique({
             where: { email: profile.emails[0].value },
@@ -76,7 +76,6 @@ const runPassport = (app) => {
                 "This email is already registered but not linked to Google. Please sign in with your email and password.",
             });
           }
-  
           return done(null, false, { message: "Account does not exist." });
         }
   
@@ -93,7 +92,7 @@ const runPassport = (app) => {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL: "/auth/google/sign-up/callback", // Specify sign-up callback
     },
-    async (accessToken, refreshToken, profile, done) => {
+    async (profile, done) => {
       try {
         // Check if the user already exists
         const existingUser = await prisma.user.findUnique({
@@ -106,18 +105,9 @@ const runPassport = (app) => {
               "An account with this email already exists. Please sign in using your email and password.",
           });
         }
-  
-        // Create a new user with Google account linked
-        const user = await prisma.user.create({
-          data: {
-            google_id: profile.id,
-            firstName: profile.name.givenName || "",
-            lastName: profile.name.familyName || "",
-            email: profile.emails[0].value,
-            profileImageUrl: profile._json.picture,
-          },
-        });
-  
+        console.log("hello");
+
+        const user = profile;
         return done(null, user); // Successful sign-up
       } catch (err) {
         return done(err, null);

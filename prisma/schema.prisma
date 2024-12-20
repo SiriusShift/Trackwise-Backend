@@ -30,75 +30,60 @@ model User {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @default(now()) @updatedAt
 
-  assets           Asset[]
-  expenses         Expense[]
-  incomes          Income[]
-  resetTokens      ResetToken[]
-  RecurringExpense RecurringExpense[]
+  assets             Asset[]
+  expenses           Expense[]
+  incomes            Income[]
+  resetTokens        ResetToken[]
+  TransactionHistory TransactionHistory[]
 
   @@map("users")
 }
 
 model Asset {
+  id                 Int                  @id @default(autoincrement())
+  name               String // Name of the asset (e.g., "Cash", "Bonds")
+  balance            Float // Current balance of the asset
+  userId             Int // Foreign key to User
+  user               User                 @relation(fields: [userId], references: [id])
+  expenses           Expense[] // One-to-many relationship with Expense
+  incomes            Income[] // One-to-many relationship with Income
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+  TransactionHistory TransactionHistory[]
+}
+
+model Expense {
+  id                 Int       @id @default(autoincrement())
+  date               DateTime  @default(now()) // Date of the expense
+  categoryId         Int // Foreign key to Category
+  category           Category  @relation(fields: [categoryId], references: [id])
+  description        String // Description of the expense
+  amount             Float // Expense amount
+  sourceId           Int? // Foreign key to Asset
+  source             Asset?    @relation(fields: [sourceId], references: [id])
+  userId             Int // Foreign key to User
+  user               User      @relation(fields: [userId], references: [id])
+  recipient          String // Recipient of the expense
+  limit              Float? // Expense limit
+  status             String? // Status: "Paid", "Pending", etc.
+  isRecurring        Boolean   @default(false) // Indicates if the expense is recurring
+  frequency          String? // E.g., "Monthly", "Weekly" (only for recurring expenses)
+  recurringExpenseId Int? // Links to the parent recurring expense (if applicable)
+  recurringExpense   Expense?  @relation("RecurringExpense", fields: [recurringExpenseId], references: [id])
+  recurringInstances Expense[] @relation("RecurringExpense") // Links to child recurring instances
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Category {
   id        Int       @id @default(autoincrement())
-  name      String // Name of the asset (e.g., "Cash", "Bonds")
-  balance   Float // Current balance of the asset
-  userId    Int // Foreign key to User
-  user      User      @relation(fields: [userId], references: [id])
+  name      String // Name of the category (e.g., "Food & Dining", "Salary")
+  type      String // "Expense" or "Income"
   expenses  Expense[] // One-to-many relationship with Expense
   incomes   Income[] // One-to-many relationship with Income
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-}
-
-model Expense {
-  id                 Int               @id @default(autoincrement())
-  date               DateTime          @default(now())
-  categoryId         Int // Foreign key to Category
-  category           Category          @relation(fields: [categoryId], references: [id])
-  description        String // Description of the expense
-  amount             Float // Expense amount
-  sourceId           Int? // Foreign key to Asset
-  source             Asset?            @relation(fields: [sourceId], references: [id])
-  userId             Int // Foreign key to User
-  user               User              @relation(fields: [userId], references: [id])
-  createdAt          DateTime          @default(now())
-  updatedAt          DateTime          @updatedAt
-  // status      String?  // "Paid", "Pending", etc.
-  recurringExpenseId Int? // Foreign key to RecurringExpense
-  recurringExpense   RecurringExpense? @relation(fields: [recurringExpenseId], references: [id])
-  recipient          String
-  // recurring          Boolean @default(false)
-}
-
-model RecurringExpense {
-  id          Int      @id @default(autoincrement())
-  categoryId  Int // Foreign key to Category
-  category    Category @relation(fields: [categoryId], references: [id])
-  description String // Description of the recurring expense
-  amount      Float // Recurring expense amount
-  userId      Int // Foreign key to User
-  user        User     @relation(fields: [userId], references: [id])
-  frequency   String // E.g., "Monthly", "Weekly"
-  date        DateTime // When the recurring expense starts
-  recipient   String
-  // endDate     DateTime? // When the recurring expense ends (optional)
-  status      String? // "Paid", "Pending", "Overdue" - Tracks recurring expense payment status
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  expenses Expense[] // One-to-many relationship with Expense
-}
-
-model Category {
-  id               Int                @id @default(autoincrement())
-  name             String // Name of the category (e.g., "Food & Dining", "Salary")
-  type             String // "Expense" or "Income"
-  expenses         Expense[] // One-to-many relationship with Expense
-  incomes          Income[] // One-to-many relationship with Income
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
-  RecurringExpense RecurringExpense[]
 }
 
 model Income {
@@ -115,6 +100,21 @@ model Income {
   status      String // "Received", "Pending", etc.
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+}
+
+model TransactionHistory {
+  id              Int      @id @default(autoincrement()) // Primary key
+  userId          Int // Foreign key to User
+  user            User     @relation(fields: [userId], references: [id]) // Relation to User table
+  assetId       Int // Foreign key to Asset (account)
+  asset         Asset    @relation(fields: [assetId], references: [id]) // Relation to Asset table
+  transactionType String // "Deposit", "Withdrawal", "Transfer", "Expense", "Income"
+  amount          Float // Transaction amount
+  description     String? // Optional description of the transaction
+  date            DateTime @default(now()) // Date and time of the transaction
+  balanceAfter    Float // Account balance after the transaction
+  createdAt       DateTime @default(now()) // Record creation timestamp
+  updatedAt       DateTime @default(now()) @updatedAt // Record update timestamp
 }
 
 model EmailVerification {

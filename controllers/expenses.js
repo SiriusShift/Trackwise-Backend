@@ -37,8 +37,32 @@ const postExpense = async (req, res, next) => {
       });
     }
 
+    // Ensure the source asset exists
+    const asset = await prisma.asset.findFirst({
+      where: {
+        id: req.body.source,
+      },
+    });
+
+    if (!asset) {
+      return res.status(400).json({
+        success: false,
+        message: "Asset not found",
+      });
+    }
+
+    // Check if the balance is sufficient
+    if (asset.balance < req.body.amount) {
+      return res.status(400).json({
+        success: false,
+        message: "Insufficient balance",
+      });
+    }
+
+    const balance = req.body.assetBalance - req.body.amount;
+
     // Create the expense
-    const data = await prisma.expense.create({
+    const expense = await prisma.expense.create({
       data: {
         amount: req.body.amount,
         description: req.body.description,
@@ -62,42 +86,52 @@ const postExpense = async (req, res, next) => {
       },
     });
 
-    // Ensure the source asset exists
-    const asset = await prisma.asset.findFirst({
-      where: {
-        id: req.body.source,
+    // Create a transaction history record
+    await prisma.transactionHistory.create({
+      data: {
+        userId: req.user.id,
+        assetId: req.body.source,
+        transactionType: "Expense",
+        amount: req.body.amount,
+        description: req.body.description,
+        date: req.body.date,
+        balanceAfter: balance,
       },
     });
-
-    if (!asset) {
-      return res.status(400).json({
-        success: false,
-        message: "Asset not found",
-      });
-    }
-
-    // Check if the balance is sufficient
-    if (asset.balance < req.body.amount) {
-      return res.status(400).json({
-        success: false,
-        message: "Insufficient balance",
-      });
-    }
 
     // Respond with success message
     res.status(200).json({
       success: true,
       message: "Expense created successfully",
-      data: data,
+      data: expense,
     });
   } catch (err) {
-    console.log("Error while creating expense", err);
+    console.error("Error while creating expense", err);
     return res.status(500).json({
       error: "Internal server error",
     });
   }
 };
 
+const deleteExpense = async (req, res, next) => {
+  try {
+    const data = await prisma.expense.delete({
+      where: {
+        id: req.params.id,
+      },
+    });
+    res.status(200).json({
+      success: true,
+      message: "Expense deleted successfully",
+      data: data,
+    });
+  } catch (err) {
+    console.log("Error while deleting expense", err);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
 
 const postRecurringExpense = async (req, res, next) => {
   try {
@@ -115,11 +149,10 @@ const postRecurringExpense = async (req, res, next) => {
           });
         }
       });
-    
 
-    console.log(new Date, new Date(req.body.startDate));
+    console.log(new Date(), new Date(req.body.startDate));
 
-    const data = await prisma.recurringExpense.create({
+    const data = await prisma.expense.create({
       data: {
         amount: req.body.amount, // Amount is required
         description: req.body.description, // Description is required
@@ -128,9 +161,11 @@ const postRecurringExpense = async (req, res, next) => {
             id: req.body.category, // Category is required and connected via id
           },
         },
-        status: new Date > new Date(req.body.startDate) ? "Overdue" : "Unpaid",
+        status:
+          new Date() > new Date(req.body.startDate) ? "Overdue" : "Unpaid",
         date: req.body.startDate, // Start Date is required
         frequency: req.body.frequency, // Frequency is required
+        isRecurring: true,
         recipient: req.body.recipient,
         user: {
           connect: {
@@ -143,7 +178,7 @@ const postRecurringExpense = async (req, res, next) => {
       success: true,
       message: "Recurring expense created successfully",
       data: data,
-    })
+    });
   } catch (err) {
     console.error("Error while fetching expenses", err);
     res.status(500).json({
@@ -153,8 +188,9 @@ const postRecurringExpense = async (req, res, next) => {
 };
 
 const getExpenses = async (req, res, next) => {
-  const { userId, Search, pageIndex, pageSize, Categories } = req.query;
+  const { userId, Search, pageIndex, pageSize, Categories, startDate, endDate } = req.query;
 
+  console.log(startDate, endDate);
   // Validate userId
   if (!userId) {
     return res.status(400).json({
@@ -172,6 +208,11 @@ const getExpenses = async (req, res, next) => {
     // Build filters
     const filters = {
       userId: parseInt(userId),
+      frequency: null,
+      date: {
+        gte: startDate,
+        lte: endDate
+      }
     };
 
     // Apply search filter if provided
@@ -182,9 +223,9 @@ const getExpenses = async (req, res, next) => {
       };
     }
 
-    if(Categories !== undefined){
+    if (Categories !== undefined) {
       filters.categoryId = {
-        in: JSON.parse(Categories)
+        in: JSON.parse(Categories),
       };
     }
 
@@ -205,8 +246,6 @@ const getExpenses = async (req, res, next) => {
       take: size,
     });
 
-    console.log("Fetched expenses:", expenses);
-
     const totalPages = Math.ceil(totalCount / size);
 
     if (expenses.length < 1) {
@@ -222,26 +261,36 @@ const getExpenses = async (req, res, next) => {
     // Fetch additional details for each expense
     const detailedExpenses = await Promise.all(
       expenses.map(async (expense) => {
-        const asset = await prisma.asset.findFirst({
-          where: { id: expense.sourceId },
-        });
-        const category = await prisma.category.findFirst({
-          where: { id: expense.categoryId },
-        });
+        if (expense?.sourceId !== null) {
+          const asset = await prisma.asset.findFirst({
+            where: { id: expense.sourceId },
+          });
+          const category = await prisma.category.findFirst({
+            where: { id: expense.categoryId },
+          });
 
-        return {
-          ...expense,
-          asset,
-          category,
-        };
+          return {
+            ...expense,
+            asset,
+            category,
+          };
+        }
+
+        // Return undefined explicitly for entries to filter them later
+        return undefined;
       })
+    );
+
+    // Filter out undefined or null values
+    const filteredExpenses = detailedExpenses.filter(
+      (item) => item !== undefined
     );
 
     // Return response
     return res.status(200).json({
       success: true,
       message: "Expenses fetched successfully",
-      data: detailedExpenses,
+      data: filteredExpenses,
       totalCount,
       totalPages,
     });
@@ -254,10 +303,8 @@ const getExpenses = async (req, res, next) => {
   }
 };
 
-
-
 const getRecurringExpenses = async (req, res, next) => {
-  const { userId } = req.query;
+  const { userId, startDate, endDate } = req.query;
 
   const page = parseInt(req.query.pageIndex) + 1;
   const pageSize = parseInt(req.query.pageSize);
@@ -265,18 +312,24 @@ const getRecurringExpenses = async (req, res, next) => {
   const skip = (page - 1) * pageSize;
 
   try {
+    const filters = {
+      userId: parseInt(userId),
+      isRecurring: true,
+      date: {
+        gte: new Date(startDate),
+        lte: new Date(endDate) 
+      }
+    };
     // Fetch total count of matching expenses
-    const totalCount = await prisma.recurringExpense.count({
-      where: {
-        userId: parseInt(userId),
-      },
+    const totalCount = await prisma.expense.count({
+      where: filters
     });
 
+    console.log("count", totalCount);
+
     // Fetch paginated expenses
-    const recurringExpenses = await prisma.recurringExpense.findMany({
-      where: {
-        userId: parseInt(userId),
-      },
+    const recurringExpenses = await prisma.expense.findMany({
+      where: filters,
       // orderBy: {
       //   date: "desc",
       // },
@@ -330,5 +383,5 @@ module.exports = {
   postExpense,
   getExpenses,
   postRecurringExpense,
-  getRecurringExpenses
+  getRecurringExpenses,
 };

@@ -1,5 +1,5 @@
 const ExpressError = require("../utils/expressError");
-const { signupSchema, resetPasswordSchema } = require("../schema/user");
+const { signupSchema, resetPasswordSchema, googleSignupSchema } = require("../schema/user");
 const { decryptString } = require("../utils/customFunction");
 
 const validateCreateRequest = (requestType) => {
@@ -14,8 +14,8 @@ const validateCreateRequest = (requestType) => {
         }).error;
         break;
       case "user-google": 
-        error = signupSchema.validate({
-          ...req.body,
+        error = googleSignupSchema.validate({
+          ...req.profile,
         }).error;
         break;
       default:
