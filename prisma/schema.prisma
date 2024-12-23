@@ -54,7 +54,7 @@ model Asset {
 
 model Expense {
   id                 Int       @id @default(autoincrement())
-  date               DateTime  @default(now()) // Date of the expense
+  date               DateTime  
   categoryId         Int // Foreign key to Category
   category           Category  @relation(fields: [categoryId], references: [id])
   description        String // Description of the expense

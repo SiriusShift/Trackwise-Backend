@@ -4,6 +4,7 @@ const prisma = new PrismaClient();
 
 const postExpense = async (req, res, next) => {
   try {
+    console.log("date", req.body.date)
     // Check if the expense already exists (you can customize the uniqueness criteria)
     const existingExpense = await prisma.expense.findFirst({
       where: {
@@ -188,9 +189,7 @@ const postRecurringExpense = async (req, res, next) => {
 };
 
 const getExpenses = async (req, res, next) => {
-  const { userId, Search, pageIndex, pageSize, Categories, startDate, endDate } = req.query;
-
-  console.log(startDate, endDate);
+  const { userId, Search, pageIndex, pageSize, Categories, startDate, endDate, Status } = req.query;
   // Validate userId
   if (!userId) {
     return res.status(400).json({
@@ -210,8 +209,8 @@ const getExpenses = async (req, res, next) => {
       userId: parseInt(userId),
       frequency: null,
       date: {
-        gte: startDate,
-        lte: endDate
+        gte: new Date(startDate),
+        lte: new Date(endDate)
       }
     };
 
@@ -304,7 +303,7 @@ const getExpenses = async (req, res, next) => {
 };
 
 const getRecurringExpenses = async (req, res, next) => {
-  const { userId, startDate, endDate } = req.query;
+  const { userId, Search, startDate, endDate, Categories, Status } = req.query;
 
   const page = parseInt(req.query.pageIndex) + 1;
   const pageSize = parseInt(req.query.pageSize);
@@ -317,13 +316,31 @@ const getRecurringExpenses = async (req, res, next) => {
       isRecurring: true,
       date: {
         gte: new Date(startDate),
-        lte: new Date(endDate) 
+        lte: new Date(endDate), 
       }
     };
     // Fetch total count of matching expenses
     const totalCount = await prisma.expense.count({
       where: filters
     });
+
+    if (Categories !== undefined) {
+      filters.categoryId = {
+        in: JSON.parse(Categories),
+      };
+    }
+
+    if (Search) {
+      filters.description = {
+        startsWith: Search, // Use `startsWith` for matching the beginning of the string
+        mode: "insensitive", // Case-insensitive search
+      };
+    }
+
+    if (Status !== undefined) {
+      filters.status = Status; // Assign the value directly to filters.status
+    }
+    
 
     console.log("count", totalCount);
 

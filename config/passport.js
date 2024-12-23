@@ -92,7 +92,7 @@ const runPassport = (app) => {
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL: "/auth/google/sign-up/callback", // Specify sign-up callback
     },
-    async (profile, done) => {
+    async (accessToken, refreshToken, profile, done) => {
       try {
         // Check if the user already exists
         const existingUser = await prisma.user.findUnique({
@@ -105,15 +105,16 @@ const runPassport = (app) => {
               "An account with this email already exists. Please sign in using your email and password.",
           });
         }
-        console.log("hello");
-
-        const user = profile;
-        return done(null, user); // Successful sign-up
+  
+        console.log("User successfully signed up:", profile);
+        return done(null, profile); // Successful sign-up
       } catch (err) {
+        console.error("Error during Google sign-up:", err);
         return done(err, null);
       }
     }
   ));
+  
 
   // Serialize user to store user ID in session
   passport.serializeUser((user, done) => {
