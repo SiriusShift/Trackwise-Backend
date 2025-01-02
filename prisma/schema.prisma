@@ -54,7 +54,7 @@ model Asset {
 
 model Expense {
   id                 Int       @id @default(autoincrement())
-  date               DateTime  
+  date               DateTime
   categoryId         Int // Foreign key to Category
   category           Category  @relation(fields: [categoryId], references: [id])
   description        String // Description of the expense
@@ -69,6 +69,8 @@ model Expense {
   isRecurring        Boolean   @default(false) // Indicates if the expense is recurring
   frequency          String? // E.g., "Monthly", "Weekly" (only for recurring expenses)
   recurringExpenseId Int? // Links to the parent recurring expense (if applicable)
+  year               Int       @default(0) @map(name: "YEAR(date)")
+  month              Int       @default(0) @map(name: "MONTH(date)")
   recurringExpense   Expense?  @relation("RecurringExpense", fields: [recurringExpenseId], references: [id])
   recurringInstances Expense[] @relation("RecurringExpense") // Links to child recurring instances
 
@@ -106,8 +108,8 @@ model TransactionHistory {
   id              Int      @id @default(autoincrement()) // Primary key
   userId          Int // Foreign key to User
   user            User     @relation(fields: [userId], references: [id]) // Relation to User table
-  assetId       Int // Foreign key to Asset (account)
-  asset         Asset    @relation(fields: [assetId], references: [id]) // Relation to Asset table
+  assetId         Int // Foreign key to Asset (account)
+  asset           Asset    @relation(fields: [assetId], references: [id]) // Relation to Asset table
   transactionType String // "Deposit", "Withdrawal", "Transfer", "Expense", "Income"
   amount          Float // Transaction amount
   description     String? // Optional description of the transaction

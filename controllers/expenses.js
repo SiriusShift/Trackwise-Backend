@@ -61,6 +61,8 @@ const postExpense = async (req, res, next) => {
     }
 
     const balance = req.body.assetBalance - req.body.amount;
+    const month = new Date(req.body.date).getMonth() + 1;
+    const year = new Date(req.body.date).getFullYear();
 
     // Create the expense
     const expense = await prisma.expense.create({
@@ -78,6 +80,8 @@ const postExpense = async (req, res, next) => {
           },
         },
         date: req.body.date,
+        month: month,
+        year: year,
         recipient: req.body.recipient,
         user: {
           connect: {
@@ -86,7 +90,7 @@ const postExpense = async (req, res, next) => {
         },
       },
     });
-
+    
     // Create a transaction history record
     await prisma.transactionHistory.create({
       data: {
@@ -245,7 +249,10 @@ const getExpenses = async (req, res, next) => {
 
     // Fetch grouped expenses by month
     const groupedExpenses = await prisma.expense.groupBy({
-      by: ["date"],
+      by: [
+        "year", // Custom field for the year
+        "month", // Custom field for the month
+      ],
       where: {
         userId: parseInt(userId),
         frequency: null,
@@ -259,49 +266,15 @@ const getExpenses = async (req, res, next) => {
         },
       },
       _sum: { amount: true },
-      orderBy: { date: "asc" },
+      orderBy: [
+        { year: "asc" },
+        { month: "asc" },
+      ],
     });
     
-
     console.log(groupedExpenses);
 
-    // Generate all months between startDate and endDate
-    const months = [];
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    while (start <= end) {
-      const month = start.getMonth() + 1; // 1-based month
-      const year = start.getFullYear();
-      months.push(`${year}-${month.toString().padStart(2, "0")}`); // Format YYYY-MM
-      start.setMonth(start.getMonth() + 1);
-    }
-
-    console.log("months", months);
-
-    // Map grouped expenses into months
-    const monthlyExpenses = months.map((month) => {
-      const expense = groupedExpenses.find((item) => {
-        const expenseMonth = item.date.getMonth() + 1;
-        const expenseYear = item.date.getFullYear();
-        return month === `${expenseYear}-${expenseMonth.toString().padStart(2, "0")}`;
-      });
-      return {
-        month,
-        total: expense?._sum.amount || 0,
-      };
-    });
-
-    console.log("Monthly expenses:", monthlyExpenses);
-
-    // Calculate trend: Compare each month's total with the previous month
-    const trend = monthlyExpenses.map((current, index) => {
-      if (index === 0) {
-        return { ...current, trend: 0 };
-      }
-      const previous = monthlyExpenses[index - 1];
-      const trendValue = ((current.total - previous.total) / previous.total) * 100 || 0;
-      return { ...current, trend: trendValue.toFixed(2) };
-    });
+    const trend = (((groupedExpenses[1]?._sum?.amount - groupedExpenses[0]?._sum?.amount) / groupedExpenses[0]?._sum?.amount) * 100).toFixed(2);
 
     const categoryExpenses = await prisma.expense.groupBy({
       by: ["categoryId"],
@@ -357,7 +330,7 @@ const getExpenses = async (req, res, next) => {
       totalPages,
       totalExpense: totalExpense._sum.amount || 0,
       categoryExpenses: detailedCategoryExpenses,
-      monthlyExpenses: trend, // Include trend data here
+      trend: trend,
     });
   } catch (err) {
     console.error("Error while fetching expenses:", err);
