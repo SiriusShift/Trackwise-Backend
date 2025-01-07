@@ -13,6 +13,7 @@ const {runPassport} = require('./config/passport.js');
 
 const app = express();
 const port = 5000;
+const host = process.env.URL;
 
 runDb();
 
@@ -24,6 +25,6 @@ app.use(express.json());
 runPassport(app);
 runRouters(app);
 
-app.listen(port, () => {
-  console.log(`Server started on port ${port}`);
+app.listen(port, host, () => {
+  console.log(`Server started on http://${host}:${port}`);
 });

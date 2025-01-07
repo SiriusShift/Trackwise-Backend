@@ -1,11 +1,3 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
-//npx prisma migrate dev --name <migration-name>
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -16,20 +8,19 @@ datasource db {
 }
 
 model User {
-  id              Int      @id @default(autoincrement())
-  firstName       String?  @map("first_name")
-  lastName        String?  @map("last_name")
-  email           String   @unique
-  google_id       String?  @unique
-  username        String?  @unique
-  password        String?  @map("password")
-  role            String   @default("user")
-  phoneNumber     String?  @map("phone_number")
-  profileImageUrl String?  @map("profile_image_url")
-  isActive        Boolean  @default(false)
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @default(now()) @updatedAt
-
+  id                 Int                  @id @default(autoincrement())
+  firstName          String?              @map("first_name")
+  lastName           String?              @map("last_name")
+  email              String               @unique
+  username           String?              @unique
+  password           String?              @map("password")
+  role               String               @default("user")
+  phoneNumber        String?              @map("phone_number")
+  profileImageUrl    String?              @map("profile_image_url")
+  isActive           Boolean              @default(false)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @default(now()) @updatedAt
+  google_id          String?              @unique
   assets             Asset[]
   expenses           Expense[]
   incomes            Income[]
@@ -41,105 +32,102 @@ model User {
 
 model Asset {
   id                 Int                  @id @default(autoincrement())
-  name               String // Name of the asset (e.g., "Cash", "Bonds")
-  balance            Float // Current balance of the asset
-  userId             Int // Foreign key to User
-  user               User                 @relation(fields: [userId], references: [id])
-  expenses           Expense[] // One-to-many relationship with Expense
-  incomes            Income[] // One-to-many relationship with Income
+  name               String
+  balance            Float
+  userId             Int
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
+  user               User                 @relation(fields: [userId], references: [id])
+  expenses           Expense[]
+  incomes            Income[]
   TransactionHistory TransactionHistory[]
 }
 
 model Expense {
   id                 Int       @id @default(autoincrement())
   date               DateTime
-  categoryId         Int // Foreign key to Category
+  categoryId         Int
+  description        String
+  amount             Float
+  sourceId           Int?
+  userId             Int
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  recurringExpenseId Int?
+  recipient          String
+  frequency          String?
+  isRecurring        Boolean   @default(false)
+  limit              Float?
+  status             String?
+  month              Int       @default(0) @map("MONTH(date)")
+  year               Int       @default(0) @map("YEAR(date)")
   category           Category  @relation(fields: [categoryId], references: [id])
-  description        String // Description of the expense
-  amount             Float // Expense amount
-  sourceId           Int? // Foreign key to Asset
-  source             Asset?    @relation(fields: [sourceId], references: [id])
-  userId             Int // Foreign key to User
-  user               User      @relation(fields: [userId], references: [id])
-  recipient          String // Recipient of the expense
-  limit              Float? // Expense limit
-  status             String? // Status: "Paid", "Pending", etc.
-  isRecurring        Boolean   @default(false) // Indicates if the expense is recurring
-  frequency          String? // E.g., "Monthly", "Weekly" (only for recurring expenses)
-  recurringExpenseId Int? // Links to the parent recurring expense (if applicable)
-  year               Int       @default(0) @map(name: "YEAR(date)")
-  month              Int       @default(0) @map(name: "MONTH(date)")
   recurringExpense   Expense?  @relation("RecurringExpense", fields: [recurringExpenseId], references: [id])
-  recurringInstances Expense[] @relation("RecurringExpense") // Links to child recurring instances
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  recurringInstances Expense[] @relation("RecurringExpense")
+  source             Asset?    @relation(fields: [sourceId], references: [id])
+  user               User      @relation(fields: [userId], references: [id])
 }
 
 model Category {
   id        Int       @id @default(autoincrement())
-  name      String // Name of the category (e.g., "Food & Dining", "Salary")
-  type      String // "Expense" or "Income"
-  expenses  Expense[] // One-to-many relationship with Expense
-  incomes   Income[] // One-to-many relationship with Income
+  name      String
+  type      String
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
+  expenses  Expense[]
+  incomes   Income[]
 }
 
 model Income {
   id          Int      @id @default(autoincrement())
   date        DateTime @default(now())
-  categoryId  Int // Foreign key to Category
-  category    Category @relation(fields: [categoryId], references: [id])
-  description String? // Optional description
-  amount      Float // Income amount
-  sourceId    Int? // Foreign key to Asset
-  source      Asset?   @relation(fields: [sourceId], references: [id])
-  userId      Int // Foreign key to User
-  user        User     @relation(fields: [userId], references: [id])
-  status      String // "Received", "Pending", etc.
+  categoryId  Int
+  description String?
+  amount      Float
+  sourceId    Int?
+  userId      Int
+  status      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  category    Category @relation(fields: [categoryId], references: [id])
+  source      Asset?   @relation(fields: [sourceId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
 }
 
 model TransactionHistory {
-  id              Int      @id @default(autoincrement()) // Primary key
-  userId          Int // Foreign key to User
-  user            User     @relation(fields: [userId], references: [id]) // Relation to User table
-  assetId         Int // Foreign key to Asset (account)
-  asset           Asset    @relation(fields: [assetId], references: [id]) // Relation to Asset table
-  transactionType String // "Deposit", "Withdrawal", "Transfer", "Expense", "Income"
-  amount          Float // Transaction amount
-  description     String? // Optional description of the transaction
-  date            DateTime @default(now()) // Date and time of the transaction
-  balanceAfter    Float // Account balance after the transaction
-  createdAt       DateTime @default(now()) // Record creation timestamp
-  updatedAt       DateTime @default(now()) @updatedAt // Record update timestamp
+  id              Int      @id @default(autoincrement())
+  userId          Int
+  transactionType String
+  amount          Float
+  description     String?
+  date            DateTime @default(now())
+  balanceAfter    Float
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+  assetId         Int
+  asset           Asset    @relation(fields: [assetId], references: [id])
+  user            User     @relation(fields: [userId], references: [id])
 }
 
 model EmailVerification {
   id               Int      @id @default(autoincrement())
-  // userId            String
   email            String
   verificationCode String
   expirationTime   DateTime
   isVerified       Boolean  @default(false)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @default(now()) @updatedAt
-  // user              User        @relation(name: "UserEmailVerifications", fields: [userId], references: [id], onDelete: Cascade)
 
   @@map("email_verifications")
 }
 
 model ResetToken {
-  id        Int      @id @default(autoincrement()) // Primary key
-  token     String   @unique // Unique token string
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
   userId    Int
+  expiresAt DateTime
+  createdAt DateTime @default(now())
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt DateTime // Expiration time for the token
-  createdAt DateTime @default(now()) // Timestamp when the token is created
 
-  @@index([token]) // Optional index for token lookups
+  @@index([token])
 }
