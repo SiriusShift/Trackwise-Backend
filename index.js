@@ -26,5 +26,5 @@ runPassport(app);
 runRouters(app);
 
 app.listen(port, host, () => {
-  console.log(`Server started on http://${host}:${port}`);
+  console.log(`Server started on port ${port}`);
 });

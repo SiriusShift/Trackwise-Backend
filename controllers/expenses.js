@@ -119,16 +119,24 @@ const postExpense = async (req, res, next) => {
 };
 
 const deleteExpense = async (req, res, next) => {
+  const { id } = req.params;
   try {
-    const data = await prisma.expense.delete({
-      where: {
-        id: req.params.id,
+    await prisma.expense.update({
+      where: { id: parseInt(id) },
+      data: {
+        isDeleted: true,
+        transactionHistory: {
+          updateMany: {
+            where: { expenseId: parseInt(id) },
+            data: { isDeleted: true },
+          },
+        },
       },
     });
+    
     res.status(200).json({
       success: true,
       message: "Expense deleted successfully",
-      data: data,
     });
   } catch (err) {
     console.log("Error while deleting expense", err);
@@ -201,7 +209,6 @@ const getExpenses = async (req, res, next) => {
     Categories,
     startDate,
     endDate,
-    Status,
   } = req.query;
 
   if (!userId) {
@@ -223,6 +230,7 @@ const getExpenses = async (req, res, next) => {
         gte: new Date(startDate),
         lte: new Date(endDate),
       },
+      isDeleted: false,
     };
 
     if (Search) {
@@ -441,4 +449,5 @@ module.exports = {
   getExpenses,
   postRecurringExpense,
   getRecurringExpenses,
+  deleteExpense,
 };

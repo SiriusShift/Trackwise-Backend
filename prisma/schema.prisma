@@ -44,28 +44,30 @@ model Asset {
 }
 
 model Expense {
-  id                 Int       @id @default(autoincrement())
+  id                 Int                  @id @default(autoincrement())
   date               DateTime
   categoryId         Int
   description        String
   amount             Float
   sourceId           Int?
   userId             Int
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
   recurringExpenseId Int?
   recipient          String
   frequency          String?
-  isRecurring        Boolean   @default(false)
+  isRecurring        Boolean              @default(false)
   limit              Float?
   status             String?
-  month              Int       @default(0) @map("MONTH(date)")
-  year               Int       @default(0) @map("YEAR(date)")
-  category           Category  @relation(fields: [categoryId], references: [id])
-  recurringExpense   Expense?  @relation("RecurringExpense", fields: [recurringExpenseId], references: [id])
-  recurringInstances Expense[] @relation("RecurringExpense")
-  source             Asset?    @relation(fields: [sourceId], references: [id])
-  user               User      @relation(fields: [userId], references: [id])
+  month              Int                  @default(0) @map("MONTH(date)")
+  year               Int                  @default(0) @map("YEAR(date)")
+  isDeleted          Boolean              @default(false)
+  transactionHistory TransactionHistory[]
+  category           Category             @relation(fields: [categoryId], references: [id])
+  recurringExpense   Expense?             @relation("RecurringExpense", fields: [recurringExpenseId], references: [id])
+  recurringInstances Expense[]            @relation("RecurringExpense")
+  source             Asset?               @relation(fields: [sourceId], references: [id])
+  user               User                 @relation(fields: [userId], references: [id])
 }
 
 model Category {
@@ -105,6 +107,9 @@ model TransactionHistory {
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now()) @updatedAt
   assetId         Int
+  expenseId       Int?
+  isDeleted       Boolean  @default(false)
+  expense         Expense?  @relation(fields: [expenseId], references: [id])
   asset           Asset    @relation(fields: [assetId], references: [id])
   user            User     @relation(fields: [userId], references: [id])
 }
