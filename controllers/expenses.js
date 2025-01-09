@@ -94,6 +94,7 @@ const postExpense = async (req, res, next) => {
     // Create a transaction history record
     await prisma.transactionHistory.create({
       data: {
+        expenseId: expense.id,
         userId: req.user.id,
         assetId: req.body.source,
         transactionType: "Expense",
