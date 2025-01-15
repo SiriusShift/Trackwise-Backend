@@ -1,5 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
-const { skip } = require("@prisma/client/runtime/library");
+// const { skip } = require("@prisma/client/runtime/library");
 const prisma = new PrismaClient();
 
 const postExpense = async (req, res, next) => {
@@ -178,7 +178,11 @@ const postRecurringExpense = async (req, res, next) => {
         status:
           new Date() > new Date(req.body.startDate) ? "Overdue" : "Unpaid",
         date: req.body.startDate, // Start Date is required
-        frequency: req.body.frequency, // Frequency is required
+        frequency: {
+          connect: {
+            id: req.body.freqId,
+          }
+        },
         isRecurring: true,
         recipient: req.body.recipient,
         user: {
@@ -422,10 +426,14 @@ const getRecurringExpenses = async (req, res, next) => {
         const category = await prisma.category.findFirst({
           where: { id: expense.categoryId },
         });
+        const frequency = await prisma.frequency.findFirst({
+          where: { id: expense.frequencyId },
+        });
 
         return {
           ...expense,
           category,
+          frequency
         };
       })
     );

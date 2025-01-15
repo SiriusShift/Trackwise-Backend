@@ -55,27 +55,27 @@ model Expense {
   updatedAt          DateTime             @updatedAt
   recurringExpenseId Int?
   recipient          String
-  frequencyId        Int? // Foreign key to Frequency
   isRecurring        Boolean              @default(false)
   limit              Float?
   status             String?
   month              Int                  @default(0) @map("MONTH(date)")
   year               Int                  @default(0) @map("YEAR(date)")
   isDeleted          Boolean              @default(false)
-  transactionHistory TransactionHistory[]
+  frequencyId        Int?
   category           Category             @relation(fields: [categoryId], references: [id])
+  frequency          Frequency?           @relation(fields: [frequencyId], references: [id])
   recurringExpense   Expense?             @relation("RecurringExpense", fields: [recurringExpenseId], references: [id])
   recurringInstances Expense[]            @relation("RecurringExpense")
   source             Asset?               @relation(fields: [sourceId], references: [id])
   user               User                 @relation(fields: [userId], references: [id])
-  frequency          Frequency?           @relation(fields: [frequencyId], references: [id]) // Relation to Frequency
+  transactionHistory TransactionHistory[]
 }
 
 model Frequency {
-  id        Int       @id @default(autoincrement()) // Primary key
-  name      String // Frequency name, e.g., "Daily", "Weekly"
-  interval  Int? // Interval value, e.g., 1, 7
-  unit      String? // Unit of interval, e.g., "day", "month", "year"
+  id        Int       @id @default(autoincrement())
+  name      String
+  interval  Int?
+  unit      String?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   Expense   Expense[]
@@ -120,8 +120,8 @@ model TransactionHistory {
   assetId         Int
   expenseId       Int?
   isDeleted       Boolean  @default(false)
-  expense         Expense? @relation(fields: [expenseId], references: [id])
   asset           Asset    @relation(fields: [assetId], references: [id])
+  expense         Expense? @relation(fields: [expenseId], references: [id])
   user            User     @relation(fields: [userId], references: [id])
 }
 
