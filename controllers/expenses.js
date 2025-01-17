@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 
 const postExpense = async (req, res, next) => {
   try {
-    console.log("date", req.body.date)
+    console.log("date", req.body.date);
     // Check if the expense already exists (you can customize the uniqueness criteria)
     const existingExpense = await prisma.expense.findFirst({
       where: {
@@ -90,7 +90,7 @@ const postExpense = async (req, res, next) => {
         },
       },
     });
-    
+
     // Create a transaction history record
     await prisma.transactionHistory.create({
       data: {
@@ -119,6 +119,48 @@ const postExpense = async (req, res, next) => {
   }
 };
 
+const updateExpense = async (req, res, next) => {
+  const { id } = req.params;
+  console.log(req.body);
+  try {
+    const expense = await prisma.expense.update({
+      where: { id: parseInt(id) },
+      data: {
+        amount: req.body.amount,
+        description: req.body.description,
+        category: {
+          connect: {
+            id: req.body.category.id,
+          },
+        },
+        ...(req.body.source && {
+          source: { connect: { id: req.body.source.id } },
+        }),
+        ...(req.body.frequency && {
+          frequency: { connect: { id: req.body.frequency.id } },
+        }),
+        date: req.body.date,
+        recipient: req.body.recipient,
+        ...(req.body.startDate && {
+          status:
+            new Date() > new Date(req.body.startDate) ? "Overdue" : "Unpaid",
+        }),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Expense updated successfully",
+      data: expense,
+    });
+  } catch (err) {
+    console.log("Error while updating expense", err);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
 const deleteExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
@@ -134,7 +176,7 @@ const deleteExpense = async (req, res, next) => {
         },
       },
     });
-    
+
     res.status(200).json({
       success: true,
       message: "Expense deleted successfully",
@@ -181,7 +223,7 @@ const postRecurringExpense = async (req, res, next) => {
         frequency: {
           connect: {
             id: req.body.freqId,
-          }
+          },
         },
         isRecurring: true,
         recipient: req.body.recipient,
@@ -255,58 +297,7 @@ const getExpenses = async (req, res, next) => {
 
     const totalCount = await prisma.expense.count({ where: filters });
 
-    const totalExpense = await prisma.expense.aggregate({
-      where: filters,
-      _sum: { amount: true },
-    });
-
     // Fetch grouped expenses by month
-    const groupedExpenses = await prisma.expense.groupBy({
-      by: [
-        "year", // Custom field for the year
-        "month", // Custom field for the month
-      ],
-      where: {
-        userId: parseInt(userId),
-        frequency: null,
-        date: {
-          gte: (() => {
-            const date = new Date(startDate);
-            date.setMonth(date.getMonth() - 1); // Subtract 1 month
-            return date;
-          })(),
-          lte: new Date(endDate),
-        },
-      },
-      _sum: { amount: true },
-      orderBy: [
-        { year: "asc" },
-        { month: "asc" },
-      ],
-    });
-    
-    console.log(groupedExpenses);
-
-    const trend = (((groupedExpenses[1]?._sum?.amount - groupedExpenses[0]?._sum?.amount) / groupedExpenses[0]?._sum?.amount) * 100).toFixed(2);
-
-    const categoryExpenses = await prisma.expense.groupBy({
-      by: ["categoryId"],
-      where: filters,
-      _sum: { amount: true },
-    });
-
-    const detailedCategoryExpenses = await Promise.all(
-      categoryExpenses.map(async (item) => {
-        const category = await prisma.category.findFirst({
-          where: { id: item.categoryId },
-        });
-        return {
-          categoryId: item.categoryId,
-          categoryName: category?.name || "Unknown",
-          total: item._sum.amount || 0,
-        };
-      })
-    );
 
     const expenses = await prisma.expense.findMany({
       where: filters,
@@ -333,7 +324,9 @@ const getExpenses = async (req, res, next) => {
       })
     );
 
-    const filteredExpenses = detailedExpenses.filter((item) => item !== undefined);
+    const filteredExpenses = detailedExpenses.filter(
+      (item) => item !== undefined
+    );
 
     return res.status(200).json({
       success: true,
@@ -341,9 +334,6 @@ const getExpenses = async (req, res, next) => {
       data: filteredExpenses,
       totalCount,
       totalPages,
-      totalExpense: totalExpense._sum.amount || 0,
-      categoryExpenses: detailedCategoryExpenses,
-      trend: trend,
     });
   } catch (err) {
     console.error("Error while fetching expenses:", err);
@@ -354,6 +344,87 @@ const getExpenses = async (req, res, next) => {
   }
 };
 
+const getDetailedExpenses = async (req, res, next) => {
+  const { userId, startDate, endDate } = req.query;
+
+  try {
+    const filters = {
+      userId: parseInt(userId),
+      frequency: null,
+      date: {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      },
+      isDeleted: false,
+    };
+    const groupedExpenses = await prisma.expense.groupBy({
+      by: [
+        "year", // Custom field for the year
+        "month", // Custom field for the month
+      ],
+      where: {
+        userId: parseInt(userId),
+        frequency: null,
+        date: {
+          gte: (() => {
+            const date = new Date(startDate);
+            date.setMonth(date.getMonth() - 1); // Subtract 1 month
+            return date;
+          })(),
+          lte: new Date(endDate),
+        },
+      },
+      _sum: { amount: true },
+      orderBy: [{ year: "asc" }, { month: "asc" }],
+    });
+
+    const trend = (
+      ((groupedExpenses[1]?._sum?.amount - groupedExpenses[0]?._sum?.amount) /
+        groupedExpenses[0]?._sum?.amount) *
+      100
+    ).toFixed(2);
+
+    const categoryExpenses = await prisma.expense.groupBy({
+      by: ["categoryId"],
+      where: filters,
+      _sum: { amount: true },
+    });
+
+    const detailedCategoryExpenses = await Promise.all(
+      categoryExpenses.map(async (item) => {
+        const category = await prisma.category.findFirst({
+          where: { id: item.categoryId },
+        });
+        return {
+          categoryId: item.categoryId,
+          categoryName: category?.name || "Unknown",
+          total: item._sum.amount || 0,
+        };
+      })
+    );
+
+    const totalExpense = await prisma.expense.aggregate({
+      where: filters,
+      _sum: { amount: true },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Detailed expenses fetched successfully",
+      data: {
+        trend,
+        categoryExpenses: detailedCategoryExpenses,
+        totalExpense: totalExpense._sum.amount || 0,
+      },
+    });
+  } catch (err) {
+    console.error("Error while fetching detailed expenses:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+    });
+  }
+};
 
 const getRecurringExpenses = async (req, res, next) => {
   const { userId, Search, startDate, endDate, Categories, Status } = req.query;
@@ -369,12 +440,12 @@ const getRecurringExpenses = async (req, res, next) => {
       isRecurring: true,
       date: {
         gte: new Date(startDate),
-        lte: new Date(endDate), 
-      }
+        lte: new Date(endDate),
+      },
     };
     // Fetch total count of matching expenses
     const totalCount = await prisma.expense.count({
-      where: filters
+      where: filters,
     });
 
     if (Categories !== undefined) {
@@ -393,7 +464,6 @@ const getRecurringExpenses = async (req, res, next) => {
     if (Status !== undefined) {
       filters.status = Status; // Assign the value directly to filters.status
     }
-    
 
     console.log("count", totalCount);
 
@@ -433,7 +503,7 @@ const getRecurringExpenses = async (req, res, next) => {
         return {
           ...expense,
           category,
-          frequency
+          frequency,
         };
       })
     );
@@ -458,5 +528,7 @@ module.exports = {
   getExpenses,
   postRecurringExpense,
   getRecurringExpenses,
+  getDetailedExpenses,
   deleteExpense,
+  updateExpense,
 };

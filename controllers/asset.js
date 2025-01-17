@@ -35,6 +35,9 @@ const getAssetRemainingBalance = async (req, res) => {
         name: true,
         balance: true,
         expenses: {
+          where: {
+            isDeleted: false,
+          },
           select: {
             id: true,
             date: true,
