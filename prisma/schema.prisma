@@ -85,6 +85,7 @@ model Category {
   id        Int       @id @default(autoincrement())
   name      String
   type      String
+  icon      String    @default("default_icon") // Default value added
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   expenses  Expense[]
