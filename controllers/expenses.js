@@ -248,17 +248,10 @@ const postRecurringExpense = async (req, res, next) => {
 };
 
 const getExpenses = async (req, res, next) => {
-  const {
-    userId,
-    Search,
-    pageIndex,
-    pageSize,
-    Categories,
-    startDate,
-    endDate,
-  } = req.query;
+  const { Search, pageIndex, pageSize, Categories, startDate, endDate } =
+    req.query;
 
-  if (!userId) {
+  if (!req.user.id) {
     return res.status(400).json({
       success: false,
       message: "User ID is required",
@@ -271,7 +264,7 @@ const getExpenses = async (req, res, next) => {
 
   try {
     const filters = {
-      userId: parseInt(userId),
+      userId: parseInt(req.user.id),
       frequency: null,
       date: {
         gte: new Date(startDate),
@@ -345,11 +338,11 @@ const getExpenses = async (req, res, next) => {
 };
 
 const getDetailedExpenses = async (req, res, next) => {
-  const { userId, startDate, endDate } = req.query;
+  const { startDate, endDate } = req.query;
 
   try {
     const filters = {
-      userId: parseInt(userId),
+      userId: parseInt(req.user.id),
       frequency: null,
       date: {
         gte: new Date(startDate),
@@ -363,7 +356,7 @@ const getDetailedExpenses = async (req, res, next) => {
         "month", // Custom field for the month
       ],
       where: {
-        userId: parseInt(userId),
+        userId: parseInt(req.user.id),
         frequency: null,
         date: {
           gte: (() => {
@@ -427,7 +420,7 @@ const getDetailedExpenses = async (req, res, next) => {
 };
 
 const getRecurringExpenses = async (req, res, next) => {
-  const { userId, Search, startDate, endDate, Categories, Status } = req.query;
+  const { Search, startDate, endDate, Categories, Status } = req.query;
 
   const page = parseInt(req.query.pageIndex) + 1;
   const pageSize = parseInt(req.query.pageSize);
@@ -436,7 +429,7 @@ const getRecurringExpenses = async (req, res, next) => {
 
   try {
     const filters = {
-      userId: parseInt(userId),
+      userId: parseInt(req.user.id),
       isRecurring: true,
       date: {
         gte: new Date(startDate),
@@ -523,12 +516,83 @@ const getRecurringExpenses = async (req, res, next) => {
   }
 };
 
+const addExpenseLimit = async (req, res, next) => {
+  try {
+    const categoryId = parseInt(req.params.id); // Extracts 'id' from the URL
+    const { amount } = req.body;
+    console.log(amount);
+    await prisma.category.update({
+      where: {
+        id: categoryId,
+      },
+      data: {
+        limit: amount,
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Expense limit added successfully",
+    });
+  } catch (err) {
+    console.error("Error while fetching expenses", err);
+    res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
+const getAllExpenseLimit = async (req, res, next) => {
+  try {
+    const categories = await prisma.category.findMany({
+      where: {
+        limit: { not: null }, // Filter categories that have a limit
+      },
+      select: {
+        id: true,
+        name: true,
+        icon: true,
+        limit: true,
+        expenses: {
+          select: {
+            amount: true,
+          },
+        },
+      },
+    });
+
+    // Calculate total expenses per category
+    const result = categories.map((category) => {
+      const totalExpense = category.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+      return {
+        id: category.id,
+        name: category.name,
+        icon: category.icon,
+        limit: category.limit,
+        totalExpense: totalExpense,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Expense limit fetched successfully",
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+
 module.exports = {
   postExpense,
   getExpenses,
   postRecurringExpense,
   getRecurringExpenses,
+  addExpenseLimit,
   getDetailedExpenses,
   deleteExpense,
   updateExpense,
+  getAllExpenseLimit
 };

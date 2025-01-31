@@ -56,7 +56,6 @@ model Expense {
   recurringExpenseId Int?
   recipient          String
   isRecurring        Boolean              @default(false)
-  limit              Float?
   status             String?
   month              Int                  @default(0) @map("MONTH(date)")
   year               Int                  @default(0) @map("YEAR(date)")
@@ -82,10 +81,11 @@ model Frequency {
 }
 
 model Category {
-  id        Int       @id @default(autoincrement())
-  name      String
-  type      String
-  icon      String    @default("default_icon") // Default value added
+  id    Int    @id @default(autoincrement())
+  name  String
+  type  String
+  icon  String @default("default_icon") // Default value added
+  limit Float?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   expenses  Expense[]
