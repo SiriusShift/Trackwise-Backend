@@ -60,9 +60,10 @@ const postExpense = async (req, res, next) => {
       });
     }
 
-    const balance = req.body.assetBalance - req.body.amount;
     const month = new Date(req.body.date).getMonth() + 1;
     const year = new Date(req.body.date).getFullYear();
+
+    console.log(month, year);
 
     // Create the expense
     const expense = await prisma.expense.create({
@@ -101,7 +102,6 @@ const postExpense = async (req, res, next) => {
         amount: req.body.amount,
         description: req.body.description,
         date: req.body.date,
-        balanceAfter: balance,
       },
     });
 
@@ -147,6 +147,16 @@ const updateExpense = async (req, res, next) => {
         }),
       },
     });
+
+    await prisma.transactionHistory.update({
+      where: { expenseId: parseInt(id) },
+      data: {
+        amount: req.body.amount,
+        description: req.body.description,
+        date: req.body.date,
+        updatedAt: new Date(),
+      },
+    })
 
     res.status(200).json({
       success: true,
@@ -266,10 +276,14 @@ const getExpenses = async (req, res, next) => {
     const filters = {
       userId: parseInt(req.user.id),
       frequency: null,
-      date: {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
-      },
+      ...(startDate && endDate
+        ? {
+            date: {
+              gte: new Date(startDate),
+              lte: new Date(endDate),
+            },
+          }
+        : {}),
       isDeleted: false,
     };
 
@@ -521,12 +535,19 @@ const addExpenseLimit = async (req, res, next) => {
     const categoryId = parseInt(req.params.id); // Extracts 'id' from the URL
     const { amount } = req.body;
     console.log(amount);
-    await prisma.category.update({
-      where: {
-        id: categoryId,
-      },
+    await prisma.categoryTracker.create({
       data: {
         limit: amount,
+        category: {
+          connect: {
+            id: categoryId,
+          },
+        },
+        user: {
+          connect: {
+            id: parseInt(req.user.id),
+          },
+        },
       },
     });
 
@@ -543,35 +564,87 @@ const addExpenseLimit = async (req, res, next) => {
 };
 
 const getAllExpenseLimit = async (req, res, next) => {
+  const { startDate, endDate } = req.query;
   try {
-    const categories = await prisma.category.findMany({
+    const categories = await prisma.categoryTracker.findMany({
       where: {
+        user: {
+          id: parseInt(req.user.id),
+        },
+        category: {
+          type: "Expense",
+        },
         limit: { not: null }, // Filter categories that have a limit
       },
       select: {
-        id: true,
-        name: true,
-        icon: true,
         limit: true,
-        expenses: {
+        userId: true,
+        category: {
           select: {
-            amount: true,
+            id: true,
+            name: true,
+            icon: true,
+            type: true,
+            expenses: {
+              where: {
+                date: {
+                  gte: new Date(startDate),
+                  lte: new Date(endDate),
+                },
+                isRecurring: false,
+                userId: parseInt(req.user.id),
+              },
+              select: {
+                amount: true,
+              },
+            },
           },
         },
       },
     });
+    console.log("test: ", categories);
+    // const categories = await prisma.categoryTracker.findMany({
+    //   where: {
+    //     user: {
+    //       id: parseInt(req.user.id),
+    //     },
+    //     limit: { not: null }, // Filter categories that have a limit
+    //   },
+    //   select: {
+    //     id: true,
+    //     name: true,
+    //     icon: true,
+    //     limit: true,
+    //     expenses: {
+    //       where: {
+    //         date: {
+    //           gte: new Date(startDate),
+    //           lte: new Date(endDate),
+    //         },
+    //         userId: parseInt(req.user.id),
+    //       },
+    //       select: {
+    //         amount: true,
+    //       },
+    //     },
+    //   },
+    // });
 
     // Calculate total expenses per category
     const result = categories.map((category) => {
-      const totalExpense = category.expenses.reduce((sum, expense) => sum + expense.amount, 0);
+      const totalExpense = category.category.expenses.reduce(
+        (sum, expense) => sum + expense.amount,
+        0
+      );
       return {
-        id: category.id,
-        name: category.name,
-        icon: category.icon,
+        id: category.category.id,
+        name: category.category.name,
+        icon: category.category.icon,
         limit: category.limit,
         totalExpense: totalExpense,
       };
     });
+    console.log(result);
 
     res.status(200).json({
       success: true,
@@ -583,8 +656,6 @@ const getAllExpenseLimit = async (req, res, next) => {
   }
 };
 
-
-
 module.exports = {
   postExpense,
   getExpenses,
@@ -594,5 +665,5 @@ module.exports = {
   getDetailedExpenses,
   deleteExpense,
   updateExpense,
-  getAllExpenseLimit
+  getAllExpenseLimit,
 };

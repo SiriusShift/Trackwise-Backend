@@ -25,7 +25,8 @@ model User {
   expenses           Expense[]
   incomes            Income[]
   resetTokens        ResetToken[]
-  TransactionHistory TransactionHistory[]
+  transactionHistory TransactionHistory[]
+  categoriesTracker  CategoryTracker[]
 
   @@map("users")
 }
@@ -81,15 +82,15 @@ model Frequency {
 }
 
 model Category {
-  id    Int    @id @default(autoincrement())
-  name  String
-  type  String
-  icon  String @default("default_icon") // Default value added
-  limit Float?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  expenses  Expense[]
-  incomes   Income[]
+  id              Int               @id @default(autoincrement())
+  name            String
+  type            String
+  icon            String            @default("default_icon") // Default value added
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  expenses        Expense[]
+  incomes         Income[]
+  categoriesTracker CategoryTracker[]
 }
 
 model Income {
@@ -115,7 +116,6 @@ model TransactionHistory {
   amount          Float
   description     String?
   date            DateTime @default(now())
-  balanceAfter    Float
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now()) @updatedAt
   assetId         Int
@@ -136,6 +136,16 @@ model EmailVerification {
   updatedAt        DateTime @default(now()) @updatedAt
 
   @@map("email_verifications")
+}
+
+model CategoryTracker {
+  id         Int    @id @default(autoincrement())
+  limit      Float?
+  userId     Int
+  categoryId Int
+
+  category Category @relation(fields: [categoryId], references: [id])
+  user     User     @relation(fields: [userId], references: [id])
 }
 
 model ResetToken {

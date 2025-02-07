@@ -29,7 +29,12 @@ const runPassport = (app) => {
               message: "User doesn't exist",
             });
           }
-          console.log(password);
+          
+          if(user.google_id){
+            return done(null, false, {
+              message: "User already signed up with Google",
+            });
+          }
 
           // Compare hashed password
           const isValidPassword = await bcrypt.compare(password, user.password);

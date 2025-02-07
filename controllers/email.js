@@ -73,69 +73,84 @@ const sendEmailCode = async (req, res, next) => {
 };
 
 const forgotPassword = async (req, res, next) => {
-  email = req.body
+  const email = req.body;
+
   if (!email || !Array.isArray(email)) {
-    return res.status(400).json({
-      message: "Invalid format",
-    });
+    return res.status(400).json({ message: "Invalid format" });
   }
+
   try {
+    // Check if a reset request was recently made
+    const existingRequest = await prisma.resetToken.findFirst({
+      where: {
+        user: { email: email[0] },
+      },
+      orderBy: { createdAt: "desc" }, // Get the latest request
+    });
+
+    if (
+      existingRequest &&
+      new Date() - new Date(existingRequest.createdAt) < 5 * 60 * 1000
+    ) {
+      return res.status(429).json({
+        message: "A reset link was already sent. Please wait 5 minutes before requesting again.",
+      });
+    }
+
+    // Generate a unique reset token
     let valid = false;
     let token;
-    while(valid === false){
+    while (!valid) {
       token = generateToken();
-      const tokenExist = await prisma.resetToken.findUnique(
-        {
-          where: {
-            token: token
-          }
-        }
-      )
-      if(!tokenExist){
-        valid = true;
-      }
+      const tokenExist = await prisma.resetToken.findUnique({
+        where: { token },
+      });
+      if (!tokenExist) valid = true;
     }
-    // 15 minutes expiration
-    const expirationTime = new Date(Date.now() + 15 * 60 * 1000);
+
+    // Set expiration time (5 minutes from now)
+    const expirationTime = new Date(Date.now() + 5 * 60 * 1000);
+
+    // Find user by email
     const user = await prisma.user.findFirst({
-      where: {
-        email: email[0],
-      },
-    })
-    if(!user){
-      return res.status(400).json({
-        message: "Email doesn't exist"
-      })
+      where: { email: email[0] },
+    });
+
+    if (!user) {
+      return res.status(400).json({ message: "Email doesn't exist" });
     }
+
+    // Save reset token in the database
     await prisma.resetToken.create({
       data: {
         token,
-        expiresAt: new Date(expirationTime),
+        expiresAt: expirationTime,
         createdAt: new Date(),
-        user: {
-          connect: {
-            id: user.id
-          }
-        }
+        user: { connect: { id: user.id } },
       },
-    })
-    token = `http://localhost:5173/reset-password?id=${user.id}&token=${token}`
-    data = {
-      link: token,
+    });
+
+    // Generate the reset password link
+    const resetLink = `${process.env.CLIENT_URL}/reset-password?id=${user.id}&token=${token}`;
+    const data = {
+      link: resetLink,  
       year: year
     }
+
+    // Send the email
     await sendEmail(email[0], data, "Reset_Password");
+
     return res.status(200).json({
       success: true,
-      message: "Email sent",
+      message: "Email sent. Check your inbox and spam folder.",
     });
+
   } catch (err) {
-    console.log("Error while verifying email address", err);
-    return res.json(500).json({
-      error: "Internal server error",
-    });
+    console.error("Error while verifying email address:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
+
 
 // THIS IS FOR VERIFYING EMAIL IN SANDBOX MODE
 const verifyEmail = async (req, res, next) => {
