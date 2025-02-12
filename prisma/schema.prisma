@@ -64,8 +64,6 @@ model Expense {
   frequencyId        Int?
   category           Category             @relation(fields: [categoryId], references: [id])
   frequency          Frequency?           @relation(fields: [frequencyId], references: [id])
-  recurringExpense   Expense?             @relation("RecurringExpense", fields: [recurringExpenseId], references: [id])
-  recurringInstances Expense[]            @relation("RecurringExpense")
   source             Asset?               @relation(fields: [sourceId], references: [id])
   user               User                 @relation(fields: [userId], references: [id])
   transactionHistory TransactionHistory[]

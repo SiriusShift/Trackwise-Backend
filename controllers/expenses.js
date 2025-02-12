@@ -121,6 +121,8 @@ const postExpense = async (req, res, next) => {
 
 const updateExpense = async (req, res, next) => {
   const { id } = req.params;
+  const month = new Date(req.body.date).getMonth() + 1;
+  const year = new Date(req.body.date).getFullYear();
   console.log(req.body);
   try {
     const expense = await prisma.expense.update({
@@ -140,6 +142,8 @@ const updateExpense = async (req, res, next) => {
           frequency: { connect: { id: req.body.frequency.id } },
         }),
         date: req.body.date,
+        month: month,
+        year: year,
         recipient: req.body.recipient,
         ...(req.body.startDate && {
           status:
@@ -148,15 +152,20 @@ const updateExpense = async (req, res, next) => {
       },
     });
 
+    // Fetch the transaction history record related to the expense
+    const transaction = await prisma.transactionHistory.findFirst({
+      where: { expenseId: parseInt(id) }, // Ensure expenseId is properly converted to an integer
+    });
+
     await prisma.transactionHistory.update({
-      where: { expenseId: parseInt(id) },
+      where: { id: parseInt(transaction?.id) },
       data: {
         amount: req.body.amount,
         description: req.body.description,
         date: req.body.date,
         updatedAt: new Date(),
       },
-    })
+    });
 
     res.status(200).json({
       success: true,
@@ -372,6 +381,7 @@ const getDetailedExpenses = async (req, res, next) => {
       where: {
         userId: parseInt(req.user.id),
         frequency: null,
+        isDeleted: false,
         date: {
           gte: (() => {
             const date = new Date(startDate);
@@ -385,6 +395,8 @@ const getDetailedExpenses = async (req, res, next) => {
       orderBy: [{ year: "asc" }, { month: "asc" }],
     });
 
+    console.log("group expense",groupedExpenses);
+    
     const trend = (
       ((groupedExpenses[1]?._sum?.amount - groupedExpenses[0]?._sum?.amount) /
         groupedExpenses[0]?._sum?.amount) *
@@ -445,6 +457,7 @@ const getRecurringExpenses = async (req, res, next) => {
     const filters = {
       userId: parseInt(req.user.id),
       isRecurring: true,
+      isDeleted: false,
       date: {
         gte: new Date(startDate),
         lte: new Date(endDate),
@@ -484,6 +497,22 @@ const getRecurringExpenses = async (req, res, next) => {
       take: pageSize,
     });
 
+    // const groupedExpenses = await prisma.expense.groupBy({
+    //   by: ["recurringExpenseId"],
+    //   where: {
+    //     userId: parseInt(req.user.id),
+    //     isDeleted: false,
+    //   },
+    //   _sum: { amount: true },
+    // });
+    
+    // Filter out groups where the sum is null or 0
+    // const filteredExpenses = groupedExpenses.filter(
+    //   (expense) => expense._sum.amount && expense._sum.amount > 0
+    // );
+
+    // console.log("recurring expenses",filteredExpenses)
+
     const totalPages = Math.ceil(totalCount / pageSize);
     // console.log("total pages: ", totalPages, totalCount);
 
@@ -507,8 +536,13 @@ const getRecurringExpenses = async (req, res, next) => {
           where: { id: expense.frequencyId },
         });
 
+        // const paid = filteredExpenses.find(
+        //   (item) => item.recurringExpenseId === expense.id
+        // )._sum.amount
+
         return {
           ...expense,
+          // balance: expense.amount - paid,
           category,
           frequency,
         };
@@ -652,7 +686,118 @@ const getAllExpenseLimit = async (req, res, next) => {
       data: result,
     });
   } catch (error) {
-    next(error);
+    console.error("Error while fetching expenses", error);
+    res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
+const postPayRecurring = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const amountPaid = req.body.amount;
+
+    let status;
+
+    const expenses = await prisma.expense.findFirst({
+      where: {
+        id: parseInt(id),
+        isRecurring: true,
+      },
+    });
+
+    console.log("user", expenses)
+
+    if (!expenses) {
+      return res.status(404).json({ error: "Recurring expense not found" });
+    }
+    
+    if (amountPaid === expenses.amount) {
+      status = "Paid";
+    } else {
+      return res.status(400).json({ error: "Invalid amount" });
+    }
+
+    await prisma.expense.update({
+      where: {
+        id: parseInt(id),
+        isRecurring: true,
+      },
+      data: {
+        status: status,
+      },
+    })
+
+    if (!req.body.source || !req.body.source.id) {
+      return res.status(400).json({ error: "Source asset is required" });
+    }
+
+    const month = new Date().getMonth() + 1;
+    const year = new Date().getFullYear();
+
+    const expense = await prisma.expense.create({
+      data: {
+        amount: req.body.amount,
+        description: expenses.description,
+        date: new Date(),
+        category: {
+          connect: {
+            id: expenses.categoryId,
+          },
+        },
+        source: {
+          connect: {
+            id: req.body.source.id,
+          },
+        },
+        date: new Date(),
+        month: month,
+        year: year,
+        status: status,
+        recipient: expenses.recipient,
+        recurringExpenseId: parseInt(id),
+        user: {
+          connect: {
+            id: parseInt(req.user.id),
+          },
+        }
+      },
+    });
+
+    await prisma.transactionHistory.create({
+      data: {
+        amount: req.body.amount,
+        description: expense.description,
+        transactionType: "Expense",
+        user: {
+          connect: {
+            id: parseInt(req.user.id),
+          }
+        },
+        date: new Date(),
+        asset: {
+          connect: {
+            id: req.body.source.id,
+          }
+        },
+        expense:{
+          connect: {
+            id: expense.id,
+          }
+        }
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Expense paid successfully",
+    })
+  } catch (err) {
+    console.error("Error while fetching expenses", err);
+    res.status(500).json({
+      error: "Internal server error",
+    });
   }
 };
 
@@ -666,4 +811,5 @@ module.exports = {
   deleteExpense,
   updateExpense,
   getAllExpenseLimit,
+  postPayRecurring
 };

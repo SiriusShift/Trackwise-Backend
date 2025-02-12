@@ -2,8 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 const passport = require("passport");
-
-
+require("./config/cron.js")
 // Configs
 const {runDb} = require('./config/runDb.js');
 const {corsConfig} = require('./config/corsConfig.js');
