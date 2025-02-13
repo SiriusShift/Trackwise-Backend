@@ -183,28 +183,107 @@ const updateExpense = async (req, res, next) => {
 const deleteExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
-    await prisma.expense.update({
+    const data = await prisma.expense.findFirst({
       where: { id: parseInt(id) },
-      data: {
-        isDeleted: true,
-        transactionHistory: {
-          updateMany: {
-            where: { expenseId: parseInt(id) },
-            data: { isDeleted: true },
-          },
-        },
-      },
     });
+
+    if (!data) {
+      return res.status(404).json({ error: "Expense not found" });
+    }
+
+    // If the expense is a recurring parent
+    if (data.isRecurring) {
+      console.log("Recurring Expense:", data);
+
+      // Mark the parent expense as deleted
+      await prisma.expense.update({
+        where: { id: parseInt(id) },
+        data: { isDeleted: true },
+      });
+
+      if (data.status === "Paid") {
+        // Update all linked recurring expenses
+        await prisma.expense.updateMany({
+          where: { recurringExpenseId: parseInt(id) },
+          data: { isDeleted: true },
+        });
+
+        // Update transaction history for ALL linked expenses
+        await prisma.transactionHistory.updateMany({
+          where: { expenseId: parseInt(id) },
+          data: { isDeleted: true },
+        });
+
+        // Also update transaction history for all child expenses
+        await prisma.transactionHistory.updateMany({
+          where: { expenseId: { in: (await prisma.expense.findMany({
+            where: { recurringExpenseId: parseInt(id) },
+            select: { id: true }
+          })).map(expense => expense.id) }},
+          data: { isDeleted: true },
+        });
+      }
+    } 
+    // If it's a child expense in a recurring series
+    else if (data.recurringExpenseId !== null && !data.isRecurring) {
+      console.log("Child of Recurring Expense:", data);
+
+      if (data.status === "Paid") {
+        // Delete all expenses tied to the recurringExpenseId
+        await prisma.expense.updateMany({
+          where: { recurringExpenseId: parseInt(data.recurringExpenseId) },
+          data: { isDeleted: true },
+        });
+
+        // Delete transaction history for all related expenses
+        await prisma.transactionHistory.updateMany({
+          where: { expenseId: parseInt(id) },
+          data: { isDeleted: true },
+        });
+
+        // Also update transaction history for all child expenses
+        await prisma.transactionHistory.updateMany({
+          where: { expenseId: { in: (await prisma.expense.findMany({
+            where: { recurringExpenseId: parseInt(data.recurringExpenseId) },
+            select: { id: true }
+          })).map(expense => expense.id) }},
+          data: { isDeleted: true },
+        });
+      } else {
+        await prisma.expense.update({
+          where: { id: parseInt(id) },
+          data: { isDeleted: true },
+        });
+
+        await prisma.transactionHistory.updateMany({
+          where: { expenseId: parseInt(id) },
+          data: { isDeleted: true },
+        });
+      }
+    } 
+    // If it's a standalone expense
+    else {
+      console.log("Regular Expense:", data);
+
+      await prisma.expense.update({
+        where: { id: parseInt(id) },
+        data: { isDeleted: true },
+      });
+
+      await prisma.transactionHistory.updateMany({
+        where: { expenseId: parseInt(id) },
+        data: { isDeleted: true },
+      });
+    }
 
     res.status(200).json({
       success: true,
       message: "Expense deleted successfully",
     });
+
   } catch (err) {
-    console.log("Error while deleting expense", err);
-    return res.status(500).json({
-      error: "Internal server error",
-    });
+    console.error("Error while deleting expense:", err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 };
 
@@ -395,8 +474,8 @@ const getDetailedExpenses = async (req, res, next) => {
       orderBy: [{ year: "asc" }, { month: "asc" }],
     });
 
-    console.log("group expense",groupedExpenses);
-    
+    console.log("group expense", groupedExpenses);
+
     const trend = (
       ((groupedExpenses[1]?._sum?.amount - groupedExpenses[0]?._sum?.amount) /
         groupedExpenses[0]?._sum?.amount) *
@@ -505,7 +584,7 @@ const getRecurringExpenses = async (req, res, next) => {
     //   },
     //   _sum: { amount: true },
     // });
-    
+
     // Filter out groups where the sum is null or 0
     // const filteredExpenses = groupedExpenses.filter(
     //   (expense) => expense._sum.amount && expense._sum.amount > 0
@@ -600,7 +679,7 @@ const addExpenseLimit = async (req, res, next) => {
 const getAllExpenseLimit = async (req, res, next) => {
   const { startDate, endDate } = req.query;
   try {
-    const categories = await prisma.categoryTracker.findMany({
+    const categoryTracker = await prisma.categoryTracker.findMany({
       where: {
         user: {
           id: parseInt(req.user.id),
@@ -611,6 +690,7 @@ const getAllExpenseLimit = async (req, res, next) => {
         limit: { not: null }, // Filter categories that have a limit
       },
       select: {
+        id: true,
         limit: true,
         userId: true,
         category: {
@@ -625,6 +705,7 @@ const getAllExpenseLimit = async (req, res, next) => {
                   gte: new Date(startDate),
                   lte: new Date(endDate),
                 },
+                isDeleted: false,
                 isRecurring: false,
                 userId: parseInt(req.user.id),
               },
@@ -636,7 +717,7 @@ const getAllExpenseLimit = async (req, res, next) => {
         },
       },
     });
-    console.log("test: ", categories);
+    console.log("test: ", categoryTracker?.id);
     // const categories = await prisma.categoryTracker.findMany({
     //   where: {
     //     user: {
@@ -665,15 +746,14 @@ const getAllExpenseLimit = async (req, res, next) => {
     // });
 
     // Calculate total expenses per category
-    const result = categories.map((category) => {
+    const result = categoryTracker.map((category) => {
       const totalExpense = category.category.expenses.reduce(
         (sum, expense) => sum + expense.amount,
         0
       );
       return {
-        id: category.category.id,
-        name: category.category.name,
-        icon: category.category.icon,
+        id: category.id,
+        category: category.category,
         limit: category.limit,
         totalExpense: totalExpense,
       };
@@ -687,6 +767,30 @@ const getAllExpenseLimit = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error while fetching expenses", error);
+    res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
+const updateExpenseLimit = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { amount } = req.body;
+    await prisma.categoryTracker.update({
+      where: {
+        id: parseInt(id),
+      },
+      data: {
+        limit: amount,
+      },
+    });
+    res.status(200).json({
+      success: true,
+      message: "Expense limit updated successfully",
+    });
+  } catch (err) {
+    console.error("Error while fetching expenses", err);
     res.status(500).json({
       error: "Internal server error",
     });
@@ -707,12 +811,12 @@ const postPayRecurring = async (req, res, next) => {
       },
     });
 
-    console.log("user", expenses)
+    console.log("user", expenses);
 
     if (!expenses) {
       return res.status(404).json({ error: "Recurring expense not found" });
     }
-    
+
     if (amountPaid === expenses.amount) {
       status = "Paid";
     } else {
@@ -727,7 +831,7 @@ const postPayRecurring = async (req, res, next) => {
       data: {
         status: status,
       },
-    })
+    });
 
     if (!req.body.source || !req.body.source.id) {
       return res.status(400).json({ error: "Source asset is required" });
@@ -761,7 +865,7 @@ const postPayRecurring = async (req, res, next) => {
           connect: {
             id: parseInt(req.user.id),
           },
-        }
+        },
       },
     });
 
@@ -773,26 +877,26 @@ const postPayRecurring = async (req, res, next) => {
         user: {
           connect: {
             id: parseInt(req.user.id),
-          }
+          },
         },
         date: new Date(),
         asset: {
           connect: {
             id: req.body.source.id,
-          }
+          },
         },
-        expense:{
+        expense: {
           connect: {
             id: expense.id,
-          }
-        }
+          },
+        },
       },
     });
 
     res.status(200).json({
       success: true,
       message: "Expense paid successfully",
-    })
+    });
   } catch (err) {
     console.error("Error while fetching expenses", err);
     res.status(500).json({
@@ -807,9 +911,10 @@ module.exports = {
   postRecurringExpense,
   getRecurringExpenses,
   addExpenseLimit,
+  getAllExpenseLimit,
+  updateExpenseLimit,
   getDetailedExpenses,
   deleteExpense,
   updateExpense,
-  getAllExpenseLimit,
-  postPayRecurring
+  postPayRecurring,
 };
