@@ -645,8 +645,7 @@ const getRecurringExpenses = async (req, res, next) => {
 
 const addExpenseLimit = async (req, res, next) => {
   try {
-    const categoryId = parseInt(req.params.id); // Extracts 'id' from the URL
-    const { amount } = req.body;
+    const { amount, categoryId } = req.body;
     console.log(amount);
     await prisma.categoryTracker.create({
       data: {
@@ -777,6 +776,7 @@ const updateExpenseLimit = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { amount } = req.body;
+    console.log("amount",amount)
     await prisma.categoryTracker.update({
       where: {
         id: parseInt(id),

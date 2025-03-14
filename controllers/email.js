@@ -17,7 +17,7 @@ const sendEmailCode = async (req, res, next) => {
       email: email[0],
     },
   });
-  
+
   const checkExistingUsername = await prisma.user.findFirst({
     where: {
       username: username,
@@ -29,7 +29,7 @@ const sendEmailCode = async (req, res, next) => {
       success: false,
       message: "Email already exists in our database",
     });
-  }else if (checkExistingUsername) {
+  } else if (checkExistingUsername) {
     return res.status(400).json({
       success: false,
       message: "Username already exists in our database",
@@ -45,7 +45,7 @@ const sendEmailCode = async (req, res, next) => {
     const data = {
       code: code,
       year: year,
-    }
+    };
     // Send a verification email using Amazon SES
     await sendEmail(email, data, "Verification_Code");
     // add the otp code to database to be used later for comparing
@@ -75,6 +75,8 @@ const sendEmailCode = async (req, res, next) => {
 const forgotPassword = async (req, res, next) => {
   const email = req.body;
 
+  const code = crypto.randomInt(0, Math.pow(10, 6)).toString().padStart(6, "0");
+
   if (!email || !Array.isArray(email)) {
     return res.status(400).json({ message: "Invalid format" });
   }
@@ -93,7 +95,8 @@ const forgotPassword = async (req, res, next) => {
       new Date() - new Date(existingRequest.createdAt) < 5 * 60 * 1000
     ) {
       return res.status(429).json({
-        message: "A reset link was already sent. Please wait 5 minutes before requesting again.",
+        message:
+          "A reset link was already sent. Please wait 5 minutes before requesting again.",
       });
     }
 
@@ -130,12 +133,10 @@ const forgotPassword = async (req, res, next) => {
       },
     });
 
-    // Generate the reset password link
-    const resetLink = `${process.env.CLIENT_URL}/reset-password?id=${user.id}&token=${token}`;
     const data = {
-      link: resetLink,  
-      year: year
-    }
+      code: code,
+      year: year,
+    };
 
     // Send the email
     await sendEmail(email[0], data, "Reset_Password");
@@ -144,13 +145,11 @@ const forgotPassword = async (req, res, next) => {
       success: true,
       message: "Email sent. Check your inbox and spam folder.",
     });
-
   } catch (err) {
     console.error("Error while verifying email address:", err);
     return res.status(500).json({ error: "Internal server error" });
   }
 };
-
 
 // THIS IS FOR VERIFYING EMAIL IN SANDBOX MODE
 const verifyEmail = async (req, res, next) => {
@@ -184,5 +183,5 @@ const verifyEmail = async (req, res, next) => {
 module.exports = {
   sendEmailCode,
   verifyEmail,
-  forgotPassword
+  forgotPassword,
 };
