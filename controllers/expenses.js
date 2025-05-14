@@ -682,6 +682,7 @@ const getAllExpenseLimit = async (req, res, next) => {
       where: {
         user: {
           id: parseInt(req.user.id),
+          isActive: true,
         },
         category: {
           type: "Expense",
@@ -716,7 +717,7 @@ const getAllExpenseLimit = async (req, res, next) => {
         },
       },
     });
-    console.log("test: ", categoryTracker?.id);
+    console.log("test: ", categoryTracker);
     // const categories = await prisma.categoryTracker.findMany({
     //   where: {
     //     user: {
@@ -753,8 +754,8 @@ const getAllExpenseLimit = async (req, res, next) => {
       return {
         id: category.id,
         category: category.category,
-        limit: category.limit,
-        totalExpense: totalExpense,
+        value: category.limit,
+        total: totalExpense,
       };
     });
     console.log(result);
@@ -796,6 +797,32 @@ const updateExpenseLimit = async (req, res, next) => {
     });
   }
 };
+
+const deleteExpenseLimit = async (req,res,next) => {
+  try {
+    const { id } = req.params;
+    if(!id){
+      return res.status(400).json({
+        success: false,
+        message: "Expense limit not found",
+      });
+    }
+    await prisma.categoryTracker.delete({
+      where: {
+        id: parseInt(id),
+      },
+    });
+    res.status(200).json({
+      success: true,
+      message: "Expense limit deleted successfully",
+    });
+  } catch (err) {
+    console.error("Error while fetching expenses", err);
+    res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+}
 
 const postPayRecurring = async (req, res, next) => {
   try {
@@ -913,6 +940,7 @@ module.exports = {
   addExpenseLimit,
   getAllExpenseLimit,
   updateExpenseLimit,
+  deleteExpenseLimit,
   getDetailedExpenses,
   deleteExpense,
   updateExpense,

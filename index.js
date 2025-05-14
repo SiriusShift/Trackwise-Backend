@@ -28,6 +28,6 @@ runRouters(app);
 //   console.log(`Server started on port ${port}`);
 // });
 
-app.listen(port, host, () => {
+app.listen(5000, host, () => {
   console.log(`Server started on port ${port}`);
 });

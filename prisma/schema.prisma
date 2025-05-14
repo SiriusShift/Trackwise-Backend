@@ -17,7 +17,7 @@ model User {
   role               String               @default("user")
   phoneNumber        String?              @map("phone_number")
   profileImageUrl    String?              @map("profile_image_url")
-  isActive           Boolean              @default(false)
+  isActive           Boolean              @default(true)
   createdAt          DateTime             @default(now()) @map("created_at")
   updatedAt          DateTime             @default(now()) @updatedAt
   google_id          String?              @unique
@@ -84,6 +84,7 @@ model Category {
   name            String
   type            String
   icon            String            @default("default_icon") // Default value added
+  isActive        Boolean           @default(true)
   createdAt       DateTime          @default(now())
   updatedAt       DateTime          @updatedAt
   expenses        Expense[]
@@ -141,6 +142,7 @@ model CategoryTracker {
   limit      Float?
   userId     Int
   categoryId Int
+  isActive   Boolean @default(true)
 
   category Category @relation(fields: [categoryId], references: [id])
   user     User     @relation(fields: [userId], references: [id])

@@ -38,7 +38,10 @@ const getAllCategory = async (req, res, next) => {
   try {
     // If type is not provided or is an empty string, don't apply the filter
     const categories = await prisma.category.findMany({
-      where: type && type !== "" ? { type: type } : {}, // Only filter if 'type' is provided and not empty
+      where: {
+        ...(type && type !== "" ? { type: type } : {}),
+        isActive: true,
+      }
     });
 
     res.status(200).json({

@@ -2,7 +2,7 @@ const { Router } = require("express");
 const catchAsync = require("../utils/catchAsync");
 const { createCategory, getAllCategory } = require("../controllers/category");
 const { isLoggedIn, validateCreateRequest } = require("../middleware/validate");
-const { addExpenseLimit, getAllExpenseLimit, updateExpenseLimit } = require("../controllers/expenses");
+const { addExpenseLimit, getAllExpenseLimit, updateExpenseLimit, deleteExpenseLimit } = require("../controllers/expenses");
 const router = Router();
 
 /**
@@ -108,6 +108,7 @@ const router = Router();
 router.route("/create").post(isLoggedIn, catchAsync(createCategory));
 router.route("/get").get(isLoggedIn, catchAsync(getAllCategory));
 router.route("/patchLimit/:id").patch(isLoggedIn, catchAsync(updateExpenseLimit));
+router.route("/deleteLimit/:id").put(isLoggedIn, catchAsync(deleteExpenseLimit))
 router.route("/postLimit").post(isLoggedIn, catchAsync(addExpenseLimit));
 router.route("/getAllExpenseCategoryLimit").get(isLoggedIn, catchAsync(getAllExpenseLimit));
 
