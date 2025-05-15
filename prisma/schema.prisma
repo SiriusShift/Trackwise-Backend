@@ -27,21 +27,42 @@ model User {
   resetTokens        ResetToken[]
   transactionHistory TransactionHistory[]
   categoriesTracker  CategoryTracker[]
+  transfer           Transfer[]
 
   @@map("users")
 }
 
+model Transfer {
+  id          Int      @id @default(autoincrement())
+  userId      Int
+  fromAssetId Int
+  toAssetId   Int
+  amount      Float
+  description String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id])
+  fromAsset   Asset    @relation("FromAsset", fields: [fromAssetId], references: [id])
+  toAsset     Asset    @relation("ToAsset", fields: [toAssetId], references: [id])
+}
+
 model Asset {
-  id                 Int                  @id @default(autoincrement())
-  name               String
-  balance            Float
-  userId             Int
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  user               User                 @relation(fields: [userId], references: [id])
-  expenses           Expense[]
-  incomes            Income[]
-  TransactionHistory TransactionHistory[]
+  id        Int      @id @default(autoincrement())
+  name      String
+  balance   Float
+  userId    Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  expenses Expense[]
+  incomes  Income[]
+
+  sentTransfers              Transfer[]           @relation("FromAsset") // Matches fromAsset in Transfer
+  receivedTransfers          Transfer[]           @relation("ToAsset") // Matches toAsset in Transfer
+  sentTransactionHistory     TransactionHistory[] @relation("TH_FromAsset")
+  receivedTransactionHistory TransactionHistory[] @relation("TH_ToAsset")
 }
 
 model Expense {
@@ -80,15 +101,15 @@ model Frequency {
 }
 
 model Category {
-  id              Int               @id @default(autoincrement())
-  name            String
-  type            String
-  icon            String            @default("default_icon") // Default value added
-  isActive        Boolean           @default(true)
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
-  expenses        Expense[]
-  incomes         Income[]
+  id                Int               @id @default(autoincrement())
+  name              String
+  type              String
+  icon              String            @default("default_icon") // Default value added
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  expenses          Expense[]
+  incomes           Income[]
   categoriesTracker CategoryTracker[]
 }
 
@@ -106,6 +127,8 @@ model Income {
   category    Category @relation(fields: [categoryId], references: [id])
   source      Asset?   @relation(fields: [sourceId], references: [id])
   user        User     @relation(fields: [userId], references: [id])
+
+  transactionHistory TransactionHistory[]
 }
 
 model TransactionHistory {
@@ -117,12 +140,16 @@ model TransactionHistory {
   date            DateTime @default(now())
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now()) @updatedAt
-  assetId         Int
+  fromAssetId     Int?      
+  toAssetId       Int?
   expenseId       Int?
+  incomeId        Int?
   isDeleted       Boolean  @default(false)
-  asset           Asset    @relation(fields: [assetId], references: [id])
+  fromAsset       Asset?    @relation("TH_FromAsset", fields: [fromAssetId], references: [id])
+  toAsset         Asset?    @relation("TH_ToAsset", fields: [toAssetId], references: [id])
   expense         Expense? @relation(fields: [expenseId], references: [id])
   user            User     @relation(fields: [userId], references: [id])
+  income          Income?   @relation(fields: [incomeId], references: [id])
 }
 
 model EmailVerification {
@@ -138,7 +165,7 @@ model EmailVerification {
 }
 
 model CategoryTracker {
-  id         Int    @id @default(autoincrement())
+  id         Int     @id @default(autoincrement())
   limit      Float?
   userId     Int
   categoryId Int

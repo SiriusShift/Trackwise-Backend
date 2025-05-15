@@ -97,7 +97,7 @@ const postExpense = async (req, res, next) => {
       data: {
         expenseId: expense.id,
         userId: req.user.id,
-        assetId: req.body.source,
+        fromAssetId: req.body.source,
         transactionType: "Expense",
         amount: req.body.amount,
         description: req.body.description,
@@ -647,6 +647,23 @@ const addExpenseLimit = async (req, res, next) => {
   try {
     const { amount, categoryId } = req.body;
     console.log(amount);
+    const expenseLimit = await prisma.categoryTracker.findFirst({
+      where: {
+        category: {
+          id: categoryId,
+        },
+        user: {
+          id: parseInt(req.user.id),
+        },
+        isActive: true
+      },
+    })
+    if(expenseLimit){
+      return res.status(400).json({
+        success: false,
+        message: "Expense limit already exists for this category",
+      });
+    }
     await prisma.categoryTracker.create({
       data: {
         limit: amount,
@@ -687,6 +704,7 @@ const getAllExpenseLimit = async (req, res, next) => {
         category: {
           type: "Expense",
         },
+        isActive: true,
         limit: { not: null }, // Filter categories that have a limit
       },
       select: {
@@ -714,6 +732,11 @@ const getAllExpenseLimit = async (req, res, next) => {
               },
             },
           },
+        },
+      },
+      orderBy: {
+        category: {
+          name: "asc",
         },
       },
     });
@@ -807,10 +830,13 @@ const deleteExpenseLimit = async (req,res,next) => {
         message: "Expense limit not found",
       });
     }
-    await prisma.categoryTracker.delete({
+    await prisma.categoryTracker.update({
       where: {
         id: parseInt(id),
       },
+      data: {
+        isActive: false
+      }
     });
     res.status(200).json({
       success: true,

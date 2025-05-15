@@ -2,7 +2,8 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const createCategory = async (req, res, next) => {
   try {
-    const categories = req.body.categories; // Expect an array of objects: [{ name, type }, ...]
+    console.log(req.body)
+    const categories = req.body; // Expect an array of objects: [{ name, type }, ...]
 
     if (!Array.isArray(categories) || categories.length === 0) {
       return res.status(400).json({
