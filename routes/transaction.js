@@ -4,8 +4,8 @@ const {postExpense, getExpenses, postRecurringExpense, getRecurringExpenses, del
 const { isLoggedIn } = require("../middleware/validate");
 const router = Router();
 
-router.route("/create").post(isLoggedIn, catchAsync(postExpense));
-router.route("/get").get(isLoggedIn, catchAsync(getExpenses));
+router.route("/createExpense").post(isLoggedIn, catchAsync(postExpense));
+router.route("/getExpense").get(isLoggedIn, catchAsync(getExpenses));
 router.route("/createRecurring").post(isLoggedIn, catchAsync(postRecurringExpense));
 router.route("/getRecurring").get(isLoggedIn, catchAsync(getRecurringExpenses));
 router.route("/deleteExpense/:id").patch(isLoggedIn, catchAsync(deleteExpense));

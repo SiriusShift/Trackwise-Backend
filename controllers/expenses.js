@@ -125,6 +125,46 @@ const updateExpense = async (req, res, next) => {
   const year = new Date(req.body.date).getFullYear();
   console.log(req.body);
   try {
+    const expenseExist = await prisma.expense.findFirst({
+      where: {
+        id: parseInt(id),
+      },
+    });
+
+    if (expenseExist.isRecurring) {
+      console.log("recurring update")
+      const data = await prisma.expense.update({
+        where: {
+          id: parseInt(id),
+        },
+        data: {
+          amount: req.body.amount, // Amount is required
+          description: req.body.description, // Description is required
+          category: {
+            connect: {
+              id: req.body.category.id, // Category is required and connected via id
+            },
+          },
+          status:
+            new Date() > new Date(req.body.startDate) ? "Overdue" : "Unpaid",
+          date: req.body.startDate, // Start Date is required
+          frequency: {
+            connect: {
+              id: req.body.frequency.id,
+            },
+          },
+          isRecurring: true,
+          recipient: req.body.recipient,
+          user: {
+            connect: {
+              id: parseInt(req.body.userId), // User is required and connected via user id
+            },
+          },
+        },
+      });
+
+      return res.status(200).json({ success: true, message: "Recurring expense updated successfully", data });
+    }
     const expense = await prisma.expense.update({
       where: { id: parseInt(id) },
       data: {
@@ -216,14 +256,20 @@ const deleteExpense = async (req, res, next) => {
 
         // Also update transaction history for all child expenses
         await prisma.transactionHistory.updateMany({
-          where: { expenseId: { in: (await prisma.expense.findMany({
-            where: { recurringExpenseId: parseInt(id) },
-            select: { id: true }
-          })).map(expense => expense.id) }},
+          where: {
+            expenseId: {
+              in: (
+                await prisma.expense.findMany({
+                  where: { recurringExpenseId: parseInt(id) },
+                  select: { id: true },
+                })
+              ).map((expense) => expense.id),
+            },
+          },
           data: { isDeleted: true },
         });
       }
-    } 
+    }
     // If it's a child expense in a recurring series
     else if (data.recurringExpenseId !== null && !data.isRecurring) {
       console.log("Child of Recurring Expense:", data);
@@ -243,10 +289,18 @@ const deleteExpense = async (req, res, next) => {
 
         // Also update transaction history for all child expenses
         await prisma.transactionHistory.updateMany({
-          where: { expenseId: { in: (await prisma.expense.findMany({
-            where: { recurringExpenseId: parseInt(data.recurringExpenseId) },
-            select: { id: true }
-          })).map(expense => expense.id) }},
+          where: {
+            expenseId: {
+              in: (
+                await prisma.expense.findMany({
+                  where: {
+                    recurringExpenseId: parseInt(data.recurringExpenseId),
+                  },
+                  select: { id: true },
+                })
+              ).map((expense) => expense.id),
+            },
+          },
           data: { isDeleted: true },
         });
       } else {
@@ -260,7 +314,7 @@ const deleteExpense = async (req, res, next) => {
           data: { isDeleted: true },
         });
       }
-    } 
+    }
     // If it's a standalone expense
     else {
       console.log("Regular Expense:", data);
@@ -280,7 +334,6 @@ const deleteExpense = async (req, res, next) => {
       success: true,
       message: "Expense deleted successfully",
     });
-
   } catch (err) {
     console.error("Error while deleting expense:", err);
     return res.status(500).json({ error: "Internal server error" });
@@ -655,10 +708,10 @@ const addExpenseLimit = async (req, res, next) => {
         user: {
           id: parseInt(req.user.id),
         },
-        isActive: true
+        isActive: true,
       },
-    })
-    if(expenseLimit){
+    });
+    if (expenseLimit) {
       return res.status(400).json({
         success: false,
         message: "Expense limit already exists for this category",
@@ -800,7 +853,7 @@ const updateExpenseLimit = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { amount } = req.body;
-    console.log("amount",amount)
+    console.log("amount", amount);
     await prisma.categoryTracker.update({
       where: {
         id: parseInt(id),
@@ -821,10 +874,10 @@ const updateExpenseLimit = async (req, res, next) => {
   }
 };
 
-const deleteExpenseLimit = async (req,res,next) => {
+const deleteExpenseLimit = async (req, res, next) => {
   try {
     const { id } = req.params;
-    if(!id){
+    if (!id) {
       return res.status(400).json({
         success: false,
         message: "Expense limit not found",
@@ -835,8 +888,8 @@ const deleteExpenseLimit = async (req,res,next) => {
         id: parseInt(id),
       },
       data: {
-        isActive: false
-      }
+        isActive: false,
+      },
     });
     res.status(200).json({
       success: true,
@@ -848,7 +901,7 @@ const deleteExpenseLimit = async (req,res,next) => {
       error: "Internal server error",
     });
   }
-}
+};
 
 const postPayRecurring = async (req, res, next) => {
   try {
