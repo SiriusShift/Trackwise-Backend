@@ -2,13 +2,13 @@ const express = require("express");
 const cors = require("cors");
 const session = require("express-session");
 const passport = require("passport");
-require("./config/cron.js")
+require("./config/cron.js");
 // Configs
-const {runDb} = require('./config/runDb.js');
-const {corsConfig} = require('./config/corsConfig.js');
-const {runRouters} = require("./routes/index.js");
-const {sessionConfig} = require('./config/sessionConfig.js');
-const {runPassport} = require('./config/passport.js');
+const { runDb } = require("./config/runDb.js");
+const { corsConfig } = require("./config/corsConfig.js");
+const { runRouters } = require("./routes/index.js");
+const { sessionConfig } = require("./config/sessionConfig.js");
+const { runPassport } = require("./config/passport.js");
 
 const app = express();
 const port = 5000;

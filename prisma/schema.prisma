@@ -75,13 +75,15 @@ model Expense {
   userId             Int
   createdAt          DateTime             @default(now())
   updatedAt          DateTime             @updatedAt
-  recurringExpenseId Int?
-  recipient          String
-  isRecurring        Boolean              @default(false)
-  status             String?
-  month              Int                  @default(0) @map("MONTH(date)")
-  year               Int                  @default(0) @map("YEAR(date)")
   isDeleted          Boolean              @default(false)
+
+
+  isScheduled        Boolean             @default(false) // Indicates future bill
+  scheduleStartDate  DateTime?                          // When bill is due
+  originalExpenseId  Int?                               // Links scheduled bill to original transaction
+  dueDate            DateTime?
+  status             String?
+  
   frequencyId        Int?
   category           Category             @relation(fields: [categoryId], references: [id])
   frequency          Frequency?           @relation(fields: [frequencyId], references: [id])
