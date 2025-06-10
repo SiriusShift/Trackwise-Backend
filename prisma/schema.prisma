@@ -42,9 +42,10 @@ model Transfer {
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  user        User     @relation(fields: [userId], references: [id])
-  fromAsset   Asset    @relation("FromAsset", fields: [fromAssetId], references: [id])
-  toAsset     Asset    @relation("ToAsset", fields: [toAssetId], references: [id])
+
+  user      User  @relation(fields: [userId], references: [id])
+  fromAsset Asset @relation("FromAsset", fields: [fromAssetId], references: [id])
+  toAsset   Asset @relation("ToAsset", fields: [toAssetId], references: [id])
 }
 
 model Asset {
@@ -66,28 +67,28 @@ model Asset {
 }
 
 model Expense {
-  id                 Int                  @id @default(autoincrement())
-  date               DateTime
-  categoryId         Int
-  description        String
-  amount             Float
-  sourceId           Int?
-  userId             Int
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  isDeleted          Boolean              @default(false)
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  categoryId  Int
+  description String
+  amount      Float
+  assetId     Int?
+  userId      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isDeleted   Boolean  @default(false)
 
+  isScheduled       Boolean   @default(false)
+  scheduleStartDate DateTime?
+  originalExpenseId Int?
+  dueDate           DateTime?
+  recurring         Boolean   @default(false)
+  status            String?
 
-  isScheduled        Boolean             @default(false) // Indicates future bill
-  scheduleStartDate  DateTime?                          // When bill is due
-  originalExpenseId  Int?                               // Links scheduled bill to original transaction
-  dueDate            DateTime?
-  status             String?
-  
   frequencyId        Int?
   category           Category             @relation(fields: [categoryId], references: [id])
   frequency          Frequency?           @relation(fields: [frequencyId], references: [id])
-  source             Asset?               @relation(fields: [sourceId], references: [id])
+  asset              Asset?               @relation(fields: [assetId], references: [id])
   user               User                 @relation(fields: [userId], references: [id])
   transactionHistory TransactionHistory[]
 }
@@ -121,13 +122,13 @@ model Income {
   categoryId  Int
   description String?
   amount      Float
-  sourceId    Int?
+  assetId     Int?
   userId      Int
   status      String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   category    Category @relation(fields: [categoryId], references: [id])
-  source      Asset?   @relation(fields: [sourceId], references: [id])
+  asset       Asset?   @relation(fields: [assetId], references: [id])
   user        User     @relation(fields: [userId], references: [id])
 
   transactionHistory TransactionHistory[]
@@ -142,16 +143,16 @@ model TransactionHistory {
   date            DateTime @default(now())
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now()) @updatedAt
-  fromAssetId     Int?      
+  fromAssetId     Int?
   toAssetId       Int?
   expenseId       Int?
   incomeId        Int?
   isDeleted       Boolean  @default(false)
-  fromAsset       Asset?    @relation("TH_FromAsset", fields: [fromAssetId], references: [id])
-  toAsset         Asset?    @relation("TH_ToAsset", fields: [toAssetId], references: [id])
+  fromAsset       Asset?   @relation("TH_FromAsset", fields: [fromAssetId], references: [id])
+  toAsset         Asset?   @relation("TH_ToAsset", fields: [toAssetId], references: [id])
   expense         Expense? @relation(fields: [expenseId], references: [id])
   user            User     @relation(fields: [userId], references: [id])
-  income          Income?   @relation(fields: [incomeId], references: [id])
+  income          Income?  @relation(fields: [incomeId], references: [id])
 }
 
 model EmailVerification {

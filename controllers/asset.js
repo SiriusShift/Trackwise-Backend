@@ -39,16 +39,6 @@ const getAssetRemainingBalance = async (req, res) => {
           where: {
             isDeleted: false,
           },
-          select: {
-            id: true,
-            date: true,
-            categoryId: true,
-            description: true,
-            amount: true,
-            sourceId: true,
-            recurringExpenseId: true,
-            recipient: true,
-          },
         },
         incomes: {
           select: {
@@ -81,16 +71,6 @@ const getAssetRemainingBalance = async (req, res) => {
               lte: moment().subtract(1, "month").endOf("month").toDate(),
             },
           },
-          select: {
-            id: true,
-            date: true,
-            categoryId: true,
-            description: true,
-            amount: true,
-            sourceId: true,
-            recurringExpenseId: true,
-            recipient: true,
-          },
         },
         incomes: {
           select: {
@@ -102,9 +82,8 @@ const getAssetRemainingBalance = async (req, res) => {
             source: true,
             sourceId: true,
             status: true,
-            // recurring: true, // Include recurring field if needed
           },
-        },
+        }
       },
     });
 
