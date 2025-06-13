@@ -47,8 +47,7 @@ const getAssetRemainingBalance = async (req, res) => {
             categoryId: true,
             description: true,
             amount: true,
-            source: true,
-            sourceId: true,
+            assetId: true,
             status: true,
             // recurring: true, // Include recurring field if needed
           },
@@ -79,8 +78,7 @@ const getAssetRemainingBalance = async (req, res) => {
             categoryId: true,
             description: true,
             amount: true,
-            source: true,
-            sourceId: true,
+            assetId: true,
             status: true,
           },
         }
