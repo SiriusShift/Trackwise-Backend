@@ -1,10 +1,11 @@
 const { PrismaClient } = require("@prisma/client");
 // const { skip } = require("@prisma/client/runtime/library");
 const prisma = new PrismaClient();
+const moment = require("moment");
 
 const postExpense = async (req, res, next) => {
   try {
-    console.log("date", req.body.date);
+    console.log("date: ", req.body.date);
     // Check if the expense already exists (you can customize the uniqueness criteria)
     const existingExpense = await prisma.expense.findFirst({
       where: {
@@ -60,30 +61,37 @@ const postExpense = async (req, res, next) => {
       });
     }
 
-    const month = new Date(req.body.date).getMonth() + 1;
-    const year = new Date(req.body.date).getFullYear();
-
-    console.log(month, year);
-
     // Create the expense
     const expense = await prisma.expense.create({
       data: {
         amount: req.body.amount,
         description: req.body.description,
+        recurring: req.body.recurring,
+        isScheduled: req.body.date > new Date(),
+        ...(req.body.frequency && {
+          frequency: {
+            connect: {
+              id: req.body.frequency.id,
+            },
+          },
+        }),
+        ...(req.body.months && {
+          installmentMonths: req.body.months,
+          currentInstallment: 1,
+          originalExpenseId: null,
+        }),
+        status: req.body.date > new Date() ? "Unpaid" : "Paid",
         category: {
           connect: {
             id: req.body.category,
           },
         },
-        source: {
+        asset: {
           connect: {
             id: req.body.source,
           },
         },
         date: req.body.date,
-        month: month,
-        year: year,
-        recipient: req.body.recipient,
         user: {
           connect: {
             id: req.user.id,
@@ -132,7 +140,7 @@ const updateExpense = async (req, res, next) => {
     });
 
     if (expenseExist.isRecurring) {
-      console.log("recurring update")
+      console.log("recurring update");
       const data = await prisma.expense.update({
         where: {
           id: parseInt(id),
@@ -163,7 +171,13 @@ const updateExpense = async (req, res, next) => {
         },
       });
 
-      return res.status(200).json({ success: true, message: "Recurring expense updated successfully", data });
+      return res
+        .status(200)
+        .json({
+          success: true,
+          message: "Recurring expense updated successfully",
+          data,
+        });
     }
     const expense = await prisma.expense.update({
       where: { id: parseInt(id) },
@@ -425,6 +439,7 @@ const getExpenses = async (req, res, next) => {
             },
           }
         : {}),
+      ...(startDate && !endDate ? { date: { gte: moment(startDate).startOf("day") } } : {}),
       isDeleted: false,
     };
 
@@ -506,10 +521,6 @@ const getDetailedExpenses = async (req, res, next) => {
       isDeleted: false,
     };
     const groupedExpenses = await prisma.expense.groupBy({
-      by: [
-        "year", // Custom field for the year
-        "month", // Custom field for the month
-      ],
       where: {
         userId: parseInt(req.user.id),
         frequency: null,
@@ -524,10 +535,8 @@ const getDetailedExpenses = async (req, res, next) => {
         },
       },
       _sum: { amount: true },
-      orderBy: [{ year: "asc" }, { month: "asc" }],
     });
-
-    console.log("group expense", groupedExpenses);
+    console.log("group expense!", groupedExpenses);
 
     const trend = (
       ((groupedExpenses[1]?._sum?.amount - groupedExpenses[0]?._sum?.amount) /
@@ -773,11 +782,10 @@ const getAllExpenseLimit = async (req, res, next) => {
             expenses: {
               where: {
                 date: {
-                  gte: new Date(startDate),
-                  lte: new Date(endDate),
+                  gte: new Date(startDate), lte: new Date(endDate)
                 },
                 isDeleted: false,
-                isRecurring: false,
+                // isRecurring: false,
                 userId: parseInt(req.user.id),
               },
               select: {
@@ -823,6 +831,7 @@ const getAllExpenseLimit = async (req, res, next) => {
 
     // Calculate total expenses per category
     const result = categoryTracker.map((category) => {
+      console.log("Category Tracker : ", category);
       const totalExpense = category.category.expenses.reduce(
         (sum, expense) => sum + expense.amount,
         0
@@ -943,9 +952,6 @@ const postPayRecurring = async (req, res, next) => {
       return res.status(400).json({ error: "Source asset is required" });
     }
 
-    const month = new Date().getMonth() + 1;
-    const year = new Date().getFullYear();
-
     const expense = await prisma.expense.create({
       data: {
         amount: req.body.amount,
@@ -962,10 +968,9 @@ const postPayRecurring = async (req, res, next) => {
           },
         },
         date: new Date(),
-        month: month,
-        year: year,
+        // month: month,
+        // year: year,
         status: status,
-        recipient: expenses.recipient,
         recurringExpenseId: parseInt(id),
         user: {
           connect: {

@@ -67,31 +67,36 @@ model Asset {
 }
 
 model Expense {
-  id          Int      @id @default(autoincrement())
-  date        DateTime
-  categoryId  Int
-  description String
-  amount      Float
-  assetId     Int?
-  userId      Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  isDeleted   Boolean  @default(false)
+  id                  Int       @id @default(autoincrement())
+  date                DateTime
+  categoryId          Int
+  description         String
+  amount              Float
+  assetId             Int?
+  userId              Int
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  isDeleted           Boolean   @default(false)
 
-  isScheduled       Boolean   @default(false)
-  scheduleStartDate DateTime?
-  originalExpenseId Int?
-  dueDate           DateTime?
-  recurring         Boolean   @default(false)
-  status            String?
+  isScheduled         Boolean   @default(false)
+  scheduleStartDate   DateTime?
+  dueDate             DateTime?
+  recurring           Boolean   @default(false)
+  frequencyId         Int?
+  status              String?
 
-  frequencyId        Int?
-  category           Category             @relation(fields: [categoryId], references: [id])
-  frequency          Frequency?           @relation(fields: [frequencyId], references: [id])
-  asset              Asset?               @relation(fields: [assetId], references: [id])
-  user               User                 @relation(fields: [userId], references: [id])
-  transactionHistory TransactionHistory[]
+  // Installment Support
+  installmentMonths   Int?
+  currentInstallment  Int?
+  originalExpenseId   Int?
+
+  category            Category             @relation(fields: [categoryId], references: [id])
+  frequency           Frequency?           @relation(fields: [frequencyId], references: [id])
+  asset               Asset?               @relation(fields: [assetId], references: [id])
+  user                User                 @relation(fields: [userId], references: [id])
+  transactionHistory  TransactionHistory[]
 }
+
 
 model Frequency {
   id        Int       @id @default(autoincrement())
