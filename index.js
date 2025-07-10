@@ -24,10 +24,10 @@ app.use(express.json());
 runPassport(app);
 runRouters(app);
 
-// app.listen(port, () => {
-//   console.log(`Server started on port ${port}`);
-// });
-
-app.listen(5000, host, () => {
+app.listen(port, () => {
   console.log(`Server started on port ${port}`);
 });
+
+// app.listen(5000, host, () => {
+//   console.log(`Server started on port ${port}`);
+// });
