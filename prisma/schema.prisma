@@ -33,15 +33,17 @@ model User {
 }
 
 model Transfer {
-  id          Int      @id @default(autoincrement())
+  id          Int     @id @default(autoincrement())
   userId      Int
   fromAssetId Int
   toAssetId   Int
   amount      Float
   description String?
-  date        DateTime @default(now())
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  image       String?
+
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   user      User  @relation(fields: [userId], references: [id])
   fromAsset Asset @relation("FromAsset", fields: [fromAssetId], references: [id])
@@ -67,36 +69,36 @@ model Asset {
 }
 
 model Expense {
-  id                  Int       @id @default(autoincrement())
-  date                DateTime
-  categoryId          Int
-  description         String
-  amount              Float
-  assetId             Int?
-  userId              Int
-  createdAt           DateTime  @default(now())
-  updatedAt           DateTime  @updatedAt
-  isDeleted           Boolean   @default(false)
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  categoryId  Int
+  description String
+  amount      Float
+  assetId     Int?
+  image       String?
+  userId      Int
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  isDeleted   Boolean  @default(false)
 
-  isScheduled         Boolean   @default(false)
-  scheduleStartDate   DateTime?
-  dueDate             DateTime?
-  recurring           Boolean   @default(false)
-  frequencyId         Int?
-  status              String?
+  isScheduled       Boolean   @default(false)
+  scheduleStartDate DateTime?
+  dueDate           DateTime?
+  recurring         Boolean   @default(false)
+  frequencyId       Int?
+  status            String?
 
   // Installment Support
-  installmentMonths   Int?
-  currentInstallment  Int?
-  originalExpenseId   Int?
+  installmentMonths  Int?
+  currentInstallment Int?
+  originalExpenseId  Int?
 
-  category            Category             @relation(fields: [categoryId], references: [id])
-  frequency           Frequency?           @relation(fields: [frequencyId], references: [id])
-  asset               Asset?               @relation(fields: [assetId], references: [id])
-  user                User                 @relation(fields: [userId], references: [id])
-  transactionHistory  TransactionHistory[]
+  category           Category             @relation(fields: [categoryId], references: [id])
+  frequency          Frequency?           @relation(fields: [frequencyId], references: [id])
+  asset              Asset?               @relation(fields: [assetId], references: [id])
+  user               User                 @relation(fields: [userId], references: [id])
+  transactionHistory TransactionHistory[]
 }
-
 
 model Frequency {
   id        Int       @id @default(autoincrement())
@@ -128,13 +130,15 @@ model Income {
   description String?
   amount      Float
   assetId     Int?
-  userId      Int
-  status      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  category    Category @relation(fields: [categoryId], references: [id])
-  asset       Asset?   @relation(fields: [assetId], references: [id])
-  user        User     @relation(fields: [userId], references: [id])
+  image       String?
+
+  userId    Int
+  status    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  category  Category @relation(fields: [categoryId], references: [id])
+  asset     Asset?   @relation(fields: [assetId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 
   transactionHistory TransactionHistory[]
 }

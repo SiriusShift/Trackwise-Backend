@@ -31,6 +31,7 @@ const uploadBase64ToS3 = async (base64Image, fileName, folder) => {
 
     // Convert to Buffer
     const imageBuffer = Buffer.from(base64Data, "base64");
+    console.log("34: ",imageBuffer)
 
     // Upload parameters
     const uploadParams = {

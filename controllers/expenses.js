@@ -2,35 +2,19 @@ const { PrismaClient } = require("@prisma/client");
 // const { skip } = require("@prisma/client/runtime/library");
 const prisma = new PrismaClient();
 const moment = require("moment");
+const { uploadBase64ToS3 } = require("../services/awsS3");
 
 const postExpense = async (req, res, next) => {
   try {
-    console.log("date: ", req.body.date);
+    console.log("date: ", req.user);
     // Check if the expense already exists (you can customize the uniqueness criteria)
-    const existingExpense = await prisma.expense.findFirst({
-      where: {
-        amount: req.body.amount,
-        description: req.body.description,
-        categoryId: req.body.category,
-        date: req.body.date,
-        userId: req.user.id, // Assuming user is authenticated and available via req.user.id
-      },
-    });
-
-    // If an expense with the same details already exists, return an error
-    if (existingExpense) {
-      return res.status(400).json({
-        success: false,
-        message: "Duplicate expense found. This expense already exists.",
-      });
-    }
-
     // Ensure the category exists
     const category = await prisma.category.findFirst({
       where: {
         id: req.body.category,
       },
     });
+
 
     if (!category) {
       return res.status(400).json({
@@ -61,12 +45,23 @@ const postExpense = async (req, res, next) => {
       });
     }
 
+    const image = req.body.image
+      ? await uploadBase64ToS3(
+          req.body.image,
+          `${req.user.username}_image_${Date.now()}`,
+          "Expense"
+        )
+      : null;
+    
+    console.log("image :",image)
+
     // Create the expense
     const expense = await prisma.expense.create({
       data: {
         amount: req.body.amount,
         description: req.body.description,
         recurring: req.body.recurring,
+        image: image,
         isScheduled: req.body.date > new Date(),
         ...(req.body.frequency && {
           frequency: {
@@ -74,6 +69,9 @@ const postExpense = async (req, res, next) => {
               id: req.body.frequency.id,
             },
           },
+        }),
+        ...(req.body.image && {
+          image: image
         }),
         ...(req.body.months && {
           installmentMonths: req.body.months,
@@ -171,13 +169,11 @@ const updateExpense = async (req, res, next) => {
         },
       });
 
-      return res
-        .status(200)
-        .json({
-          success: true,
-          message: "Recurring expense updated successfully",
-          data,
-        });
+      return res.status(200).json({
+        success: true,
+        message: "Recurring expense updated successfully",
+        data,
+      });
     }
     const expense = await prisma.expense.update({
       where: { id: parseInt(id) },
@@ -439,7 +435,9 @@ const getExpenses = async (req, res, next) => {
             },
           }
         : {}),
-      ...(startDate && !endDate ? { date: { gte: moment(startDate).startOf("day") } } : {}),
+      ...(startDate && !endDate
+        ? { date: { gte: moment(startDate).startOf("day") } }
+        : {}),
       isDeleted: false,
     };
 
@@ -782,7 +780,8 @@ const getAllExpenseLimit = async (req, res, next) => {
             expenses: {
               where: {
                 date: {
-                  gte: new Date(startDate), lte: new Date(endDate)
+                  gte: new Date(startDate),
+                  lte: new Date(endDate),
                 },
                 isDeleted: false,
                 // isRecurring: false,
