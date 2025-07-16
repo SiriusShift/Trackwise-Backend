@@ -2,7 +2,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const createCategory = async (req, res, next) => {
   try {
-    console.log(req.body)
+    console.log(req.body);
     const categories = req.body; // Expect an array of objects: [{ name, type }, ...]
 
     if (!Array.isArray(categories) || categories.length === 0) {
@@ -13,7 +13,7 @@ const createCategory = async (req, res, next) => {
     }
 
     // Use Prisma's createMany to insert multiple categories at once
-    const result = await prisma.category.createMany({
+    const result = await prisma.categories.createMany({
       data: categories,
       skipDuplicates: true, // Optional: Avoid errors if there are duplicates
     });
@@ -38,11 +38,11 @@ const getAllCategory = async (req, res, next) => {
 
   try {
     // If type is not provided or is an empty string, don't apply the filter
-    const categories = await prisma.category.findMany({
+    const categories = await prisma.categories.findMany({
       where: {
         ...(type && type !== "" ? { type: type } : {}),
         isActive: true,
-      }
+      },
     });
 
     res.status(200).json({

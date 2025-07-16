@@ -28,8 +28,7 @@ model User {
   transactionHistory TransactionHistory[]
   categoriesTracker  CategoryTracker[]
   transfer           Transfer[]
-
-  @@map("users")
+  Categories         Categories[]
 }
 
 model Transfer {
@@ -48,6 +47,8 @@ model Transfer {
   user      User  @relation(fields: [userId], references: [id])
   fromAsset Asset @relation("FromAsset", fields: [fromAssetId], references: [id])
   toAsset   Asset @relation("ToAsset", fields: [toAssetId], references: [id])
+
+  @@index([userId])
 }
 
 model Asset {
@@ -66,6 +67,8 @@ model Asset {
   receivedTransfers          Transfer[]           @relation("ToAsset") // Matches toAsset in Transfer
   sentTransactionHistory     TransactionHistory[] @relation("TH_FromAsset")
   receivedTransactionHistory TransactionHistory[] @relation("TH_ToAsset")
+
+  @@index([userId])
 }
 
 model Expense {
@@ -85,7 +88,6 @@ model Expense {
   scheduleStartDate DateTime?
   dueDate           DateTime?
   recurring         Boolean   @default(false)
-  frequencyId       Int?
   status            String?
 
   // Installment Support
@@ -93,24 +95,15 @@ model Expense {
   currentInstallment Int?
   originalExpenseId  Int?
 
-  category           Category             @relation(fields: [categoryId], references: [id])
-  frequency          Frequency?           @relation(fields: [frequencyId], references: [id])
+  category           Categories           @relation(fields: [categoryId], references: [id])
   asset              Asset?               @relation(fields: [assetId], references: [id])
   user               User                 @relation(fields: [userId], references: [id])
   transactionHistory TransactionHistory[]
+
+  @@index([userId])
 }
 
-model Frequency {
-  id        Int       @id @default(autoincrement())
-  name      String
-  interval  Int?
-  unit      String?
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  Expense   Expense[]
-}
-
-model Category {
+model Categories {
   id                Int               @id @default(autoincrement())
   name              String
   type              String
@@ -118,9 +111,14 @@ model Category {
   isActive          Boolean           @default(true)
   createdAt         DateTime          @default(now())
   updatedAt         DateTime          @updatedAt
+  userId            Int?
   expenses          Expense[]
   incomes           Income[]
   categoriesTracker CategoryTracker[]
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model Income {
@@ -134,13 +132,15 @@ model Income {
 
   userId    Int
   status    String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  category  Category @relation(fields: [categoryId], references: [id])
-  asset     Asset?   @relation(fields: [assetId], references: [id])
-  user      User     @relation(fields: [userId], references: [id])
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  category  Categories @relation(fields: [categoryId], references: [id])
+  asset     Asset?     @relation(fields: [assetId], references: [id])
+  user      User       @relation(fields: [userId], references: [id])
 
   transactionHistory TransactionHistory[]
+
+  @@index([userId])
 }
 
 model TransactionHistory {
@@ -162,6 +162,8 @@ model TransactionHistory {
   expense         Expense? @relation(fields: [expenseId], references: [id])
   user            User     @relation(fields: [userId], references: [id])
   income          Income?  @relation(fields: [incomeId], references: [id])
+
+  @@index([userId])
 }
 
 model EmailVerification {
@@ -183,8 +185,10 @@ model CategoryTracker {
   categoryId Int
   isActive   Boolean @default(true)
 
-  category Category @relation(fields: [categoryId], references: [id])
-  user     User     @relation(fields: [userId], references: [id])
+  category Categories @relation(fields: [categoryId], references: [id])
+  user     User       @relation(fields: [userId], references: [id])
+
+  @@index([userId])
 }
 
 model ResetToken {
@@ -196,4 +200,5 @@ model ResetToken {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([token])
+  @@index([userId])
 }

@@ -4,7 +4,8 @@ const prisma = new PrismaClient();
 const moment = require("moment");
 
 const createAsset = async (req, res, next) => {
-  const { name, balance, user } = req.body;
+  console.log(req.query);
+  const { name, balance } = req.body;
 
   const data = await prisma.asset.create({
     data: {
@@ -12,7 +13,7 @@ const createAsset = async (req, res, next) => {
       balance,
       user: {
         connect: {
-          id: user.id,
+          id: req.user.id,
         },
       },
     },
@@ -81,7 +82,7 @@ const getAssetRemainingBalance = async (req, res) => {
             assetId: true,
             status: true,
           },
-        }
+        },
       },
     });
 
