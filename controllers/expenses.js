@@ -9,7 +9,7 @@ const postExpense = async (req, res, next) => {
     console.log("date: ", req.user);
     // Check if the expense already exists (you can customize the uniqueness criteria)
     // Ensure the category exists
-    const category = await prisma.category.findFirst({
+    const category = await prisma.categories.findFirst({
       where: {
         id: req.body.category,
       },
@@ -62,22 +62,6 @@ const postExpense = async (req, res, next) => {
         description: req.body.description,
         recurring: req.body.recurring,
         image: image,
-        isScheduled: req.body.date > new Date(),
-        ...(req.body.frequency && {
-          frequency: {
-            connect: {
-              id: req.body.frequency.id,
-            },
-          },
-        }),
-        ...(req.body.image && {
-          image: image
-        }),
-        ...(req.body.months && {
-          installmentMonths: req.body.months,
-          currentInstallment: 1,
-          originalExpenseId: null,
-        }),
         status: req.body.date > new Date() ? "Unpaid" : "Paid",
         category: {
           connect: {
@@ -352,7 +336,7 @@ const deleteExpense = async (req, res, next) => {
 
 const postRecurringExpense = async (req, res, next) => {
   try {
-    await prisma.category
+    await prisma.categories
       .findFirst({
         where: {
           id: req.body.category.id,
@@ -426,7 +410,6 @@ const getExpenses = async (req, res, next) => {
   try {
     const filters = {
       userId: parseInt(req.user.id),
-      frequency: null,
       ...(startDate && endDate
         ? {
             date: {
@@ -475,7 +458,7 @@ const getExpenses = async (req, res, next) => {
           const asset = await prisma.asset.findFirst({
             where: { id: expense.sourceId },
           });
-          const category = await prisma.category.findFirst({
+          const category = await prisma.categories.findFirst({
             where: { id: expense.categoryId },
           });
 
@@ -511,7 +494,6 @@ const getDetailedExpenses = async (req, res, next) => {
   try {
     const filters = {
       userId: parseInt(req.user.id),
-      frequency: null,
       date: {
         gte: new Date(startDate),
         lte: new Date(endDate),
@@ -521,7 +503,6 @@ const getDetailedExpenses = async (req, res, next) => {
     const groupedExpenses = await prisma.expense.groupBy({
       where: {
         userId: parseInt(req.user.id),
-        frequency: null,
         isDeleted: false,
         date: {
           gte: (() => {
@@ -550,7 +531,7 @@ const getDetailedExpenses = async (req, res, next) => {
 
     const detailedCategoryExpenses = await Promise.all(
       categoryExpenses.map(async (item) => {
-        const category = await prisma.category.findFirst({
+        const category = await prisma.categories.findFirst({
           where: { id: item.categoryId },
         });
         return {
@@ -668,7 +649,7 @@ const getRecurringExpenses = async (req, res, next) => {
     // Fetch additional details for each expense
     const detailedExpenses = await Promise.all(
       recurringExpenses.map(async (expense) => {
-        const category = await prisma.category.findFirst({
+        const category = await prisma.categories.findFirst({
           where: { id: expense.categoryId },
         });
         const frequency = await prisma.frequency.findFirst({

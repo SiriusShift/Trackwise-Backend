@@ -154,7 +154,6 @@ model Installment {
   dueDate   DateTime
   amount    Float
   status    String // "pending", "paid", etc.
-  expenseId Int? // FK to Expense once paid
 
   plan    InstallmentPlan @relation(fields: [planId], references: [id])
   expense Expense[]
