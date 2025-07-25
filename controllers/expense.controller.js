@@ -156,7 +156,7 @@ const updateExpense = async (req, res, next) => {
           `${req.user.username}_image_${Date.now()}`,
           "Expense"
         )
-      : null;
+      : expense?.image;
 
     const expenseUpdate = await prisma.expense.update({
       where: { id: parseInt(id) },
