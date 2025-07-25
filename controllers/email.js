@@ -3,7 +3,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const crypto = require("crypto");
 const { decryptString, generateToken } = require("../utils/customFunction");
-const { sendEmail, verifyEmailAddress } = require("../utils/emailService");
+const { sendEmail, verifyEmailAddress } = require("../services/ses.service");
 
 const year = new Date().getFullYear();
 
