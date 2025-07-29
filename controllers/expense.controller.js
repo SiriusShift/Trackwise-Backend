@@ -2,7 +2,7 @@ const { PrismaClient } = require("@prisma/client");
 // const { skip } = require("@prisma/client/runtime/library");
 const prisma = new PrismaClient();
 const moment = require("moment");
-const { uploadBase64ToS3 } = require("../services/s3.service");
+const { uploadBase64ToS3, uploadFileToS3 } = require("../services/s3.service");
 const expenseService = require("../services/expense.service");
 
 const getExpenses = async (req, res, next) => {
@@ -32,12 +32,16 @@ const getExpenses = async (req, res, next) => {
 
 const postExpense = async (req, res, next) => {
   try {
-    console.log("date: ", req.user);
+    console.log(req.file);
+
+    const amount = parseInt(req.body.amount);
+    const categoryId = parseInt(req.body.category);
+    const assetId = parseInt(req.body.source);
     // Check if the expense already exists (you can customize the uniqueness criteria)
     // Ensure the category exists
     const category = await prisma.categories.findFirst({
       where: {
-        id: req.body.category,
+        id: categoryId,
       },
     });
 
@@ -51,7 +55,7 @@ const postExpense = async (req, res, next) => {
     // Ensure the source asset exists
     const asset = await prisma.asset.findFirst({
       where: {
-        id: req.body.source,
+        id: assetId,
       },
     });
 
@@ -63,19 +67,15 @@ const postExpense = async (req, res, next) => {
     }
 
     // Check if the balance is sufficient
-    if (asset.balance < req.body.amount) {
+    if (asset.balance < amount) {
       return res.status(400).json({
         success: false,
         message: "Insufficient balance",
       });
     }
 
-    const image = req.body.image
-      ? await uploadBase64ToS3(
-          req.body.image,
-          `${req.user.username}_image_${Date.now()}`,
-          "Expense"
-        )
+    const image = req.file
+      ? await uploadFileToS3(req.file, "Expense", req.user.id)
       : null;
 
     console.log("image :", image);
@@ -83,19 +83,18 @@ const postExpense = async (req, res, next) => {
     // Create the expense
     const expense = await prisma.expense.create({
       data: {
-        amount: req.body.amount,
+        amount: amount,
         description: req.body.description,
-        recurring: req.body.recurring,
         image: image,
         status: req.body.date > new Date() ? "Unpaid" : "Paid",
         category: {
           connect: {
-            id: req.body.category,
+            id: categoryId,
           },
         },
         asset: {
           connect: {
-            id: req.body.source,
+            id: assetId,
           },
         },
         date: req.body.date,
@@ -112,9 +111,9 @@ const postExpense = async (req, res, next) => {
       data: {
         expenseId: expense.id,
         userId: req.user.id,
-        fromAssetId: req.body.source,
+        fromAssetId: assetId,
         transactionType: "Expense",
-        amount: req.body.amount,
+        amount: amount,
         description: req.body.description,
         date: req.body.date,
       },
@@ -150,13 +149,14 @@ const updateExpense = async (req, res, next) => {
       });
     }
 
-    const image = req.body.image !== expense?.image
-      ? await uploadBase64ToS3(
-          req.body.image,
-          `${req.user.username}_image_${Date.now()}`,
-          "Expense"
-        )
-      : expense?.image;
+    const image =
+      req.body.image !== expense?.image
+        ? await uploadBase64ToS3(
+            req.body.image,
+            `${req.user.username}_image_${Date.now()}`,
+            "Expense"
+          )
+        : expense?.image;
 
     const expenseUpdate = await prisma.expense.update({
       where: { id: parseInt(id) },

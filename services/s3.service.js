@@ -1,4 +1,4 @@
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3")
+const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
 
 const s3 = new S3Client({
   credentials: {
@@ -31,7 +31,7 @@ const uploadBase64ToS3 = async (base64Image, fileName, folder) => {
 
     // Convert to Buffer
     const imageBuffer = Buffer.from(base64Data, "base64");
-    console.log("34: ",imageBuffer)
+    console.log("34: ", imageBuffer);
 
     // Upload parameters
     const uploadParams = {
@@ -55,6 +55,31 @@ const uploadBase64ToS3 = async (base64Image, fileName, folder) => {
   }
 };
 
+const uploadFileToS3 = async (file, folder, id) => {
+  const key = `users/${id}/${folder}/${file.originalname}`;
+
+  const params = {
+    Bucket: process.env.AWS_S3_BUCKET_NAME,
+    Key: key, // ✅ correct path
+    Body: file.buffer,
+    ContentType: file.mimetype, // Optional: helps S3 serve the file properly
+    ACL: "public-read", // Optional: make file publicly accessible
+  };
+
+  try {
+    const command = new PutObjectCommand(params);
+    const response = await s3.send(command);
+    console.log("S3 Upload Success:", response);
+
+    return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  } catch (error) {
+    console.error(error);
+    alert("Error uploading file: " + error.message);
+    return null;
+  }
+};
+
 module.exports = {
   uploadBase64ToS3,
+  uploadFileToS3,
 };
