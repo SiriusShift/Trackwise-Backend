@@ -5,7 +5,7 @@ const passport = require("passport");
 const { decryptString } = require("../utils/customFunction");
 
 const register = async (req, res, next) => {
-  const { email, password, username, firstName, lastName, otp } = req.body;
+  const { email, password, timezone, username, firstName, lastName, otp } = req.body;
   const code = await prisma.emailVerification.findFirst({
     where: {
       email,
@@ -77,7 +77,12 @@ const register = async (req, res, next) => {
       password: hashedPassword,
     },
   });
-  console.log(user)
+  const settings = await prisma.settings.create({
+    data: {
+      timezone: timezone
+    }
+  })
+  console.log(user);
   await prisma.emailVerification.update({
     where: {
       id: code.id,
@@ -99,31 +104,29 @@ const register = async (req, res, next) => {
 };
 
 const login = async (req, res, next) => {
-  console.log(req.user)
-  console.log("login authenticated: ",req.isAuthenticated())
-  console.log("login req.session: ",req.session)
-  return res.status(200).json({ message: 'Login successful' });
-}
+  console.log(req.user);
+  console.log("login authenticated: ", req.isAuthenticated());
+  console.log("login req.session: ", req.session);
+  return res.status(200).json({ message: "Login successful" });
+};
 
 const resetPassword = async (req, res, next) => {
   const { id, password, token } = req.body;
-  console.log(id,password,token)
+  console.log(id, password, token);
   const hashedPassword = await bcrypt.hash(password, 10);
   const findToken = await prisma.resetToken.findFirst({
     where: {
       token: token,
       userId: id,
     },
-  })
+  });
 
-  
   if (!findToken) {
     return res.status(400).json({
       success: false,
       message: "Invalid token",
     });
   }
-
 
   const currentTime = new Date();
   if (currentTime > findToken.expiresAt) {
@@ -135,42 +138,57 @@ const resetPassword = async (req, res, next) => {
 
   await prisma.user.update({
     where: {
-      id: id
+      id: id,
     },
     data: {
       password: hashedPassword,
     },
-  })
+  });
 
   await prisma.resetToken.delete({
     where: {
-      token: token
-    }
-  })
+      token: token,
+    },
+  });
 
   return res.status(200).json({
     success: true,
     message: "Password reset successful",
   });
-}
+};
 
-const isAuthenticated = (req, res, next) => {
-  console.log("authenticated1: ",req.isAuthenticated())
-  console.log("req.session1: ",req.session)
+const isAuthenticated = async (req, res, next) => {
+  console.log("authenticated1: ", req.isAuthenticated());
+  console.log("req.session1: ", req.session);
   if (req.isAuthenticated()) {
-    return res.status(200).json({ authenticated: true, user: {
-      id: req.user.id,
-      firstName: req.user.firstName,
-      lastName: req.user.lastName,
-      email: req.user.email,
-      username: req.user.username,
-      role: req.user.role,
-      phoneNumber: req.user.phoneNumber,
-      profileImage: req.user.profileImageUrl
-    } });
+    const settings = await prisma.settings.findFirst({
+      where: {
+        userId: req.user.id,
+      },
+      select: {
+        timezone: true,
+        timeFormat: true
+      }
+    });
+    return res.status(200).json({
+      authenticated: true,
+      user: {
+        id: req.user.id,
+        firstName: req.user.firstName,
+        lastName: req.user.lastName,
+        email: req.user.email,
+        username: req.user.username,
+        role: req.user.role,
+        phoneNumber: req.user.phoneNumber,
+        profileImage: req.user.profileImageUrl,
+      },
+      settings: settings,
+    });
   }
-  return res.status(401).json({ authenticated: false, message: "Unauthorized" });
-}
+  return res
+    .status(401)
+    .json({ authenticated: false, message: "Unauthorized" });
+};
 
 const logout = (req, res, next) => {
   req.logout((err) => {
@@ -180,17 +198,16 @@ const logout = (req, res, next) => {
     console.log(req.isAuthenticated());
     console.log(req.session);
     req.session.destroy(() => {
-      res.clearCookie('trackwise_session'); // Clear the session cookie
+      res.clearCookie("trackwise_session"); // Clear the session cookie
       res.status(200).json({ message: "Logout successful" });
     });
   });
-}
-
+};
 
 module.exports = {
   register,
   login,
   resetPassword,
   isAuthenticated,
-  logout
+  logout,
 };

@@ -31,6 +31,7 @@ model User {
   Categories         Categories[]
   RecurringExpense   RecurringExpense[]
   InstallmentPlan    InstallmentPlan[]
+  settings           Settings[]
 }
 
 model Transfer {
@@ -149,11 +150,11 @@ model InstallmentPlan {
 }
 
 model Installment {
-  id        Int      @id @default(autoincrement())
-  planId    Int
-  dueDate   DateTime
-  amount    Float
-  status    String // "pending", "paid", etc.
+  id      Int      @id @default(autoincrement())
+  planId  Int
+  dueDate DateTime
+  amount  Float
+  status  String // "pending", "paid", etc.
 
   plan    InstallmentPlan @relation(fields: [planId], references: [id])
   expense Expense[]
@@ -177,6 +178,15 @@ model Categories {
   InstallmentPlan  InstallmentPlan[]
 
   @@index([userId])
+}
+
+model Settings {
+  id         Int    @id @default(autoincrement())
+  timezone   String @default("Asia/Manila")
+  timeFormat String @default("hh:mm A")
+  userId     Int
+  
+  user     User       @relation(fields: [userId], references: [id])
 }
 
 model Income {
