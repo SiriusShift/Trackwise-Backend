@@ -2,7 +2,11 @@ const { PrismaClient } = require("@prisma/client");
 // const { skip } = require("@prisma/client/runtime/library");
 const prisma = new PrismaClient();
 const moment = require("moment");
-const { uploadBase64ToS3, uploadFileToS3 } = require("../services/s3.service");
+const {
+  uploadBase64ToS3,
+  uploadFileToS3,
+  deleteFileFromS3,
+} = require("../services/s3.service");
 const expenseService = require("../services/expense.service");
 
 const getExpenses = async (req, res, next) => {
@@ -134,6 +138,7 @@ const postExpense = async (req, res, next) => {
 };
 
 const updateExpense = async (req, res, next) => {
+  console.log(req.file);
   const { id } = req.params;
   console.log(req.body);
   try {
@@ -149,14 +154,18 @@ const updateExpense = async (req, res, next) => {
       });
     }
 
-    const image =
-      req.body.image !== expense?.image
-        ? await uploadBase64ToS3(
-            req.body.image,
-            `${req.user.username}_image_${Date.now()}`,
-            "Expense"
-          )
-        : expense?.image;
+    let image;
+
+    if (req.file) {
+      image = await uploadFileToS3(req.file, "Expense", req.user.id);
+      await deleteFileFromS3(expense?.image);
+    } else if (req.body?.image) {
+      image = expense?.image;
+    } else {
+      image = await deleteFileFromS3(expense?.image);
+    }
+
+    console.log("image: ", image);
 
     const expenseUpdate = await prisma.expense.update({
       where: { id: parseInt(id) },

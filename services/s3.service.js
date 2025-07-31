@@ -79,7 +79,29 @@ const uploadFileToS3 = async (file, folder, id) => {
   }
 };
 
+const deleteFileFromS3 = async (url) => {
+  try {
+    const key = url.split(
+      "https://trackwise-bucket.s3.ap-southeast-1.amazonaws.com/"
+    )[1];
+    const response = s3.deleteObject(
+      { Bucket: process.env.AWS_S3_BUCKET_NAME, Key: key },
+      (err, data) => {
+        console.error(err);
+        console.log(data);
+      }
+    );
+    console.log("Successfully deleted file", response)
+    return null;
+  } catch (err) {
+    console.error(err);
+    alert("Error deleting file: " + err.message);
+    return null;
+  }
+};
+
 module.exports = {
   uploadBase64ToS3,
   uploadFileToS3,
+  deleteFileFromS3
 };
