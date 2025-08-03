@@ -3,7 +3,15 @@ const prisma = new PrismaClient();
 const moment = require("moment");
 
 const getExpenses = async (userId, query) => {
-  const { Search, pageIndex, pageSize, Categories, startDate, endDate } = query;
+  const {
+    search,
+    pageIndex,
+    pageSize,
+    Categories,
+    startDate,
+    endDate,
+    status,
+  } = query;
 
   const page = parseInt(pageIndex) >= 0 ? parseInt(pageIndex) + 1 : 1;
   const size = parseInt(pageSize) > 0 ? parseInt(pageSize) : 10;
@@ -22,10 +30,16 @@ const getExpenses = async (userId, query) => {
     isDeleted: false,
   };
 
-  if (Search) {
+  if (search) {
     filters.description = {
-      startsWith: Search,
+      startsWith: search,
       mode: "insensitive",
+    };
+  }
+
+  if (status) {
+    filters.status = {
+      startsWith: status,
     };
   }
 

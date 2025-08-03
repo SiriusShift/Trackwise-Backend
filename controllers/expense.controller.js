@@ -170,19 +170,19 @@ const updateExpense = async (req, res, next) => {
     const expenseUpdate = await prisma.expense.update({
       where: { id: parseInt(id) },
       data: {
-        amount: req.body.amount,
+        amount: parseInt(req.body.amount),
         description: req.body.description,
         recurring: req.body.recurring,
         image: image,
         status: req.body.date > new Date() ? "Unpaid" : "Paid",
         category: {
           connect: {
-            id: req.body.category?.id,
+            id: parseInt(req.body.category),
           },
         },
         asset: {
           connect: {
-            id: req.body.source?.id,
+            id: parseInt(req.body.source),
           },
         },
         date: req.body.date,
@@ -202,7 +202,7 @@ const updateExpense = async (req, res, next) => {
     await prisma.transactionHistory.update({
       where: { id: parseInt(transaction?.id) },
       data: {
-        amount: req.body.amount,
+        amount: parseInt(req.body.amount),
         description: req.body.description,
         date: req.body.date,
         updatedAt: new Date(),
@@ -552,32 +552,46 @@ const deleteExpenseLimit = async (req, res, next) => {
 
 // Expense Graph
 const getDetailedExpenses = async (req, res, next) => {
-  const { startDate, endDate } = req.query;
+  const { startDate, endDate, mode } = req.query;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
+  console.log(start, end);
 
   try {
     const filters = {
       userId: parseInt(req.user.id),
       date: {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
+        gte: start,
+        lte: end,
       },
       isDeleted: false,
     };
-    const groupedExpenses = await prisma.expense.groupBy({
-      where: {
-        userId: parseInt(req.user.id),
-        isDeleted: false,
-        date: {
-          gte: (() => {
-            const date = new Date(startDate);
-            date.setMonth(date.getMonth() - 1); // Subtract 1 month
-            return date;
-          })(),
-          lte: new Date(endDate),
-        },
-      },
-      _sum: { amount: true },
-    });
+    console.log("filters", filters);
+    const groupedExpenses = await prisma.$queryRawUnsafe(
+      `      SELECT 
+        date_trunc('${mode}', "date") AS "${mode}",
+        sum(amount) AS total
+      FROM "Expense"
+      WHERE "createdAt" >= '2025-06-30T16:00:00.000Z'::timestamp AND "createdAt" <= '2025-08-31T15:59:59.000Z'::timestamp AND "isDeleted" = false
+      GROUP BY "${mode}", "amount"
+      ORDER BY "${mode}"`
+    );
+    console.log(groupedExpenses);
+    // const groupedExpenses = await prisma.expense.groupBy({
+    //   where: {
+    //     userId: parseInt(req.user.id),
+    //     isDeleted: false,
+    //     date: {
+    //       gte: (() => {
+    //         const date = start;
+    //         date.setMonth(date.getMonth() - 1); // Subtract 1 month
+    //         return date;
+    //       })(),
+    //       lte: end,
+    //     },
+    //   },
+    //   _sum: { amount: true },
+    // });
     console.log("group expense!", groupedExpenses);
 
     const trend = (

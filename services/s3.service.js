@@ -1,4 +1,8 @@
-const { S3Client, PutObjectCommand } = require("@aws-sdk/client-s3");
+const {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+} = require("@aws-sdk/client-s3");
 
 const s3 = new S3Client({
   credentials: {
@@ -84,14 +88,14 @@ const deleteFileFromS3 = async (url) => {
     const key = url.split(
       "https://trackwise-bucket.s3.ap-southeast-1.amazonaws.com/"
     )[1];
-    const response = s3.deleteObject(
-      { Bucket: process.env.AWS_S3_BUCKET_NAME, Key: key },
-      (err, data) => {
-        console.error(err);
-        console.log(data);
-      }
-    );
-    console.log("Successfully deleted file", response)
+
+    const command = new DeleteObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Key: key,
+    });
+
+    const response = await s3.send(command);
+    console.log("Successfully deleted file", response);
     return null;
   } catch (err) {
     console.error(err);
@@ -103,5 +107,5 @@ const deleteFileFromS3 = async (url) => {
 module.exports = {
   uploadBase64ToS3,
   uploadFileToS3,
-  deleteFileFromS3
+  deleteFileFromS3,
 };
