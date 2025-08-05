@@ -6,8 +6,8 @@ const {
   uploadBase64ToS3,
   uploadFileToS3,
   deleteFileFromS3,
-} = require("../services/s3.service");
-const expenseService = require("../services/expense.service");
+} = require("../../services/s3.service");
+const expenseService = require("../../services/expense.service");
 
 const getExpenses = async (req, res, next) => {
   try {
@@ -341,228 +341,17 @@ const deleteExpense = async (req, res, next) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 };
-
-const addExpenseLimit = async (req, res, next) => {
-  try {
-    const { amount, categoryId } = req.body;
-    console.log(amount);
-    const expenseLimit = await prisma.categoryTracker.findFirst({
-      where: {
-        category: {
-          id: categoryId,
-        },
-        user: {
-          id: parseInt(req.user.id),
-        },
-        isActive: true,
-      },
-    });
-    if (expenseLimit) {
-      return res.status(400).json({
-        success: false,
-        message: "Expense limit already exists for this category",
-      });
-    }
-    await prisma.categoryTracker.create({
-      data: {
-        limit: amount,
-        category: {
-          connect: {
-            id: categoryId,
-          },
-        },
-        user: {
-          connect: {
-            id: parseInt(req.user.id),
-          },
-        },
-      },
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Expense limit added successfully",
-    });
-  } catch (err) {
-    console.error("Error while fetching expenses", err);
-    res.status(500).json({
-      error: "Internal server error",
-    });
-  }
-};
-
-const getAllExpenseLimit = async (req, res, next) => {
-  const { startDate, endDate } = req.query;
-  try {
-    const categoryTracker = await prisma.categoryTracker.findMany({
-      where: {
-        user: {
-          id: parseInt(req.user.id),
-          isActive: true,
-        },
-        category: {
-          type: "Expense",
-        },
-        isActive: true,
-        limit: { not: null }, // Filter categories that have a limit
-      },
-      select: {
-        id: true,
-        limit: true,
-        userId: true,
-        category: {
-          select: {
-            id: true,
-            name: true,
-            icon: true,
-            type: true,
-            expenses: {
-              where: {
-                date: {
-                  gte: new Date(startDate),
-                  lte: new Date(endDate),
-                },
-                isDeleted: false,
-                // isRecurring: false,
-                userId: parseInt(req.user.id),
-              },
-              select: {
-                amount: true,
-              },
-            },
-          },
-        },
-      },
-      orderBy: {
-        category: {
-          name: "asc",
-        },
-      },
-    });
-    console.log("test: ", categoryTracker);
-    // const categories = await prisma.categoryTracker.findMany({
-    //   where: {
-    //     user: {
-    //       id: parseInt(req.user.id),
-    //     },
-    //     limit: { not: null }, // Filter categories that have a limit
-    //   },
-    //   select: {
-    //     id: true,
-    //     name: true,
-    //     icon: true,
-    //     limit: true,
-    //     expenses: {
-    //       where: {
-    //         date: {
-    //           gte: new Date(startDate),
-    //           lte: new Date(endDate),
-    //         },
-    //         userId: parseInt(req.user.id),
-    //       },
-    //       select: {
-    //         amount: true,
-    //       },
-    //     },
-    //   },
-    // });
-
-    // Calculate total expenses per category
-    const result = categoryTracker.map((category) => {
-      console.log("Category Tracker : ", category);
-      const totalExpense = category.category.expenses.reduce(
-        (sum, expense) => sum + expense.amount,
-        0
-      );
-      return {
-        id: category.id,
-        category: category.category,
-        value: category.limit,
-        total: totalExpense,
-      };
-    });
-    console.log(result);
-
-    res.status(200).json({
-      success: true,
-      message: "Expense limit fetched successfully",
-      data: result,
-    });
-  } catch (error) {
-    console.error("Error while fetching expenses", error);
-    res.status(500).json({
-      error: "Internal server error",
-    });
-  }
-};
-
-const updateExpenseLimit = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    const { amount } = req.body;
-    console.log("amount", amount);
-    await prisma.categoryTracker.update({
-      where: {
-        id: parseInt(id),
-      },
-      data: {
-        limit: amount,
-      },
-    });
-    res.status(200).json({
-      success: true,
-      message: "Expense limit updated successfully",
-    });
-  } catch (err) {
-    console.error("Error while fetching expenses", err);
-    res.status(500).json({
-      error: "Internal server error",
-    });
-  }
-};
-
-const deleteExpenseLimit = async (req, res, next) => {
-  try {
-    const { id } = req.params;
-    if (!id) {
-      return res.status(400).json({
-        success: false,
-        message: "Expense limit not found",
-      });
-    }
-    await prisma.categoryTracker.update({
-      where: {
-        id: parseInt(id),
-      },
-      data: {
-        isActive: false,
-      },
-    });
-    res.status(200).json({
-      success: true,
-      message: "Expense limit deleted successfully",
-    });
-  } catch (err) {
-    console.error("Error while fetching expenses", err);
-    res.status(500).json({
-      error: "Internal server error",
-    });
-  }
-};
-
+  
 // Expense Graph
 const getDetailedExpenses = async (req, res, next) => {
   const { startDate, endDate, mode } = req.query;
-  const start = new Date(startDate);
-  const end = new Date(endDate);
-  console.log(start, end);
 
   try {
     const filters = {
       userId: parseInt(req.user.id),
       date: {
-        gte: start,
-        lte: end,
+        gte: startDate,
+        lte: endDate,
       },
       isDeleted: false,
     };
@@ -572,7 +361,7 @@ const getDetailedExpenses = async (req, res, next) => {
         date_trunc('${mode}', "date") AS "${mode}",
         sum(amount) AS total
       FROM "Expense"
-      WHERE "createdAt" >= '2025-06-30T16:00:00.000Z'::timestamp AND "createdAt" <= '2025-08-31T15:59:59.000Z'::timestamp AND "isDeleted" = false
+      WHERE "date" >= '${startDate}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isDeleted" = false
       GROUP BY "${mode}", "amount"
       ORDER BY "${mode}"`
     );
@@ -645,10 +434,7 @@ const getDetailedExpenses = async (req, res, next) => {
 module.exports = {
   postExpense,
   getExpenses,
-  addExpenseLimit,
-  getAllExpenseLimit,
-  updateExpenseLimit,
-  deleteExpenseLimit,
+ 
   getDetailedExpenses,
   deleteExpense,
   updateExpense,

@@ -6,7 +6,7 @@ const {
   deleteExpense,
   getDetailedExpenses,
   updateExpense,
-} = require("../controllers/expense.controller");
+} = require("../controllers/expenses/expense.controller");
 const { isLoggedIn } = require("../middleware/validate");
 const multer = require("multer");
 const upload = multer(); // For text-only formData, or configure for file uploads
