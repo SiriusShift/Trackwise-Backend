@@ -1,3 +1,6 @@
+const { PrismaClient } = require("@prisma/client");
+const prisma = new PrismaClient();
+
 const addExpenseLimit = async (req, res, next) => {
   try {
     const { amount, categoryId } = req.body;

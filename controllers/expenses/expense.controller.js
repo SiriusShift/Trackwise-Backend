@@ -7,9 +7,13 @@ const {
   uploadFileToS3,
   deleteFileFromS3,
 } = require("../../services/s3.service");
-const expenseService = require("../../services/expense.service");
+const {
+  getExpenses,
+  postExpense,
+  updateExpense,
+} = require("../../services/expense/expense.service");
 
-const getExpenses = async (req, res, next) => {
+const getExpensesController = async (req, res, next) => {
   try {
     if (!req.user?.id) {
       return res.status(400).json({
@@ -18,7 +22,7 @@ const getExpenses = async (req, res, next) => {
       });
     }
 
-    const result = await expenseService.getExpenses(req.user.id, req.query);
+    const result = await getExpenses(req.user.id, req.query);
 
     return res.status(200).json({
       success: true,
@@ -34,95 +38,9 @@ const getExpenses = async (req, res, next) => {
   }
 };
 
-const postExpense = async (req, res, next) => {
+const postExpenseController = async (req, res, next) => {
   try {
-    console.log(req.file);
-
-    const amount = parseInt(req.body.amount);
-    const categoryId = parseInt(req.body.category);
-    const assetId = parseInt(req.body.source);
-    // Check if the expense already exists (you can customize the uniqueness criteria)
-    // Ensure the category exists
-    const category = await prisma.categories.findFirst({
-      where: {
-        id: categoryId,
-      },
-    });
-
-    if (!category) {
-      return res.status(400).json({
-        success: false,
-        message: "Category not found",
-      });
-    }
-
-    // Ensure the source asset exists
-    const asset = await prisma.asset.findFirst({
-      where: {
-        id: assetId,
-      },
-    });
-
-    if (!asset) {
-      return res.status(400).json({
-        success: false,
-        message: "Asset not found",
-      });
-    }
-
-    // Check if the balance is sufficient
-    if (asset.balance < amount) {
-      return res.status(400).json({
-        success: false,
-        message: "Insufficient balance",
-      });
-    }
-
-    const image = req.file
-      ? await uploadFileToS3(req.file, "Expense", req.user.id)
-      : null;
-
-    console.log("image :", image);
-
-    // Create the expense
-    const expense = await prisma.expense.create({
-      data: {
-        amount: amount,
-        description: req.body.description,
-        image: image,
-        status: req.body.date > new Date() ? "Unpaid" : "Paid",
-        category: {
-          connect: {
-            id: categoryId,
-          },
-        },
-        asset: {
-          connect: {
-            id: assetId,
-          },
-        },
-        date: req.body.date,
-        user: {
-          connect: {
-            id: req.user.id,
-          },
-        },
-      },
-    });
-
-    // Create a transaction history record
-    await prisma.transactionHistory.create({
-      data: {
-        expenseId: expense.id,
-        userId: req.user.id,
-        fromAssetId: assetId,
-        transactionType: "Expense",
-        amount: amount,
-        description: req.body.description,
-        date: req.body.date,
-      },
-    });
-
+    const expense = await postExpense(req.user.id, req.body, req.file);
     // Respond with success message
     res.status(200).json({
       success: true,
@@ -131,88 +49,21 @@ const postExpense = async (req, res, next) => {
     });
   } catch (err) {
     console.error("Error while creating expense", err);
-    return res.status(500).json({
-      error: "Internal server error",
+
+    res.status(err.status || 500).json({
+      success: false,
+      message: err.message || "Internal server error",
     });
   }
 };
 
-const updateExpense = async (req, res, next) => {
-  console.log(req.file);
-  const { id } = req.params;
-  console.log(req.body);
+const updateExpenseController = async (req, res, next) => {
   try {
-    const expense = await prisma.expense.findFirst({
-      where: {
-        id: parseInt(id),
-      },
-    });
-
-    if (!expense) {
-      return res.status(500).json({
-        error: "Expense doesn't exist in record",
-      });
-    }
-
-    let image;
-
-    if (req.file) {
-      image = await uploadFileToS3(req.file, "Expense", req.user.id);
-      await deleteFileFromS3(expense?.image);
-    } else if (req.body?.image) {
-      image = expense?.image;
-    } else {
-      image = await deleteFileFromS3(expense?.image);
-    }
-
-    console.log("image: ", image);
-
-    const expenseUpdate = await prisma.expense.update({
-      where: { id: parseInt(id) },
-      data: {
-        amount: parseInt(req.body.amount),
-        description: req.body.description,
-        recurring: req.body.recurring,
-        image: image,
-        status: req.body.date > new Date() ? "Unpaid" : "Paid",
-        category: {
-          connect: {
-            id: parseInt(req.body.category),
-          },
-        },
-        asset: {
-          connect: {
-            id: parseInt(req.body.source),
-          },
-        },
-        date: req.body.date,
-        user: {
-          connect: {
-            id: req.user.id,
-          },
-        },
-      },
-    });
-
-    // Fetch the transaction history record related to the expense
-    const transaction = await prisma.transactionHistory.findFirst({
-      where: { expenseId: parseInt(id) }, // Ensure expenseId is properly converted to an integer
-    });
-
-    await prisma.transactionHistory.update({
-      where: { id: parseInt(transaction?.id) },
-      data: {
-        amount: parseInt(req.body.amount),
-        description: req.body.description,
-        date: req.body.date,
-        updatedAt: new Date(),
-      },
-    });
-
+    const updatedExpense = updateExpense(req.user.id, req.body, req.file, req.params?.id);
     res.status(200).json({
       success: true,
       message: "Expense updated successfully",
-      data: expenseUpdate,
+      data: updatedExpense,
     });
   } catch (err) {
     console.log("Error while updating expense", err);
@@ -222,7 +73,7 @@ const updateExpense = async (req, res, next) => {
   }
 };
 
-const deleteExpense = async (req, res, next) => {
+const deleteExpenseController = async (req, res, next) => {
   const { id } = req.params;
   try {
     const data = await prisma.expense.findFirst({
@@ -341,7 +192,7 @@ const deleteExpense = async (req, res, next) => {
     return res.status(500).json({ error: "Internal server error" });
   }
 };
-  
+
 // Expense Graph
 const getDetailedExpenses = async (req, res, next) => {
   const { startDate, endDate, mode } = req.query;
@@ -357,7 +208,7 @@ const getDetailedExpenses = async (req, res, next) => {
     };
     console.log("filters", filters);
     const groupedExpenses = await prisma.$queryRawUnsafe(
-      `      SELECT 
+      `SELECT 
         date_trunc('${mode}', "date") AS "${mode}",
         sum(amount) AS total
       FROM "Expense"
@@ -432,10 +283,9 @@ const getDetailedExpenses = async (req, res, next) => {
 };
 
 module.exports = {
-  postExpense,
-  getExpenses,
- 
+  postExpenseController,
+  getExpensesController,
+  deleteExpenseController,
+  updateExpenseController,
   getDetailedExpenses,
-  deleteExpense,
-  updateExpense,
 };

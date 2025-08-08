@@ -7,6 +7,21 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Status {
+  Pending
+  Paid
+  Overdue
+  Partial
+}
+
+enum Type {
+  Expense
+  Recurring
+  Installment
+  Income
+  Transfer 
+}
+
 model User {
   id                 Int                  @id @default(autoincrement())
   firstName          String?              @map("first_name")
@@ -71,7 +86,6 @@ model Asset {
   sentTransactionHistory     TransactionHistory[] @relation("TH_FromAsset")
   receivedTransactionHistory TransactionHistory[] @relation("TH_ToAsset")
   RecurringExpense           RecurringExpense[]
-  InstallmentPlan            InstallmentPlan[]
 
   @@index([userId])
 }
@@ -88,7 +102,9 @@ model Expense {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   isDeleted   Boolean  @default(false)
-  status      String?
+  status      Status?
+
+  type Type   @default(Expense)
 
   // Foreign Keys for Recurring and Installment
   recurringExpenseId Int?
@@ -139,13 +155,11 @@ model InstallmentPlan {
   months      Int
   startDate   DateTime
   categoryId  Int
-  assetId     Int?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   user         User          @relation(fields: [userId], references: [id])
   category     Categories    @relation(fields: [categoryId], references: [id])
-  asset        Asset?        @relation(fields: [assetId], references: [id])
   installments Installment[]
 }
 
@@ -154,7 +168,8 @@ model Installment {
   planId  Int
   dueDate DateTime
   amount  Float
-  status  String // "pending", "paid", etc.
+  status  Status // "pending", "paid", etc.
+  assetId Int?
 
   plan    InstallmentPlan @relation(fields: [planId], references: [id])
   expense Expense[]
@@ -185,8 +200,8 @@ model Settings {
   timezone   String @default("Asia/Manila")
   timeFormat String @default("hh:mm A")
   userId     Int
-  
-  user     User       @relation(fields: [userId], references: [id])
+
+  user User @relation(fields: [userId], references: [id])
 }
 
 model Income {

@@ -1,11 +1,11 @@
 const { Router } = require("express");
 const catchAsync = require("../utils/catchAsync");
 const {
-  postExpense,
-  getExpenses,
-  deleteExpense,
+  postExpenseController,
+  getExpensesController,
+  deleteExpenseController,
+  updateExpenseController,
   getDetailedExpenses,
-  updateExpense,
 } = require("../controllers/expenses/expense.controller");
 const { isLoggedIn } = require("../middleware/validate");
 const multer = require("multer");
@@ -15,12 +15,18 @@ const router = Router();
 
 router
   .route("/createExpense")
-  .post(isLoggedIn, upload.single("image"), catchAsync(postExpense));
+  .post(isLoggedIn, upload.single("image"), catchAsync(postExpenseController));
 router
   .route("/updateExpense/:id")
-  .patch(isLoggedIn, upload.single("image"), catchAsync(updateExpense));
-router.route("/getExpense").get(isLoggedIn, catchAsync(getExpenses));
-router.route("/deleteExpense/:id").patch(isLoggedIn, catchAsync(deleteExpense));
+  .patch(
+    isLoggedIn,
+    upload.single("image"),
+    catchAsync(updateExpenseController)
+  );
+router.route("/getExpense").get(isLoggedIn, catchAsync(getExpensesController));
+router
+  .route("/deleteExpense/:id")
+  .patch(isLoggedIn, catchAsync(deleteExpenseController));
 router
   .route("/getDetailedExpenses")
   .get(isLoggedIn, catchAsync(getDetailedExpenses));

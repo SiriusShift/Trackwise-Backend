@@ -1,3 +1,7 @@
+const { PrismaClient } = require("@prisma/client");
+// const { skip } = require("@prisma/client/runtime/library");
+const prisma = new PrismaClient();
+
 const postIncome = async (req, res) => {
     try{
         
