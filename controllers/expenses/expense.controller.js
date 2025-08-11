@@ -59,7 +59,9 @@ const postExpenseController = async (req, res, next) => {
 
 const updateExpenseController = async (req, res, next) => {
   try {
-    const updatedExpense = updateExpense(req.user.id, req.body, req.file, req.params?.id);
+    console.log("params",req.params?.id)
+    const updatedExpense = await updateExpense(req.user.id, req.body, req.file, req.params?.id);
+    console.log(updatedExpense)
     res.status(200).json({
       success: true,
       message: "Expense updated successfully",

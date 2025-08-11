@@ -1,8 +1,9 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const moment = require("moment");
-const {validateCategory} = require("../category.service")
-const {validateAsset} = require("../asset.service")
+const { validateCategory } = require("../category.service");
+const { validateAsset } = require("../asset.service");
+const { uploadFileToS3, deleteFileFromS3 } = require("../s3.service");
 
 const getExpenses = async (userId, query) => {
   const {
@@ -93,8 +94,8 @@ const postExpense = async (userId, data, file) => {
   const categoryId = parseInt(data.category?.id);
   const assetId = parseInt(data.source?.id);
 
-  validateCategory(categoryId)
-  const asset = validateAsset(assetId, userId)
+  validateCategory(categoryId);
+  const asset = validateAsset(assetId, userId);
 
   // Check if the balance is sufficient
   if (asset.balance < amount) {
@@ -153,82 +154,95 @@ const postExpense = async (userId, data, file) => {
 };
 
 const updateExpense = async (userId, data, file, id) => {
-  const amount = parseInt(data?.amount);
-  const categoryId = parseInt(data.category?.id);
-  const assetId = parseInt(data.source?.id);
-  console.log(req.body);
-  const expense = await prisma.expense.findFirst({
-    where: {
-      id: parseInt(id),
-    },
-  });
+  console.log("params:", id);
+  console.log("category id",data);
 
-  if (!expense) {
-    return res.status(500).json({
-      error: "Expense doesn't exist in record",
+  try {
+    const amount = parseInt(data?.amount);
+    const categoryId = parseInt(data.category);
+    const assetId = parseInt(data.source);
+    const expense = await prisma.expense.findFirst({
+      where: {
+        id: parseInt(id),
+      },
     });
+
+    if (!expense) {
+      return res.status(500).json({
+        error: "Expense doesn't exist in record",
+      });
+    }
+
+    let image;
+
+    if (file) {
+      image = await uploadFileToS3(file, "Expense", userId);
+      if (expense?.image) {
+        await deleteFileFromS3(expense?.image);
+      }
+    } else if (req.body?.image) {
+      image = expense?.image;
+    } else {
+      image = await deleteFileFromS3(expense?.image);
+    }
+
+    console.log("image: ", image, id);
+
+    const expenseUpdate = await prisma.expense.update({
+      where: { id: parseInt(id) },
+      data: {
+        amount: amount,
+        description: data.description,
+        recurring: data.recurring,
+        image: image,
+        status: data.date > new Date() ? "Unpaid" : "Paid",
+        category: {
+          connect: {
+            id: assetId,
+          },
+        },
+        asset: {
+          connect: {
+            id: categoryId,
+          },
+        },
+        date: data.date,
+        user: {
+          connect: {
+            id: userId,
+          },
+        },
+      },
+    });
+
+    console.log(expenseUpdate);
+
+    // Fetch the transaction history record related to the expense
+    const transaction = await prisma.transactionHistory.findFirst({
+      where: { expenseId: parseInt(id) }, // Ensure expenseId is properly converted to an integer
+    });
+
+    await prisma.transactionHistory.update({
+      where: { id: parseInt(transaction?.id) },
+      data: {
+        amount: parseInt(data.amount),
+        description: data.description,
+        date: data.date,
+        updatedAt: new Date(),
+      },
+    });
+
+    console.log("return");
+
+    return expenseUpdate;
+  } catch (err) {
+    console.log(err);
+    return err;
   }
-
-  let image;
-
-  if (req.file) {
-    image = await uploadFileToS3(file, "Expense", userId);
-    await deleteFileFromS3(expense?.image);
-  } else if (req.body?.image) {
-    image = expense?.image;
-  } else {
-    image = await deleteFileFromS3(expense?.image);
-  }
-
-  console.log("image: ", image);
-
-  const expenseUpdate = await prisma.expense.update({
-    where: { id: parseInt(id) },
-    data: {
-      amount: amount,
-      description: req.body.description,
-      recurring: req.body.recurring,
-      image: image,
-      status: req.body.date > new Date() ? "Unpaid" : "Paid",
-      category: {
-        connect: {
-          id: assetId,
-        },
-      },
-      asset: {
-        connect: {
-          id: categoryId,
-        },
-      },
-      date: req.body.date,
-      user: {
-        connect: {
-          id: req.user.id,
-        },
-      },
-    },
-  });
-
-  // Fetch the transaction history record related to the expense
-  const transaction = await prisma.transactionHistory.findFirst({
-    where: { expenseId: parseInt(id) }, // Ensure expenseId is properly converted to an integer
-  });
-
-  await prisma.transactionHistory.update({
-    where: { id: parseInt(transaction?.id) },
-    data: {
-      amount: parseInt(req.body.amount),
-      description: req.body.description,
-      date: req.body.date,
-      updatedAt: new Date(),
-    },
-  });
-
-  return expenseUpdate;
 };
 
 module.exports = {
   getExpenses,
   postExpense,
-  updateExpense
+  updateExpense,
 };
