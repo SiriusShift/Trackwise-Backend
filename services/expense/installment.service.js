@@ -1,7 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-const {validateCategory} = require("../category.service")
-const {validateAsset} = require("../asset.service");
+const { validateCategory } = require("../category.service");
+const { validateAsset } = require("../asset.service");
 const { uploadFileToS3 } = require("../s3.service");
 
 const postInstallment = async (userId, data, file) => {
@@ -21,25 +21,86 @@ const postInstallment = async (userId, data, file) => {
       startDate: data?.date,
       category: {
         connect: {
-          id: categoryId
-        }
+          id: categoryId,
+        },
       },
       asset: {
         connect: {
-          id: assetId
-        }
+          id: assetId,
+        },
       },
-    }
-  })
+    },
+  });
 
-  return installment
+  return installment;
 };
 
-const getInstallment = async (userId, data) => {
+const getInstallment = async (userId, query) => {
+  const {
+    search,
+    pageIndex,
+    pageSize,
+    Categories,
+    startDate,
+    endDate,
+    status,
+  } = query;
 
-}
+  const page = parseInt(pageIndex) >= 0 ? parseInt(pageIndex) + 1 : 1;
+  const size = parseInt(pageSize) > 0 ? parseInt(pageSize) : 10;
+  const skip = (page - 1) * size;
+
+  const filters = {
+    userId: parseInt(userId),
+    ...(startDate && endDate
+      ? {
+          startDate: {
+            gte: new Date(startDate),
+            lte: new Date(endDate),
+          },
+        }
+      : {}),
+    isDeleted: false,
+  };
+
+  if (search) {
+    filters.description = {
+      startsWith: search,
+      mode: "insensitive",
+    };
+  }
+
+  if (status) {
+    filters.status = {
+      startsWith: status,
+    };
+  }
+
+  if (Categories !== undefined) {
+    filters.categoryId = {
+      in: JSON.parse(Categories),
+    };
+  }
+
+  const totalCount = await prisma.installmentPlan.count({ where: filters });
+
+  const installment = await prisma.installmentPlan.findMany({
+    where: filters,
+    orderBy: { date: "desc" },
+    skip,
+    take: size,
+  });
+
+  const totalPages = Math.ceil(totalCount / size);
+  
+  return {
+    data: installment,
+    totalCount,
+    totalPages,
+  };
+};
 
 module.exports = {
   postInstallment,
-  getInstallment
+  getInstallment,
 };

@@ -180,7 +180,7 @@ const updateExpense = async (userId, data, file, id) => {
       if (expense?.image) {
         await deleteFileFromS3(expense?.image);
       }
-    } else if (req.body?.image) {
+    } else if (data?.image) {
       image = expense?.image;
     } else {
       image = await deleteFileFromS3(expense?.image);
@@ -198,12 +198,12 @@ const updateExpense = async (userId, data, file, id) => {
         status: data.date > new Date() ? "Unpaid" : "Paid",
         category: {
           connect: {
-            id: assetId,
+            id: categoryId,
           },
         },
         asset: {
           connect: {
-            id: categoryId,
+            id: assetId,
           },
         },
         date: data.date,
