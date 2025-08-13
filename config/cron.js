@@ -13,7 +13,7 @@ cron.schedule("0 0 * * *", async () => {
     const recurring = await prisma.expense.findMany({
       where: {
         isRecurring: true,
-        isDeleted: false,
+        isActive: true,
         status: "Unpaid",
       },
     });

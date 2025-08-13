@@ -81,7 +81,7 @@ const getAllExpenseLimit = async (req, res, next) => {
                   gte: startDate,
                   lte: endDate,
                 },
-                isDeleted: false,
+                isActive: true,
                 // isRecurring: false,
                 userId: parseInt(req.user.id),
               },

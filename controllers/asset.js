@@ -38,7 +38,7 @@ const getAssetRemainingBalance = async (req, res) => {
         balance: true,
         expenses: {
           where: {
-            isDeleted: false,
+            isActive: true,
           },
         },
         incomes: {
@@ -66,7 +66,7 @@ const getAssetRemainingBalance = async (req, res) => {
         balance: true,
         expenses: {
           where: {
-            isDeleted: false,
+            isActive: true,
             date: {
               lte: moment().subtract(1, "month").endOf("month").toDate(),
             },

@@ -30,7 +30,7 @@ const getExpenses = async (userId, query) => {
           },
         }
       : {}),
-    isDeleted: false,
+    isActive: true,
   };
 
   if (search) {
@@ -118,6 +118,7 @@ const postExpense = async (userId, data, file) => {
       description: data.description,
       image: image,
       status: data.date > new Date() ? "Unpaid" : "Paid",
+      type: "Expense",
       category: {
         connect: {
           id: categoryId,

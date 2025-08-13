@@ -60,7 +60,7 @@ const getInstallment = async (userId, query) => {
           },
         }
       : {}),
-    isDeleted: false,
+    isActive: true,
   };
 
   if (search) {
@@ -86,7 +86,7 @@ const getInstallment = async (userId, query) => {
 
   const installment = await prisma.installmentPlan.findMany({
     where: filters,
-    orderBy: { date: "desc" },
+    orderBy: { startDate: "desc" },
     skip,
     take: size,
   });

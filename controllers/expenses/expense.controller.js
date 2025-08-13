@@ -93,20 +93,20 @@ const deleteExpenseController = async (req, res, next) => {
       // Mark the parent expense as deleted
       await prisma.expense.update({
         where: { id: parseInt(id) },
-        data: { isDeleted: true },
+        data: { isActive: false },
       });
 
       if (data.status === "Paid") {
         // Update all linked recurring expenses
         await prisma.expense.updateMany({
           where: { recurringExpenseId: parseInt(id) },
-          data: { isDeleted: true },
+          data: { isActive: false },
         });
 
         // Update transaction history for ALL linked expenses
         await prisma.transactionHistory.updateMany({
           where: { expenseId: parseInt(id) },
-          data: { isDeleted: true },
+          data: { isActive: false },
         });
 
         // Also update transaction history for all child expenses
@@ -121,7 +121,7 @@ const deleteExpenseController = async (req, res, next) => {
               ).map((expense) => expense.id),
             },
           },
-          data: { isDeleted: true },
+          data: { isActive: false },
         });
       }
     }
@@ -133,13 +133,13 @@ const deleteExpenseController = async (req, res, next) => {
         // Delete all expenses tied to the recurringExpenseId
         await prisma.expense.updateMany({
           where: { recurringExpenseId: parseInt(data.recurringExpenseId) },
-          data: { isDeleted: true },
+          data: { isActive: false },
         });
 
         // Delete transaction history for all related expenses
         await prisma.transactionHistory.updateMany({
           where: { expenseId: parseInt(id) },
-          data: { isDeleted: true },
+          data: { isActive: false },
         });
 
         // Also update transaction history for all child expenses
@@ -156,17 +156,17 @@ const deleteExpenseController = async (req, res, next) => {
               ).map((expense) => expense.id),
             },
           },
-          data: { isDeleted: true },
+          data: { isActive: false },
         });
       } else {
         await prisma.expense.update({
           where: { id: parseInt(id) },
-          data: { isDeleted: true },
+          data: { isActive: false },
         });
 
         await prisma.transactionHistory.updateMany({
           where: { expenseId: parseInt(id) },
-          data: { isDeleted: true },
+          data: { isActive: false },
         });
       }
     }
@@ -176,12 +176,12 @@ const deleteExpenseController = async (req, res, next) => {
 
       await prisma.expense.update({
         where: { id: parseInt(id) },
-        data: { isDeleted: true },
+        data: { isActive: false },
       });
 
       await prisma.transactionHistory.updateMany({
         where: { expenseId: parseInt(id) },
-        data: { isDeleted: true },
+        data: { isActive: false },
       });
     }
 
@@ -206,7 +206,7 @@ const getDetailedExpenses = async (req, res, next) => {
         gte: startDate,
         lte: endDate,
       },
-      isDeleted: false,
+      isActive: true,
     };
     console.log("filters", filters);
     const groupedExpenses = await prisma.$queryRawUnsafe(
@@ -214,7 +214,7 @@ const getDetailedExpenses = async (req, res, next) => {
         date_trunc('${mode}', "date") AS "${mode}",
         sum(amount) AS total
       FROM "Expense"
-      WHERE "date" >= '${startDate}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isDeleted" = false
+      WHERE "date" >= '${startDate}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true
       GROUP BY "${mode}", "amount"
       ORDER BY "${mode}"`
     );

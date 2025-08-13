@@ -16,26 +16,24 @@ enum Status {
 
 enum Type {
   Expense
-  Recurring
-  Installment
   Income
-  Transfer 
+  Transfer
 }
 
 model User {
-  id                 Int                  @id @default(autoincrement())
-  firstName          String?              @map("first_name")
-  lastName           String?              @map("last_name")
-  email              String               @unique
-  username           String?              @unique
-  password           String?              @map("password")
-  role               String               @default("user")
-  phoneNumber        String?              @map("phone_number")
-  profileImageUrl    String?              @map("profile_image_url")
-  isActive           Boolean              @default(true)
-  createdAt          DateTime             @default(now()) @map("created_at")
-  updatedAt          DateTime             @default(now()) @updatedAt
-  google_id          String?              @unique
+  id                 Int                    @id @default(autoincrement())
+  firstName          String?                @map("first_name")
+  lastName           String?                @map("last_name")
+  email              String                 @unique
+  username           String?                @unique
+  password           String?                @map("password")
+  role               String                 @default("user")
+  phoneNumber        String?                @map("phone_number")
+  profileImageUrl    String?                @map("profile_image_url")
+  isActive           Boolean                @default(true)
+  createdAt          DateTime               @default(now()) @map("created_at")
+  updatedAt          DateTime               @default(now()) @updatedAt
+  google_id          String?                @unique
   assets             Asset[]
   expenses           Expense[]
   incomes            Income[]
@@ -44,7 +42,7 @@ model User {
   categoriesTracker  CategoryTracker[]
   transfer           Transfer[]
   Categories         Categories[]
-  RecurringExpense   RecurringExpense[]
+  Recurring          RecurringTransaction[]
   InstallmentPlan    InstallmentPlan[]
   settings           Settings[]
 }
@@ -61,6 +59,7 @@ model Transfer {
   date      DateTime @default(now())
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
 
   user      User  @relation(fields: [userId], references: [id])
   fromAsset Asset @relation("FromAsset", fields: [fromAssetId], references: [id])
@@ -76,16 +75,20 @@ model Asset {
   userId    Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
 
   user     User      @relation(fields: [userId], references: [id])
   expenses Expense[]
   incomes  Income[]
 
-  sentTransfers              Transfer[]           @relation("FromAsset") // Matches fromAsset in Transfer
-  receivedTransfers          Transfer[]           @relation("ToAsset") // Matches toAsset in Transfer
-  sentTransactionHistory     TransactionHistory[] @relation("TH_FromAsset")
-  receivedTransactionHistory TransactionHistory[] @relation("TH_ToAsset")
-  RecurringExpense           RecurringExpense[]
+  sentTransfers              Transfer[]             @relation("FromAsset") // Matches fromAsset in Transfer
+  receivedTransfers          Transfer[]             @relation("ToAsset") // Matches toAsset in Transfer
+  sentTransactionHistory     TransactionHistory[]   @relation("TH_FromAsset")
+  receivedTransactionHistory TransactionHistory[]   @relation("TH_ToAsset")
+  // RecurringTransaction       RecurringTransaction[]  
+  // RecurringTransaction       RecurringTransaction[]
+  recurringTransactionFrom   RecurringTransaction[] @relation("RecurringTransferFrom")
+  recurringTransactionTo     RecurringTransaction[] @relation("RecurringTransferTo")
 
   @@index([userId])
 }
@@ -101,34 +104,42 @@ model Expense {
   userId      Int
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  isDeleted   Boolean  @default(false)
+  isActive    Boolean  @default(true)
   status      Status?
 
-  type Type   @default(Expense)
+  type Type @default(Expense)
 
   // Foreign Keys for Recurring and Installment
-  recurringExpenseId Int?
-  installmentId      Int?
+  recurringId   Int?
+  installmentId Int?
 
   category Categories @relation(fields: [categoryId], references: [id])
   asset    Asset?     @relation(fields: [assetId], references: [id])
   user     User       @relation(fields: [userId], references: [id])
 
   // Relations
-  recurringTemplate  RecurringExpense?    @relation("RecurringGenerated", fields: [recurringExpenseId], references: [id])
-  installment        Installment?         @relation(fields: [installmentId], references: [id])
+  recurringTemplate  RecurringTransaction? @relation("RecurringGenerated", fields: [recurringId], references: [id])
+  installment        Installment?          @relation(fields: [installmentId], references: [id])
   transactionHistory TransactionHistory[]
 
   @@index([userId])
 }
 
-model RecurringExpense {
+enum RecurringType {
+  Expense
+  Income
+  Transfer
+}
+
+model RecurringTransaction {
   id          Int       @id @default(autoincrement())
   userId      Int
+  type        Type
+  categoryId  Int // For Expense & Income
+  fromAssetId Int? // For Transfer
+  toAssetId   Int? // For Transfer
   description String
   amount      Float
-  categoryId  Int
-  assetId     Int?
   startDate   DateTime
   nextDueDate DateTime
   interval    Int
@@ -138,13 +149,11 @@ model RecurringExpense {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  user     User       @relation(fields: [userId], references: [id])
-  category Categories @relation(fields: [categoryId], references: [id])
-  asset    Asset?     @relation(fields: [assetId], references: [id])
-
-  generatedExpenses Expense[] @relation("RecurringGenerated")
-
-  @@index([userId])
+  user              User       @relation(fields: [userId], references: [id])
+  category          Categories @relation(fields: [categoryId], references: [id])
+  fromAsset         Asset?     @relation("RecurringTransferFrom", fields: [fromAssetId], references: [id])
+  toAsset           Asset?     @relation("RecurringTransferTo", fields: [toAssetId], references: [id])
+  generatedExpenses Expense[]  @relation("RecurringGenerated")
 }
 
 model InstallmentPlan {
@@ -157,6 +166,7 @@ model InstallmentPlan {
   categoryId  Int
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+  isActive    Boolean  @default(true)
 
   user         User          @relation(fields: [userId], references: [id])
   category     Categories    @relation(fields: [categoryId], references: [id])
@@ -164,12 +174,13 @@ model InstallmentPlan {
 }
 
 model Installment {
-  id      Int      @id @default(autoincrement())
-  planId  Int
-  dueDate DateTime
-  amount  Float
-  status  Status // "pending", "paid", etc.
-  assetId Int?
+  id       Int      @id @default(autoincrement())
+  planId   Int
+  dueDate  DateTime
+  amount   Float
+  status   Status // "pending", "paid", etc.
+  assetId  Int?
+  isActive Boolean  @default(true)
 
   plan    InstallmentPlan @relation(fields: [planId], references: [id])
   expense Expense[]
@@ -188,9 +199,9 @@ model Categories {
   incomes           Income[]
   categoriesTracker CategoryTracker[]
 
-  user             User?              @relation(fields: [userId], references: [id])
-  RecurringExpense RecurringExpense[]
-  InstallmentPlan  InstallmentPlan[]
+  user            User?                  @relation(fields: [userId], references: [id])
+  Recurring       RecurringTransaction[]
+  InstallmentPlan InstallmentPlan[]
 
   @@index([userId])
 }
@@ -217,6 +228,7 @@ model Income {
   status    String
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
+  isActive  Boolean    @default(true)
   category  Categories @relation(fields: [categoryId], references: [id])
   asset     Asset?     @relation(fields: [assetId], references: [id])
   user      User       @relation(fields: [userId], references: [id])
@@ -239,7 +251,7 @@ model TransactionHistory {
   toAssetId       Int?
   expenseId       Int?
   incomeId        Int?
-  isDeleted       Boolean  @default(false)
+  isActive        Boolean  @default(true)
   fromAsset       Asset?   @relation("TH_FromAsset", fields: [fromAssetId], references: [id])
   toAsset         Asset?   @relation("TH_ToAsset", fields: [toAssetId], references: [id])
   expense         Expense? @relation(fields: [expenseId], references: [id])
