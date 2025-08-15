@@ -1,8 +1,8 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-const { validateCategory } = require("../category.service");
-const { validateAsset } = require("../asset.service");
-const { uploadFileToS3 } = require("../s3.service");
+const { validateCategory } = require("./categories.service");
+const { validateAsset } = require("./assets.service");
+const { uploadFileToS3 } = require("./s3.service");
 
 const postInstallment = async (userId, data, file) => {
   const amount = parseInt(data.amount);

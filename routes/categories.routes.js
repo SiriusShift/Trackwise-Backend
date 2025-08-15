@@ -1,8 +1,8 @@
 const { Router } = require("express");
 const catchAsync = require("../utils/catchAsync");
-const { createCategory, getAllCategory } = require("../controllers/category");
+const { createCategory, getAllCategory } = require("../controllers/categories.controller");
 const { isLoggedIn, validateCreateRequest } = require("../middleware/validate");
-const { addExpenseLimit, getAllExpenseLimit, updateExpenseLimit, deleteExpenseLimit } = require("../controllers/expenses/limit.controller");
+const { addExpenseLimit, getAllExpenseLimit, updateExpenseLimit, deleteExpenseLimit } = require("../controllers/limits.controller");
 const router = Router();
 
 /**

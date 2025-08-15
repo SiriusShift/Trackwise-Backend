@@ -79,7 +79,12 @@ const register = async (req, res, next) => {
   });
   const settings = await prisma.settings.create({
     data: {
-      timezone: timezone
+      timezone: timezone,
+      user: {
+        connect: {
+          id: user.id
+        }
+      }
     }
   })
   console.log(user);

@@ -3,7 +3,7 @@ const catchAsync = require("../utils/catchAsync");
 const {
   createAsset,
   getAssetRemainingBalance,
-} = require("../controllers/asset");
+} = require("../controllers/asset.controller");
 const { isLoggedIn, validateCreateRequest } = require("../middleware/validate");
 const router = Router();
 

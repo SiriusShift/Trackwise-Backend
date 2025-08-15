@@ -1,10 +1,21 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const moment = require("moment");
-const { validateCategory } = require("../category.service");
-const { validateAsset } = require("../asset.service");
-const { uploadFileToS3, deleteFileFromS3 } = require("../s3.service");
+const { validateCategory } = require("./categories.service");
+const { validateAsset } = require("./assets.service");
+const { uploadFileToS3, deleteFileFromS3 } = require("./s3.service");
 
+const validateExpense = async (id) => {
+  const expense = await prisma.expense.findFirst({
+    where: { id: parseInt(id) },
+  });
+
+  if (!expense) {
+    throw new Error("Expense not found"); // ❌ Throw error here
+  }
+
+  return expense;
+};
 const getExpenses = async (userId, query) => {
   const {
     search,
@@ -91,23 +102,18 @@ const getExpenses = async (userId, query) => {
 
 const postExpense = async (userId, data, file) => {
   const amount = parseInt(data.amount);
-  const categoryId = parseInt(data.category?.id);
-  const assetId = parseInt(data.source?.id);
+  const categoryId = parseInt(data.category);
+  const assetId = parseInt(data.source);
 
   validateCategory(categoryId);
   const asset = validateAsset(assetId, userId);
 
   // Check if the balance is sufficient
   if (asset.balance < amount) {
-    return res.status(400).json({
-      success: false,
-      message: "Insufficient balance",
-    });
+    throw new Error("Insufficient balance");
   }
 
-  const image = file
-    ? await uploadFileToS3(file, "Expense", req.user.id)
-    : null;
+  const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
 
   console.log("image :", image);
 
@@ -156,24 +162,14 @@ const postExpense = async (userId, data, file) => {
 
 const updateExpense = async (userId, data, file, id) => {
   console.log("params:", id);
-  console.log("category id",data);
+  console.log("category id", data);
 
   try {
     const amount = parseInt(data?.amount);
     const categoryId = parseInt(data.category);
     const assetId = parseInt(data.source);
-    const expense = await prisma.expense.findFirst({
-      where: {
-        id: parseInt(id),
-      },
-    });
 
-    if (!expense) {
-      return res.status(500).json({
-        error: "Expense doesn't exist in record",
-      });
-    }
-
+    const expense = validateExpense(id);
     let image;
 
     if (file) {
@@ -242,8 +238,110 @@ const updateExpense = async (userId, data, file, id) => {
   }
 };
 
+const deleteExpense = async (userId, id) => {
+  // If the expense is a recurring parent
+  validateExpense(id);
+
+  // if (data.isRecurring) {
+  //   console.log("Recurring Expense:", data);
+
+  //   // Mark the parent expense as deleted
+  //   await prisma.expense.update({
+  //     where: { id: parseInt(id) },
+  //     data: { isActive: false },
+  //   });
+
+  //   if (data.status === "Paid") {
+  //     // Update all linked recurring expenses
+  //     await prisma.expense.updateMany({
+  //       where: { recurringExpenseId: parseInt(id) },
+  //       data: { isActive: false },
+  //     });
+
+  //     // Update transaction history for ALL linked expenses
+  //     await prisma.transactionHistory.updateMany({
+  //       where: { expenseId: parseInt(id) },
+  //       data: { isActive: false },
+  //     });
+
+  //     // Also update transaction history for all child expenses
+  //     await prisma.transactionHistory.updateMany({
+  //       where: {
+  //         expenseId: {
+  //           in: (
+  //             await prisma.expense.findMany({
+  //               where: { recurringExpenseId: parseInt(id) },
+  //               select: { id: true },
+  //             })
+  //           ).map((expense) => expense.id),
+  //         },
+  //       },
+  //       data: { isActive: false },
+  //     });
+  //   }
+  // }
+  // // If it's a child expense in a recurring series
+  // else if (data.recurringExpenseId !== null && !data.isRecurring) {
+  //   console.log("Child of Recurring Expense:", data);
+
+  //   if (data.status === "Paid") {
+  //     // Delete all expenses tied to the recurringExpenseId
+  //     await prisma.expense.updateMany({
+  //       where: { recurringExpenseId: parseInt(data.recurringExpenseId) },
+  //       data: { isActive: false },
+  //     });
+
+  //     // Delete transaction history for all related expenses
+  //     await prisma.transactionHistory.updateMany({
+  //       where: { expenseId: parseInt(id) },
+  //       data: { isActive: false },
+  //     });
+
+  //     // Also update transaction history for all child expenses
+  //     await prisma.transactionHistory.updateMany({
+  //       where: {
+  //         expenseId: {
+  //           in: (
+  //             await prisma.expense.findMany({
+  //               where: {
+  //                 recurringExpenseId: parseInt(data.recurringExpenseId),
+  //               },
+  //               select: { id: true },
+  //             })
+  //           ).map((expense) => expense.id),
+  //         },
+  //       },
+  //       data: { isActive: false },
+  //     });
+  //   } else {
+  //     await prisma.expense.update({
+  //       where: { id: parseInt(id) },
+  //       data: { isActive: false },
+  //     });
+
+  //     await prisma.transactionHistory.updateMany({
+  //       where: { expenseId: parseInt(id) },
+  //       data: { isActive: false },
+  //     });
+  //   }
+  // }
+  // If it's a standalone expense
+  console.log("Regular Expense:", data);
+
+  await prisma.expense.update({
+    where: { id: parseInt(id) },
+    data: { isActive: false },
+  });
+
+  await prisma.transactionHistory.updateMany({
+    where: { expenseId: parseInt(id) },
+    data: { isActive: false },
+  });
+};
+
 module.exports = {
   getExpenses,
   postExpense,
   updateExpense,
+  deleteExpense,
 };

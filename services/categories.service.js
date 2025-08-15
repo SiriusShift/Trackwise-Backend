@@ -9,10 +9,7 @@ const validateCategory = async (categoryId) => {
   });
 
   if (!category) {
-    return res.status(400).json({
-      success: false,
-      message: "Category not found",
-    });
+    throw new Error("Category not found"); 
   }
   return category
 };

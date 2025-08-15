@@ -6,14 +6,10 @@ const {
   uploadBase64ToS3,
   uploadFileToS3,
   deleteFileFromS3,
-} = require("../../services/s3.service");
-const {
-  getExpenses,
-  postExpense,
-  updateExpense,
-} = require("../../services/expense/expense.service");
+} = require("../services/s3.service");
+const expenseService = require("../services/expenses.service");
 
-const getExpensesController = async (req, res, next) => {
+const getExpenses = async (req, res, next) => {
   try {
     if (!req.user?.id) {
       return res.status(400).json({
@@ -22,7 +18,7 @@ const getExpensesController = async (req, res, next) => {
       });
     }
 
-    const result = await getExpenses(req.user.id, req.query);
+    const result = await expenseService.getExpenses(req.user.id, req.query);
 
     return res.status(200).json({
       success: true,
@@ -38,9 +34,13 @@ const getExpensesController = async (req, res, next) => {
   }
 };
 
-const postExpenseController = async (req, res, next) => {
+const postExpense = async (req, res, next) => {
   try {
-    const expense = await postExpense(req.user.id, req.body, req.file);
+    const expense = await expenseService.postExpense(
+      req.user.id,
+      req.body,
+      req.file
+    );
     // Respond with success message
     res.status(200).json({
       success: true,
@@ -57,11 +57,17 @@ const postExpenseController = async (req, res, next) => {
   }
 };
 
-const updateExpenseController = async (req, res, next) => {
+const updateExpense = async (req, res, next) => {
+  const { id } = req.params;
   try {
-    console.log("params",req.params?.id)
-    const updatedExpense = await updateExpense(req.user.id, req.body, req.file, req.params?.id);
-    console.log(updatedExpense)
+    console.log("params", req.params?.id);
+    const updatedExpense = await expenseService.updateExpense(
+      req.user.id,
+      req.body,
+      req.file,
+      id
+    );
+    console.log(updatedExpense);
     res.status(200).json({
       success: true,
       message: "Expense updated successfully",
@@ -75,116 +81,10 @@ const updateExpenseController = async (req, res, next) => {
   }
 };
 
-const deleteExpenseController = async (req, res, next) => {
+const deleteExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
-    const data = await prisma.expense.findFirst({
-      where: { id: parseInt(id) },
-    });
-
-    if (!data) {
-      return res.status(404).json({ error: "Expense not found" });
-    }
-
-    // If the expense is a recurring parent
-    if (data.isRecurring) {
-      console.log("Recurring Expense:", data);
-
-      // Mark the parent expense as deleted
-      await prisma.expense.update({
-        where: { id: parseInt(id) },
-        data: { isActive: false },
-      });
-
-      if (data.status === "Paid") {
-        // Update all linked recurring expenses
-        await prisma.expense.updateMany({
-          where: { recurringExpenseId: parseInt(id) },
-          data: { isActive: false },
-        });
-
-        // Update transaction history for ALL linked expenses
-        await prisma.transactionHistory.updateMany({
-          where: { expenseId: parseInt(id) },
-          data: { isActive: false },
-        });
-
-        // Also update transaction history for all child expenses
-        await prisma.transactionHistory.updateMany({
-          where: {
-            expenseId: {
-              in: (
-                await prisma.expense.findMany({
-                  where: { recurringExpenseId: parseInt(id) },
-                  select: { id: true },
-                })
-              ).map((expense) => expense.id),
-            },
-          },
-          data: { isActive: false },
-        });
-      }
-    }
-    // If it's a child expense in a recurring series
-    else if (data.recurringExpenseId !== null && !data.isRecurring) {
-      console.log("Child of Recurring Expense:", data);
-
-      if (data.status === "Paid") {
-        // Delete all expenses tied to the recurringExpenseId
-        await prisma.expense.updateMany({
-          where: { recurringExpenseId: parseInt(data.recurringExpenseId) },
-          data: { isActive: false },
-        });
-
-        // Delete transaction history for all related expenses
-        await prisma.transactionHistory.updateMany({
-          where: { expenseId: parseInt(id) },
-          data: { isActive: false },
-        });
-
-        // Also update transaction history for all child expenses
-        await prisma.transactionHistory.updateMany({
-          where: {
-            expenseId: {
-              in: (
-                await prisma.expense.findMany({
-                  where: {
-                    recurringExpenseId: parseInt(data.recurringExpenseId),
-                  },
-                  select: { id: true },
-                })
-              ).map((expense) => expense.id),
-            },
-          },
-          data: { isActive: false },
-        });
-      } else {
-        await prisma.expense.update({
-          where: { id: parseInt(id) },
-          data: { isActive: false },
-        });
-
-        await prisma.transactionHistory.updateMany({
-          where: { expenseId: parseInt(id) },
-          data: { isActive: false },
-        });
-      }
-    }
-    // If it's a standalone expense
-    else {
-      console.log("Regular Expense:", data);
-
-      await prisma.expense.update({
-        where: { id: parseInt(id) },
-        data: { isActive: false },
-      });
-
-      await prisma.transactionHistory.updateMany({
-        where: { expenseId: parseInt(id) },
-        data: { isActive: false },
-      });
-    }
-
+    expenseService.deleteExpense(req.user.id,id)
     res.status(200).json({
       success: true,
       message: "Expense deleted successfully",
@@ -285,9 +185,9 @@ const getDetailedExpenses = async (req, res, next) => {
 };
 
 module.exports = {
-  postExpenseController,
-  getExpensesController,
-  deleteExpenseController,
-  updateExpenseController,
+  postExpense,
+  getExpenses,
+  deleteExpense,
+  updateExpense,
   getDetailedExpenses,
 };

@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const catchAsync = require("../utils/catchAsync");
   
-const { verifyEmail, sendEmailCode, forgotPassword } = require("../controllers/email");
+const { verifyEmail, sendEmailCode, forgotPassword } = require("../controllers/emails.controller");
  
 const router = Router();
 

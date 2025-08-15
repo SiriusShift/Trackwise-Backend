@@ -14,6 +14,7 @@ const signupSchema = Joi.object({
     username: Joi.string().required(),
     email: Joi.string().email().required(),
     otp: Joi.string().required(),
+    timezone: Joi.string().required(),
     // phone_number: Joi.string().pattern(phonePattern).messages({
     //     "string.pattern.base": phoneError,
     // }),

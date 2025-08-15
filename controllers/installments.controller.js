@@ -3,7 +3,7 @@ const prisma = new PrismaClient();
 const {
   postInstallment,
   getInstallment,
-} = require("../../services/expense/installment.service");
+} = require("../services/installments.service");
 
 const postInstallmentController = async (req, res, next) => {
   try {
