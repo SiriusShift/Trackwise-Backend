@@ -96,84 +96,16 @@ const deleteExpense = async (req, res, next) => {
 };
 
 // Expense Graph
-const getDetailedExpenses = async (req, res, next) => {
-  const { startDate, endDate, mode } = req.query;
+const getGraph = async (req, res, next) => {
 
   try {
-    const filters = {
-      userId: parseInt(req.user.id),
-      date: {
-        gte: startDate,
-        lte: endDate,
-      },
-      isActive: true,
-    };
-    console.log("filters", filters);
-    const groupedExpenses = await prisma.$queryRawUnsafe(
-      `SELECT 
-        date_trunc('${mode}', "date") AS "${mode}",
-        sum(amount) AS total
-      FROM "Expense"
-      WHERE "date" >= '${startDate}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true
-      GROUP BY "${mode}", "amount"
-      ORDER BY "${mode}"`
-    );
-    console.log(groupedExpenses);
-    // const groupedExpenses = await prisma.expense.groupBy({
-    //   where: {
-    //     userId: parseInt(req.user.id),
-    //     isDeleted: false,
-    //     date: {
-    //       gte: (() => {
-    //         const date = start;
-    //         date.setMonth(date.getMonth() - 1); // Subtract 1 month
-    //         return date;
-    //       })(),
-    //       lte: end,
-    //     },
-    //   },
-    //   _sum: { amount: true },
-    // });
-    console.log("group expense!", groupedExpenses);
-
-    const trend = (
-      ((groupedExpenses[1]?._sum?.amount - groupedExpenses[0]?._sum?.amount) /
-        groupedExpenses[0]?._sum?.amount) *
-      100
-    ).toFixed(2);
-
-    const categoryExpenses = await prisma.expense.groupBy({
-      by: ["categoryId"],
-      where: filters,
-      _sum: { amount: true },
-    });
-
-    const detailedCategoryExpenses = await Promise.all(
-      categoryExpenses.map(async (item) => {
-        const category = await prisma.categories.findFirst({
-          where: { id: item.categoryId },
-        });
-        return {
-          categoryId: item.categoryId,
-          categoryName: category?.name || "Unknown",
-          total: item._sum.amount || 0,
-        };
-      })
-    );
-
-    const totalExpense = await prisma.expense.aggregate({
-      where: filters,
-      _sum: { amount: true },
-    });
+    const response = await expenseService.getExpenseGraph(req.user.id, req.query)
+    console.log("response!: ", response)
 
     return res.status(200).json({
       success: true,
       message: "Detailed expenses fetched successfully",
-      data: {
-        trend,
-        categoryExpenses: detailedCategoryExpenses,
-        totalExpense: totalExpense._sum.amount || 0,
-      },
+      data: response
     });
   } catch (err) {
     console.error("Error while fetching detailed expenses:", err);
@@ -189,5 +121,5 @@ module.exports = {
   getExpenses,
   deleteExpense,
   updateExpense,
-  getDetailedExpenses,
+  getGraph,
 };

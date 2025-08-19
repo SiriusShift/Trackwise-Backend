@@ -39,6 +39,7 @@ const getAssetRemainingBalance = async (req, res) => {
         expenses: {
           where: {
             isActive: true,
+            status: "Paid"
           },
         },
         incomes: {
@@ -52,6 +53,10 @@ const getAssetRemainingBalance = async (req, res) => {
             status: true,
             // recurring: true, // Include recurring field if needed
           },
+          where: {
+            isActive: true,
+            status: "Received"
+          }
         },
       },
     });
@@ -81,6 +86,12 @@ const getAssetRemainingBalance = async (req, res) => {
             amount: true,
             assetId: true,
             status: true,
+          },
+          where: {
+            isActive: true,
+            date: {
+              lte: moment().subtract(1, "month").endOf("month").toDate(),
+            },
           },
         },
       },

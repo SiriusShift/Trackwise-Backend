@@ -4,6 +4,7 @@ const moment = require("moment");
 const { validateCategory } = require("./categories.service");
 const { validateAsset } = require("./assets.service");
 const { uploadFileToS3, deleteFileFromS3 } = require("./s3.service");
+const { connect } = require("../routes/expenses.routes");
 
 const validateExpense = async (id) => {
   const expense = await prisma.expense.findFirst({
@@ -74,9 +75,10 @@ const getExpenses = async (userId, query) => {
 
   const detailedExpenses = await Promise.all(
     expenses.map(async (expense) => {
-      if (expense?.sourceId !== null) {
+      console.log("expenses:", expense);
+      if (expense?.assetId !== null) {
         const asset = await prisma.asset.findFirst({
-          where: { id: expense.sourceId },
+          where: { id: expense.assetId },
         });
         const category = await prisma.categories.findFirst({
           where: { id: expense.categoryId },
@@ -103,7 +105,7 @@ const getExpenses = async (userId, query) => {
 const postExpense = async (userId, data, file) => {
   const amount = parseInt(data.amount);
   const categoryId = parseInt(data.category);
-  const assetId = parseInt(data.source);
+  const assetId = parseInt(data.from);
 
   validateCategory(categoryId);
   const asset = validateAsset(assetId, userId);
@@ -123,7 +125,7 @@ const postExpense = async (userId, data, file) => {
       amount: amount,
       description: data.description,
       image: image,
-      status: data.date > new Date() ? "Unpaid" : "Paid",
+      status: data.date > new Date() ? "Pending" : "Paid",
       type: "Expense",
       category: {
         connect: {
@@ -147,9 +149,21 @@ const postExpense = async (userId, data, file) => {
   // Create a transaction history record
   await prisma.transactionHistory.create({
     data: {
-      expenseId: expense.id,
-      userId: userId,
-      fromAssetId: assetId,
+      expense: {
+        connect: {
+          id: expense.id,
+        },
+      },
+      user: {
+        connect: {
+          id: userId,
+        },
+      },
+      fromAsset: {
+        connect: {
+          id: assetId,
+        },
+      },
       transactionType: "Expense",
       amount: amount,
       description: data.description,
@@ -167,7 +181,7 @@ const updateExpense = async (userId, data, file, id) => {
   try {
     const amount = parseInt(data?.amount);
     const categoryId = parseInt(data.category);
-    const assetId = parseInt(data.source);
+    const assetId = parseInt(data.from);
 
     const expense = validateExpense(id);
     let image;
@@ -183,8 +197,6 @@ const updateExpense = async (userId, data, file, id) => {
       image = await deleteFileFromS3(expense?.image);
     }
 
-    console.log("image: ", image, id);
-
     const expenseUpdate = await prisma.expense.update({
       where: { id: parseInt(id) },
       data: {
@@ -192,7 +204,7 @@ const updateExpense = async (userId, data, file, id) => {
         description: data.description,
         recurring: data.recurring,
         image: image,
-        status: data.date > new Date() ? "Unpaid" : "Paid",
+        status: new Date(data.date).getTime() > Date.now() ? "Pending" : "Paid",
         category: {
           connect: {
             id: categoryId,
@@ -204,6 +216,7 @@ const updateExpense = async (userId, data, file, id) => {
           },
         },
         date: data.date,
+        updatedAt: new Date(),
         user: {
           connect: {
             id: userId,
@@ -226,6 +239,11 @@ const updateExpense = async (userId, data, file, id) => {
         description: data.description,
         date: data.date,
         updatedAt: new Date(),
+        fromAsset: {
+          connect: {
+            id: assetId,
+          },
+        },
       },
     });
 
@@ -339,9 +357,76 @@ const deleteExpense = async (userId, id) => {
   });
 };
 
+const getExpenseGraph = async (userId, query) => {
+  const { startDate, endDate, mode } = query;
+
+  try {
+    const filters = {
+      userId: parseInt(userId),
+      date: {
+        gte: startDate,
+        lte: endDate,
+      },
+      isActive: true,
+      status: "Paid"
+    };
+    console.log("filters", filters);
+    const groupedExpenses = await prisma.$queryRawUnsafe(
+      `SELECT 
+        date_trunc('${mode}', "date") AS "${mode}",
+        sum(amount) AS total
+      FROM "Expense"
+      WHERE "date" >= '${moment(startDate).subtract(1, "month").toISOString()}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true AND "status" = 'Paid'
+      GROUP BY "${mode}"
+      ORDER BY "${mode}"`
+    );
+    console.log("group expense!", groupedExpenses);
+
+    const trend = (
+      ((groupedExpenses[1]?.total - groupedExpenses[0]?.total) /
+        groupedExpenses[0]?.total) *
+      100
+    ).toFixed(2);
+
+    const categoryExpenses = await prisma.expense.groupBy({
+      by: ["categoryId"],
+      where: filters,
+      _sum: { amount: true },
+    });
+
+    const detailedCategoryExpenses = await Promise.all(
+      categoryExpenses.map(async (item) => {
+        const category = await prisma.categories.findFirst({
+          where: { id: item.categoryId },
+        });
+        return {
+          categoryId: item.categoryId,
+          categoryName: category?.name || "Unknown",
+          total: item._sum.amount || 0,
+        };
+      })
+    );
+
+    const totalExpense = await prisma.expense.aggregate({
+      where: filters,
+      _sum: { amount: true },
+    });
+
+    return {
+      trend,
+      data: detailedCategoryExpenses,
+      total: totalExpense._sum.amount || 0,
+    };
+  } catch (err) {
+    console.log(err);
+    return err;
+  }
+};
+
 module.exports = {
   getExpenses,
   postExpense,
   updateExpense,
   deleteExpense,
+  getExpenseGraph,
 };

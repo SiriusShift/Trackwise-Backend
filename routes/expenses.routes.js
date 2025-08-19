@@ -5,7 +5,7 @@ const {
   getExpenses,
   deleteExpense,
   updateExpense,
-  getDetailedExpenses,
+  getGraph,
 } = require("../controllers/expenses.controller");
 const {postInstallmentController, getInstallmentController} = require("../controllers/installments.controller")
 const { isLoggedIn } = require("../middleware/validate");
@@ -31,6 +31,6 @@ router
   .patch(isLoggedIn, catchAsync(deleteExpense));
 router
   .route("/graph")
-  .get(isLoggedIn, catchAsync(getDetailedExpenses));
+  .get(isLoggedIn, catchAsync(getGraph));
 
 module.exports = router;
