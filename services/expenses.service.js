@@ -344,7 +344,6 @@ const deleteExpense = async (userId, id) => {
   //   }
   // }
   // If it's a standalone expense
-  console.log("Regular Expense:", data);
 
   await prisma.expense.update({
     where: { id: parseInt(id) },

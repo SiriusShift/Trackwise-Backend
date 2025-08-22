@@ -11,6 +11,7 @@ router.route("/").get(isLoggedIn, catchAsync(getIncome));
 router
   .route("/")
   .post(isLoggedIn, upload.single("image"), catchAsync(postIncome));
+// Update and delete income
 router.route("/:id").patch(isLoggedIn, upload.single("image"), catchAsync(updateIncome))
 router.route("/graph").get(isLoggedIn, catchAsync(getGraph))
 

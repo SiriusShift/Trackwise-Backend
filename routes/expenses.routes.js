@@ -18,6 +18,7 @@ const router = Router();
 router
   .route("/")
   .post(isLoggedIn, upload.single("image"), catchAsync(postExpense));
+//UPDATE AND DELETE
 router
   .route("/:id")
   .patch(
@@ -26,9 +27,6 @@ router
     catchAsync(updateExpense)
   );
 router.route("/").get(isLoggedIn, catchAsync(getExpenses));
-router
-  .route("/:id")
-  .patch(isLoggedIn, catchAsync(deleteExpense));
 router
   .route("/graph")
   .get(isLoggedIn, catchAsync(getGraph));

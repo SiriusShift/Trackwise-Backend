@@ -60,18 +60,24 @@ const postExpense = async (req, res, next) => {
 const updateExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
-    console.log("params", req.params?.id);
-    const updatedExpense = await expenseService.updateExpense(
-      req.user.id,
-      req.body,
-      req.file,
-      id
-    );
-    console.log(updatedExpense);
+    let updateExpense;
+
+    //IF DELETING (soft delete)
+    if (req.body) {
+      updateExpense = expenseService.deleteExpense(req.user.id, id);
+    } else {
+      // update only
+      updateExpense = await expenseService.updateExpense(
+        req.user.id,
+        req.body,
+        req.file,
+        id
+      );
+    }
     res.status(200).json({
       success: true,
       message: "Expense updated successfully",
-      data: updatedExpense,
+      data: updateExpense,
     });
   } catch (err) {
     console.log("Error while updating expense", err);
@@ -81,31 +87,32 @@ const updateExpense = async (req, res, next) => {
   }
 };
 
-const deleteExpense = async (req, res, next) => {
-  const { id } = req.params;
-  try {
-    expenseService.deleteExpense(req.user.id,id)
-    res.status(200).json({
-      success: true,
-      message: "Expense deleted successfully",
-    });
-  } catch (err) {
-    console.error("Error while deleting expense:", err);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-};
+// const deleteExpense = async (req, res, next) => {
+//   const { id } = req.params;
+//   try {
+//     res.status(200).json({
+//       success: true,
+//       message: "Expense deleted successfully",
+//     });
+//   } catch (err) {
+//     console.error("Error while deleting expense:", err);
+//     return res.status(500).json({ error: "Internal server error" });
+//   }
+// };
 
 // Expense Graph
 const getGraph = async (req, res, next) => {
-
   try {
-    const response = await expenseService.getExpenseGraph(req.user.id, req.query)
-    console.log("response!: ", response)
+    const response = await expenseService.getExpenseGraph(
+      req.user.id,
+      req.query
+    );
+    console.log("response!: ", response);
 
     return res.status(200).json({
       success: true,
       message: "Detailed expenses fetched successfully",
-      data: response
+      data: response,
     });
   } catch (err) {
     console.error("Error while fetching detailed expenses:", err);
@@ -119,7 +126,6 @@ const getGraph = async (req, res, next) => {
 module.exports = {
   postExpense,
   getExpenses,
-  deleteExpense,
   updateExpense,
   getGraph,
 };
