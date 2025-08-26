@@ -34,7 +34,8 @@ const getIncome = async (req, res) => {
 
 const getGraph = async (req, res, next) => {
   try {
-    const response = incomeService.getIncomeGraph(req.user.id, req.query)
+    const response = await incomeService.getIncomeGraph(req.user.id, req.query)
+    console.log("response!", response)
     return res.status(200).json({
       success: true,
       message: "Detailed incomes fetched successfully",
@@ -53,8 +54,8 @@ const updateIncome = async (req, res, next) => {
   const { id } = req.params;
   try {
     let income
-    if (req.body) {
-      income = await incomeService.getIncomeGraph(req.user.id, req.query)
+    if (req.body.delete) {
+      income = await incomeService.deleteIncome(req.user.id, req.query)
     } else {
       income = await incomeService.updateIncome(
         req.user.id,

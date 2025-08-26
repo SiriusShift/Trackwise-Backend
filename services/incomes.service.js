@@ -67,7 +67,7 @@ const postIncome = async (userId, data, file) => {
           id: assetId,
         },
       },
-      transactionType: "Expense",
+      transactionType: "Income",
       amount: amount,
       description: data.description,
       date: data.date,
@@ -289,8 +289,8 @@ const getIncomeGraph = async (userId, query) => {
     console.log("group income!", groupedIncomes);
 
     const trend = (
-      ((groupedIncomes[1]?._sum?.amount - groupedIncomes[0]?._sum?.amount) /
-        groupedIncomes[0]?._sum?.amount) *
+      ((groupedIncomes[1]?.total - groupedIncomes[0]?.total) /
+        groupedIncomes[0]?.total) *
       100
     ).toFixed(2);
 
@@ -312,6 +312,8 @@ const getIncomeGraph = async (userId, query) => {
         };
       })
     );
+
+    console.log("detailed category", detailedCategoryIncomes)
 
     const totalIncome = await prisma.income.aggregate({
       where: filters,

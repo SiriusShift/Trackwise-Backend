@@ -2,72 +2,73 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const getHistory = async (userId) => {
   try {
-    const expense = await prisma.expense.findMany({
-      where: { isActive: true, status: "Paid", userId },
+    const transactions = await prisma.transactionHistory.findMany({
+      where: { isActive: true, userId: userId },
       select: {
         id: true,
+        transactionType: true,
         amount: true,
-        date: true,
-        assetId: true,
         description: true,
-        category: {
+        expense: {
           select: {
-            name: true,
-            icon: true,
+            category: {
+              select: {
+                name: true,
+                icon: true,
+              },
+            },
+          },
+        },
+        income: {
+          select: {
+            category: {
+              select: {
+                name: true,
+                icon: true,
+              },
+            },
           },
         },
       },
+      orderBy: [
+        {
+          date: "desc",
+        },
+      ],
     });
 
-    console.log("expense: !", expense);
-    const income = await prisma.income.findMany({
-      where: {
-        isActive: true,
-        status: "Received",
-        userId,
-      },
-      select: {
-        id: true,
-        amount: true,
-        description: true,
-        date: true,
-        assetId: true,
-        category: {
-          select: {
-            name: true,
-            icon: true,
+    const filter = transactions.map((item) => {
+      return {
+        id: item.id,
+        type: item.transactionType,
+        amount: item.amount,
+        description: item.description,
+        ...(item?.expense && {
+          category: {
+            name: item?.expense?.category?.name,
+            icon: item?.expense?.category?.icon,
           },
-        },
-      },
-    });
-    console.log("income: !", income);
-    const transfer = await prisma.transfer.findMany({
-      where: {
-        isActive: true,
-        // status: "Completed",
-        userId,
-      },
-      select: {
-        id: true,
-        amount: true,
-        date: true,
-        fromAssetId: true,
-        toAssetId: true,
-        // category: {
-        //   select: {
-        //     name: true,
-        //     icon: true,
+        }),
+        ...(item?.income && {
+          category: {
+            name: item?.income?.category?.name,
+            icon: item?.income?.category?.icon,
+          },
+        }),
+        // ...(item?.transfer && {
+        //   category: {
+        //     name: item?.transfer?.category?.name,
+        //     icon: item?.transfer?.category?.icon,
         //   },
-        // },
-      },
+        // }),
+      };
     });
-    console.log("transfer: !", transfer);
 
-    const transaction = [...expense, ...income, ...transfer];
-    const sorted = transaction.sort(
-      (a, b) => b.date.getTime() - a.date.getTime()
-    );
-    return sorted;
+    // const transaction = [...expense, ...income, ...transfer];
+    // const sorted = transaction.sort(
+    //   (a, b) => b.date.getTime() - a.date.getTime()
+    // );
+    return filter;
   } catch (err) {
     console.log(err);
     return err;

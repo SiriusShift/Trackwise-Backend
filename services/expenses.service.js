@@ -406,6 +406,8 @@ const getExpenseGraph = async (userId, query) => {
       })
     );
 
+    console.log("detailed category", detailedCategoryExpenses)
+
     const totalExpense = await prisma.expense.aggregate({
       where: filters,
       _sum: { amount: true },
