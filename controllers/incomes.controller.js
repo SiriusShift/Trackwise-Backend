@@ -1,7 +1,7 @@
 const incomeService = require("../services/incomes.service");
 const postIncome = async (req, res) => {
   try {
-    const response = incomeService.postIncome(req.user.id, req.body, req.file);
+    const response = await incomeService.postIncome(req.user.id, req.body, req.file);
     console.log("response", response);
     res.status(200).json({
       success: true,
