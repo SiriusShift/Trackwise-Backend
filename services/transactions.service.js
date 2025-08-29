@@ -3,7 +3,24 @@ const prisma = new PrismaClient();
 const getHistory = async (userId) => {
   try {
     const transactions = await prisma.transactionHistory.findMany({
-      where: { isActive: true, userId: userId },
+      where: {
+        isActive: true,
+        userId: userId,
+        OR: [
+          {
+            transactionType: "Expense",
+            expense: {
+              status: "Paid",
+            },
+          },
+          {
+            transactionType: "Income",
+            income: {
+              status: "Received",
+            },
+          },
+        ],
+      },
       select: {
         id: true,
         transactionType: true,
@@ -11,6 +28,7 @@ const getHistory = async (userId) => {
         description: true,
         expense: {
           select: {
+            status: true,
             category: {
               select: {
                 name: true,
@@ -21,6 +39,7 @@ const getHistory = async (userId) => {
         },
         income: {
           select: {
+            status: true,
             category: {
               select: {
                 name: true,
@@ -48,12 +67,15 @@ const getHistory = async (userId) => {
             name: item?.expense?.category?.name,
             icon: item?.expense?.category?.icon,
           },
+          status: item?.expense?.status
         }),
         ...(item?.income && {
           category: {
             name: item?.income?.category?.name,
             icon: item?.income?.category?.icon,
           },
+                    status: item?.income?.status
+
         }),
         // ...(item?.transfer && {
         //   category: {

@@ -126,7 +126,6 @@ const postExpense = async (userId, data, file) => {
       description: data.description,
       image: image,
       status: data.date > new Date() ? "Pending" : "Paid",
-      type: "Expense",
       category: {
         connect: {
           id: categoryId,

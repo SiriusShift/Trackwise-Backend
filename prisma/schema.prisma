@@ -14,12 +14,6 @@ enum Status {
   Partial
 }
 
-enum Type {
-  Expense
-  Income
-  Transfer
-}
-
 model User {
   id                 Int                    @id @default(autoincrement())
   firstName          String?                @map("first_name")
@@ -106,9 +100,7 @@ model Expense {
   updatedAt   DateTime @updatedAt
   isActive    Boolean  @default(true)
   status      Status?
-
-  type Type @default(Expense)
-
+  
   // Foreign Keys for Recurring and Installment
   recurringId   Int?
   installmentId Int?
