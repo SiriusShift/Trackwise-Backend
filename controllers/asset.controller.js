@@ -2,6 +2,7 @@ const { PrismaClient } = require("@prisma/client");
 const { TripleDES } = require("crypto-js");
 const prisma = new PrismaClient();
 const moment = require("moment");
+const assetService = require("../services/assets.service");
 
 const createAsset = async (req, res, next) => {
   console.log(req.query);
@@ -25,144 +26,18 @@ const createAsset = async (req, res, next) => {
   });
 };
 
-const getAssetRemainingBalance = async (req, res) => {
+const getAsset = async (req, res) => {
+  const {id} = req.params
   try {
     // Step 1: Fetch all assets along with related expenses and incomes
-    const assets = await prisma.asset.findMany({
-      where: {
-        userId: req.user.id, // Assuming `req.user.id` represents the logged-in user
-      },
-      select: {
-        id: true,
-        name: true,
-        balance: true,
-        expenses: {
-          where: {
-            isActive: true,
-            status: "Paid"
-          },
-        },
-        incomes: {
-          select: {
-            id: true,
-            date: true,
-            categoryId: true,
-            description: true,
-            amount: true,
-            assetId: true,
-            status: true,
-            // recurring: true, // Include recurring field if needed
-          },
-          where: {
-            isActive: true,
-            status: "Received"
-          }
-        },
-      },
-    });
-
-    const assetsLastMonth = await prisma.asset.findMany({
-      where: {
-        userId: req.user.id, // Assuming `req.user.id` represents the logged-in user
-      },
-      select: {
-        id: true,
-        name: true,
-        balance: true,
-        expenses: {
-          where: {
-            isActive: true,
-            date: {
-              lte: moment().subtract(1, "month").endOf("month").toDate(),
-            },
-          },
-        },
-        incomes: {
-          select: {
-            id: true,
-            date: true,
-            categoryId: true,
-            description: true,
-            amount: true,
-            assetId: true,
-            status: true,
-          },
-          where: {
-            isActive: true,
-            date: {
-              lte: moment().subtract(1, "month").endOf("month").toDate(),
-            },
-          },
-        },
-      },
-    });
-
-    const lastMonthData = assetsLastMonth.map((asset) => {
-      const totalExpenses = asset.expenses.reduce(
-        (sum, expense) => sum + expense.amount,
-        0
-      );
-      const totalIncomes = asset.incomes.reduce(
-        (sum, income) => sum + income.amount,
-        0
-      );
-      const remainingBalance = asset.balance + totalIncomes - totalExpenses;
-
-      return {
-        ...asset,
-        totalExpenses,
-        totalIncomes,
-        remainingBalance,
-      };
-    });
-
-    console.log(assetsLastMonth);
-
-    console.log(assets);
-
-    const data = assets.map((asset) => {
-      const totalExpenses = asset.expenses.reduce(
-        (sum, expense) => sum + expense.amount,
-        0
-      );
-      const totalIncomes = asset.incomes.reduce(
-        (sum, income) => sum + income.amount,
-        0
-      );
-      const remainingBalance = asset.balance + totalIncomes - totalExpenses;
-
-      return {
-        ...asset,
-        totalExpenses,
-        totalIncomes,
-        remainingBalance,
-      };
-    });
-
-    const totalRemainingBalance = data.reduce(
-      (sum, asset) => sum + asset.remainingBalance,
-      0
-    );
-
-    const previousTotalBalance = lastMonthData.reduce(
-      (sum, asset) => sum + asset.remainingBalance,
-      0
-    );
-
-    console.log(totalRemainingBalance, previousTotalBalance);
-
-    const trend = (
-      ((totalRemainingBalance - previousTotalBalance) / previousTotalBalance) *
-      100
-    ).toFixed(2);
+    const response =  await assetService.getAsset(req.user.id, req.body, id);
+    console.log(response, "response")
 
     // Step 3: Return the response
     res.status(200).json({
       success: true,
       message: "Assets fetched successfully with total expenses and incomes",
-      data,
-      balance: totalRemainingBalance,
-      trend,
+      ...response,
     });
   } catch (error) {
     console.error("Error fetching assets, expenses, and incomes:", error);
@@ -176,5 +51,5 @@ const getAssetRemainingBalance = async (req, res) => {
 
 module.exports = {
   createAsset,
-  getAssetRemainingBalance,
+  getAsset,
 };

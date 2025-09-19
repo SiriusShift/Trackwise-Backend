@@ -79,7 +79,7 @@ const uploadFileToS3 = async (file, folder, id) => {
   } catch (error) {
     console.error(error);
     alert("Error uploading file: " + error.message);
-    return null;
+    throw new Error("Error uploading image in S3");
   }
 };
 
@@ -100,7 +100,7 @@ const deleteFileFromS3 = async (url) => {
   } catch (err) {
     console.error(err);
     alert("Error deleting file: " + err.message);
-    return null;
+    throw new Error("Error deleting file");
   }
 };
 

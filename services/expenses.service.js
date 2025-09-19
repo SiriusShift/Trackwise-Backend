@@ -69,34 +69,88 @@ const getExpenses = async (userId, query) => {
   const expenses = await prisma.expense.findMany({
     where: filters,
     orderBy: { date: "desc" },
+    select: {
+      id: true,
+      date: true,
+      category: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          icon: true,
+          isActive: true,
+        },
+      },
+      asset: {
+        select: {
+          id: true,
+          name: true,
+          balance: true,
+        },
+      },
+      description: true,
+      amount: true,
+      image: true,
+      isActive: true,
+      status: true,
+      recurringTemplate: {
+        select: {
+          fromAssetId: true,
+          amount: true,
+          // isVariable: true,
+          auto: true,
+        },
+      },
+      transactionHistory: {
+        select: {
+          id: true,
+          transactionType: true,
+          amount: true,
+          description: true,
+          date: true,
+          fromAssetId: true,
+        },
+      },
+    },
     skip,
     take: size,
   });
 
-  const detailedExpenses = await Promise.all(
-    expenses.map(async (expense) => {
-      console.log("expenses:", expense);
-      if (expense?.assetId !== null) {
-        const asset = await prisma.asset.findFirst({
-          where: { id: expense.assetId },
-        });
-        const category = await prisma.categories.findFirst({
-          where: { id: expense.categoryId },
-        });
-        return { ...expense, asset, category };
-      }
-      return undefined;
-    })
-  );
+  // const detailedExpenses = await Promise.all(
+  //   expenses.map(async (expense) => {
+  //     console.log("expenses:", expense);
+  //     let asset;
+  //     let category;
+  //     if (expense?.assetId !== null) {
+  //       asset = await prisma.asset.findFirst({
+  //         where: { id: expense.assetId },
+  //       });
+  //     }
+  //     if (expense?.categoryId !== null) {
+  //       category = await prisma.categories.findFirst({
+  //         where: { id: expense.categoryId },
+  //       });
+  //     }
+  //     return { ...expense, asset, category };
+  //   })
+  // );
 
-  const filteredExpenses = detailedExpenses.filter(
-    (item) => item !== undefined
-  );
+  const filteredExpenses = expenses.filter((item) => item !== undefined);
+  console.log(filteredExpenses, "filtered");
+  const expensesWithBalance = filteredExpenses?.map((expense) => ({
+    ...expense,
+    remainingBalance:
+      expense.amount -
+      expense.transactionHistory.reduce(
+        (acc, curr) => acc + (curr?.amount || 0),
+        0
+      ),
+  }));
 
   const totalPages = Math.ceil(totalCount / size);
 
   return {
-    data: filteredExpenses,
+    data: expensesWithBalance,
     totalCount,
     totalPages,
   };
@@ -124,8 +178,7 @@ const postExpense = async (userId, data, file) => {
     data: {
       amount: amount,
       description: data.description,
-      image: image,
-      status: data.date > new Date() ? "Pending" : "Paid",
+      status: new Date(data.date) > new Date() ? "Pending" : "Paid",
       category: {
         connect: {
           id: categoryId,
@@ -145,30 +198,34 @@ const postExpense = async (userId, data, file) => {
     },
   });
 
+  if (new Date(data?.date) <= new Date()) {
+    await prisma.transactionHistory.create({
+      data: {
+        expense: {
+          connect: {
+            id: expense.id,
+          },
+        },
+        image: image,
+        user: {
+          connect: {
+            id: userId,
+          },
+        },
+        fromAsset: {
+          connect: {
+            id: assetId,
+          },
+        },
+        transactionType: "Expense",
+        amount: amount,
+        description: data.description,
+        date: data.date,
+      },
+    });
+  }
+
   // Create a transaction history record
-  await prisma.transactionHistory.create({
-    data: {
-      expense: {
-        connect: {
-          id: expense.id,
-        },
-      },
-      user: {
-        connect: {
-          id: userId,
-        },
-      },
-      fromAsset: {
-        connect: {
-          id: assetId,
-        },
-      },
-      transactionType: "Expense",
-      amount: amount,
-      description: data.description,
-      date: data.date,
-    },
-  });
 
   return expense;
 };
@@ -182,12 +239,15 @@ const updateExpense = async (userId, data, file, id) => {
     const categoryId = parseInt(data.category);
     const assetId = parseInt(data.from);
 
-    const expense = validateExpense(id);
+    const expense = await validateExpense(id);
+    console.log(expense);
     let image;
 
     if (file) {
       image = await uploadFileToS3(file, "Expense", userId);
+      console.log(expense?.image);
       if (expense?.image) {
+        console.log("delete image");
         await deleteFileFromS3(expense?.image);
       }
     } else if (data?.image) {
@@ -201,8 +261,6 @@ const updateExpense = async (userId, data, file, id) => {
       data: {
         amount: amount,
         description: data.description,
-        recurring: data.recurring,
-        image: image,
         status: new Date(data.date).getTime() > Date.now() ? "Pending" : "Paid",
         category: {
           connect: {
@@ -238,6 +296,7 @@ const updateExpense = async (userId, data, file, id) => {
         description: data.description,
         date: data.date,
         updatedAt: new Date(),
+        image: image,
         fromAsset: {
           connect: {
             id: assetId,
@@ -251,7 +310,7 @@ const updateExpense = async (userId, data, file, id) => {
     return expenseUpdate;
   } catch (err) {
     console.log(err);
-    return err;
+    throw new Error("Internal server error");
   }
 };
 
@@ -355,6 +414,51 @@ const deleteExpense = async (userId, id) => {
   });
 };
 
+const patchPayment = async (userId, data, id, file) => {
+  try {
+    const amount = parseInt(data.amount);
+    const assetId = parseInt(data.from);
+
+    const expense = validateExpense(id);
+    const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
+
+    prisma.expense.update({
+      where: {
+        id: id,
+      },
+      data: {
+        status: amount < expense?.amount ? "Partial" : "Paid",
+      },
+    });
+    prisma.transactionHistory.create({
+      data: {
+        expense: {
+          connect: {
+            id: expense.id,
+          },
+        },
+        user: {
+          connect: {
+            id: userId,
+          },
+        },
+        fromAsset: {
+          connect: {
+            id: assetId,
+          },
+        },
+        image: image,
+        transactionType: "Expense",
+        amount: amount,
+        description: data.description,
+        date: data.date,
+      },
+    });
+  } catch (err) {
+    throw new Error(err);
+  }
+};
+
 const getExpenseGraph = async (userId, query) => {
   const { startDate, endDate, mode } = query;
 
@@ -366,7 +470,7 @@ const getExpenseGraph = async (userId, query) => {
         lte: endDate,
       },
       isActive: true,
-      status: "Paid"
+      status: "Paid",
     };
     console.log("filters", filters);
     const groupedExpenses = await prisma.$queryRawUnsafe(
@@ -374,7 +478,9 @@ const getExpenseGraph = async (userId, query) => {
         date_trunc('${mode}', "date") AS "${mode}",
         sum(amount) AS total
       FROM "Expense"
-      WHERE "date" >= '${moment(startDate).subtract(1, "month").toISOString()}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true AND "status" = 'Paid'
+      WHERE "date" >= '${moment(startDate)
+        .subtract(1, "month")
+        .toISOString()}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true AND "status" = 'Paid'
       GROUP BY "${mode}"
       ORDER BY "${mode}"`
     );
@@ -405,7 +511,7 @@ const getExpenseGraph = async (userId, query) => {
       })
     );
 
-    console.log("detailed category", detailedCategoryExpenses)
+    console.log("detailed category", detailedCategoryExpenses);
 
     const totalExpense = await prisma.expense.aggregate({
       where: filters,
@@ -419,7 +525,7 @@ const getExpenseGraph = async (userId, query) => {
     };
   } catch (err) {
     console.log(err);
-    return err;
+    throw new Error("Internal server error");
   }
 };
 
@@ -429,4 +535,5 @@ module.exports = {
   updateExpense,
   deleteExpense,
   getExpenseGraph,
+  patchPayment,
 };

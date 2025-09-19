@@ -116,13 +116,12 @@ const login = async (req, res, next) => {
 };
 
 const resetPassword = async (req, res, next) => {
-  const { id, password, token } = req.body;
-  console.log(id, password, token);
+  const {  password, token } = req.body;
+  console.log(password, token);
   const hashedPassword = await bcrypt.hash(password, 10);
   const findToken = await prisma.resetToken.findFirst({
     where: {
       token: token,
-      userId: id,
     },
   });
 
@@ -143,7 +142,7 @@ const resetPassword = async (req, res, next) => {
 
   await prisma.user.update({
     where: {
-      id: id,
+      id: findToken?.userId,
     },
     data: {
       password: hashedPassword,
@@ -172,7 +171,8 @@ const isAuthenticated = async (req, res, next) => {
       },
       select: {
         timezone: true,
-        timeFormat: true
+        timeFormat: true,
+        currency: true
       }
     });
     return res.status(200).json({

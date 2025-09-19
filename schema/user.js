@@ -33,7 +33,6 @@ const googleSignupSchema = Joi.object({
 });
 
 const resetPasswordSchema = Joi.object({
-    id: Joi.number().required(),
     password: Joi.string().required().pattern(passwordPattern).messages({
         "string.pattern.base": passwordError,
     }),

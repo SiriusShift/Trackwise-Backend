@@ -92,8 +92,8 @@ const getHistory = async (userId) => {
     // );
     return filter;
   } catch (err) {
-    console.log(err);
-    return err;
+    throw new Error("Internal server error");
+
   }
 };
 

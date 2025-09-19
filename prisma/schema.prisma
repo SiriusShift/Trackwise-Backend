@@ -10,8 +10,18 @@ datasource db {
 enum Status {
   Pending
   Paid
+  Received
+  Completed
   Overdue
+  Cancelled
+  Failed
   Partial
+}
+
+enum Type {
+  Expense
+  Income
+  Transfer
 }
 
 model User {
@@ -39,27 +49,6 @@ model User {
   Recurring          RecurringTransaction[]
   InstallmentPlan    InstallmentPlan[]
   settings           Settings[]
-}
-
-model Transfer {
-  id          Int     @id @default(autoincrement())
-  userId      Int
-  fromAssetId Int
-  toAssetId   Int
-  amount      Float
-  description String?
-  image       String?
-
-  date      DateTime @default(now())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  isActive  Boolean  @default(true)
-
-  user      User  @relation(fields: [userId], references: [id])
-  fromAsset Asset @relation("FromAsset", fields: [fromAssetId], references: [id])
-  toAsset   Asset @relation("ToAsset", fields: [toAssetId], references: [id])
-
-  @@index([userId])
 }
 
 model Asset {
@@ -100,7 +89,7 @@ model Expense {
   updatedAt   DateTime @updatedAt
   isActive    Boolean  @default(true)
   status      Status?
-  
+
   // Foreign Keys for Recurring and Installment
   recurringId   Int?
   installmentId Int?
@@ -110,17 +99,65 @@ model Expense {
   user     User       @relation(fields: [userId], references: [id])
 
   // Relations
-  recurringTemplate  RecurringTransaction? @relation("RecurringGenerated", fields: [recurringId], references: [id])
+  recurringTemplate  RecurringTransaction? @relation("RecurringExpenses", fields: [recurringId], references: [id])
   installment        Installment?          @relation(fields: [installmentId], references: [id])
   transactionHistory TransactionHistory[]
 
   @@index([userId])
 }
 
-enum RecurringType {
-  Expense
-  Income
-  Transfer
+model Income {
+  id          Int      @id @default(autoincrement())
+  date        DateTime @default(now())
+  categoryId  Int
+  description String?
+  amount      Float
+  assetId     Int?
+  image       String?
+
+  userId    Int
+  status    Status?  @default(Pending)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
+
+  recurringId Int?
+
+  recurringIncome RecurringTransaction? @relation("RecurringIncomes", fields: [recurringId], references: [id])
+  category        Categories            @relation(fields: [categoryId], references: [id])
+  asset           Asset?                @relation(fields: [assetId], references: [id])
+  user            User                  @relation(fields: [userId], references: [id])
+
+  transactionHistory TransactionHistory[]
+
+  @@index([userId])
+}
+
+model Transfer {
+  id          Int     @id @default(autoincrement())
+  userId      Int
+  fromAssetId Int
+  toAssetId   Int
+  amount      Float
+  description String?
+  image       String?
+
+  date      DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isActive  Boolean  @default(true)
+  status    Status   @default(Pending)
+
+  recurringId Int?
+
+  recurringTransfer RecurringTransaction? @relation("RecurringTransfers", fields: [recurringId], references: [id])
+  user              User                  @relation(fields: [userId], references: [id])
+  fromAsset         Asset                 @relation("FromAsset", fields: [fromAssetId], references: [id])
+  toAsset           Asset                 @relation("ToAsset", fields: [toAssetId], references: [id])
+
+  transactionHistory TransactionHistory[]
+
+  @@index([userId])
 }
 
 model RecurringTransaction {
@@ -141,12 +178,16 @@ model RecurringTransaction {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
   auto        Boolean   @default(false)
+  // isVariable  Boolean?   @default(false)
 
-  user              User       @relation(fields: [userId], references: [id])
-  category          Categories @relation(fields: [categoryId], references: [id])
-  fromAsset         Asset?     @relation("RecurringTransferFrom", fields: [fromAssetId], references: [id])
-  toAsset           Asset?     @relation("RecurringTransferTo", fields: [toAssetId], references: [id])
-  generatedExpenses Expense[]  @relation("RecurringGenerated")
+  user      User       @relation(fields: [userId], references: [id])
+  category  Categories @relation(fields: [categoryId], references: [id])
+  fromAsset Asset?     @relation("RecurringTransferFrom", fields: [fromAssetId], references: [id])
+  toAsset   Asset?     @relation("RecurringTransferTo", fields: [toAssetId], references: [id])
+
+  generatedExpenses  Expense[]  @relation("RecurringExpenses")
+  generatedIncomes   Income[]   @relation("RecurringIncomes")
+  generatedTransfers Transfer[] @relation("RecurringTransfers")
 }
 
 model InstallmentPlan {
@@ -203,53 +244,34 @@ model Settings {
   id         Int    @id @default(autoincrement())
   timezone   String @default("Asia/Manila")
   timeFormat String @default("hh:mm A")
+  currency   String @default("PHP")
   userId     Int
 
   user User @relation(fields: [userId], references: [id])
 }
 
-model Income {
-  id          Int      @id @default(autoincrement())
-  date        DateTime @default(now())
-  categoryId  Int
-  description String?
-  amount      Float
-  assetId     Int?
-  image       String?
-
-  userId    Int
-  status    String
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  isActive  Boolean    @default(true)
-  category  Categories @relation(fields: [categoryId], references: [id])
-  asset     Asset?     @relation(fields: [assetId], references: [id])
-  user      User       @relation(fields: [userId], references: [id])
-
-  transactionHistory TransactionHistory[]
-
-  @@index([userId])
-}
-
 model TransactionHistory {
-  id              Int      @id @default(autoincrement())
+  id              Int       @id @default(autoincrement())
   userId          Int
-  transactionType String
+  transactionType Type
   amount          Float
   description     String?
-  date            DateTime @default(now())
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @default(now()) @updatedAt
+  date            DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now()) @updatedAt
   fromAssetId     Int?
   toAssetId       Int?
   expenseId       Int?
   incomeId        Int?
-  isActive        Boolean  @default(true)
-  fromAsset       Asset?   @relation("TH_FromAsset", fields: [fromAssetId], references: [id])
-  toAsset         Asset?   @relation("TH_ToAsset", fields: [toAssetId], references: [id])
-  expense         Expense? @relation(fields: [expenseId], references: [id])
-  user            User     @relation(fields: [userId], references: [id])
-  income          Income?  @relation(fields: [incomeId], references: [id])
+  transferId      Int?
+  image           String?
+  isActive        Boolean   @default(true)
+  fromAsset       Asset?    @relation("TH_FromAsset", fields: [fromAssetId], references: [id])
+  toAsset         Asset?    @relation("TH_ToAsset", fields: [toAssetId], references: [id])
+  expense         Expense?  @relation(fields: [expenseId], references: [id])
+  user            User      @relation(fields: [userId], references: [id])
+  income          Income?   @relation(fields: [incomeId], references: [id])
+  transfer        Transfer? @relation(fields: [transferId], references: [id])
 
   @@index([userId])
 }

@@ -104,7 +104,7 @@ const forgotPassword = async (req, res, next) => {
     let valid = false;
     let token;
     while (!valid) {
-      token = generateToken();
+      token = crypto.randomInt(0, Math.pow(10, 6)).toString().padStart(6, "0");
       const tokenExist = await prisma.resetToken.findUnique({
         where: { token },
       });

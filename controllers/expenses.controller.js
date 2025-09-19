@@ -61,9 +61,10 @@ const updateExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
     let updateExpense;
+    console.log(req.body);
 
     //IF DELETING (soft delete)
-    if (req.body) {
+    if (req.body.delete) {
       updateExpense = expenseService.deleteExpense(req.user.id, id);
     } else {
       // update only
@@ -87,18 +88,22 @@ const updateExpense = async (req, res, next) => {
   }
 };
 
-// const deleteExpense = async (req, res, next) => {
-//   const { id } = req.params;
-//   try {
-//     res.status(200).json({
-//       success: true,
-//       message: "Expense deleted successfully",
-//     });
-//   } catch (err) {
-//     console.error("Error while deleting expense:", err);
-//     return res.status(500).json({ error: "Internal server error" });
-//   }
-// };
+const payExpense = async (req, res, next) => {
+  const { id } = req.params;
+  try {
+    const response = expenseService.patchPayment(req.user.id, req.body, id, req.file)
+    res.status(200).json({
+      message: "Payment successful",
+      success: true,
+      data: response
+    })
+  } catch (err) {
+    console.log("Error while updating expense", err);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
 
 // Expense Graph
 const getGraph = async (req, res, next) => {
@@ -128,4 +133,5 @@ module.exports = {
   getExpenses,
   updateExpense,
   getGraph,
+  payExpense
 };

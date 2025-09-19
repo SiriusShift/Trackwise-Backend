@@ -46,33 +46,35 @@ const postIncome = async (userId, data, file) => {
           id: userId,
         },
       },
-      status: data?.date > new Date() ? "Pending" : "Received",
+      status: new Date(data?.date) > new Date() ? "Pending" : "Received",
     },
   });
   console.log("income-", income);
-  await prisma.transactionHistory.create({
-    data: {
-      income: {
-        connect: {
-          id: income.id,
+  if (new Date(data?.date) <= new Date()) {
+    await prisma.transactionHistory.create({
+      data: {
+        income: {
+          connect: {
+            id: income.id,
+          },
         },
-      },
-      user: {
-        connect: {
-          id: userId,
+        user: {
+          connect: {
+            id: userId,
+          },
         },
-      },
-      fromAsset: {
-        connect: {
-          id: assetId,
+        fromAsset: {
+          connect: {
+            id: assetId,
+          },
         },
+        transactionType: "Income",
+        amount: amount,
+        description: data.description,
+        date: data.date,
       },
-      transactionType: "Income",
-      amount: amount,
-      description: data.description,
-      date: data.date,
-    },
-  });
+    });
+  }
   return income;
 };
 
@@ -125,33 +127,66 @@ const getIncome = async (userId, query) => {
 
   const totalCount = await prisma.income.count({ where: filters });
 
-  const incomes = await prisma.income.findMany({
+  const incomes = await prisma.expense.findMany({
     where: filters,
     orderBy: { date: "desc" },
+    select: {
+      id: true,
+      date: true,
+      category: {
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          icon: true,
+          isActive: true,
+        },
+      },
+      asset: {
+        select: {
+          id: true,
+          name: true,
+          balance: true,
+        },
+      },
+      description: true,
+      amount: true,
+      image: true,
+      isActive: true,
+      status: true,
+      recurringTemplate: {
+        select: {
+          toAssetId: true,
+          amount: true,
+          // isVariable: true,
+          auto: true,
+        },
+      },
+      transactionHistory: {
+        select: {
+          id: true,
+          transactionType: true,
+          amount: true,
+          description: true,
+          date: true,
+          fromAssetId: true,
+        },
+      },
+    },
     skip,
     take: size,
   });
 
-  console.log("incomes", incomes);
-
-  const detailedIncome = await Promise.all(
-    incomes.map(async (income) => {
-      console.log("incomes:", income);
-      if (income?.assetId !== null) {
-        const asset = await prisma.asset.findFirst({
-          where: { id: income.assetId },
-        });
-        const category = await prisma.categories.findFirst({
-          where: { id: income.categoryId },
-        });
-        return { ...income, asset, category };
-      }
-      return undefined;
-    })
-  );
-
-  const filteredIncomes = detailedIncome.filter((item) => item !== undefined);
-
+  const filteredIncomes = incomes.filter((item) => item !== undefined);
+  const incomeWithBalance = filteredIncomes?.map((expense) => ({
+    ...expense,
+    remainingBalance:
+      expense.amount -
+      expense.transactionHistory.reduce(
+        (acc, curr) => acc + (curr?.amount || 0),
+        0
+      ),
+  }));
   console.log(filteredIncomes);
 
   const totalPages = Math.ceil(totalCount / size);
@@ -240,7 +275,7 @@ const updateIncome = async (userId, data, file, id) => {
     return incomeUpdate;
   } catch (err) {
     console.log(err);
-    return err;
+    throw new Error("Internal server error");
   }
 };
 
@@ -313,7 +348,7 @@ const getIncomeGraph = async (userId, query) => {
       })
     );
 
-    console.log("detailed category", detailedCategoryIncomes)
+    console.log("detailed category", detailedCategoryIncomes);
 
     const totalIncome = await prisma.income.aggregate({
       where: filters,
@@ -327,7 +362,7 @@ const getIncomeGraph = async (userId, query) => {
     };
   } catch (err) {
     console.log(err);
-    return err;
+    throw new Error("Internal server error");
   }
 };
 
