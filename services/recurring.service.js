@@ -3,9 +3,9 @@ const prisma = new PrismaClient();
 const { validateCategory } = require("./categories.service");
 const { connect } = require("../routes/emails.routes");
 const { validateAsset } = require("./assets.service");
-
+const moment = require("moment")
 const postRecurring = async (userId, data) => {
-  const amount = parseInt(data.amount);
+  const amount = Number(data.amount);
   const categoryId = parseInt(data.category);
   const assetFromId = parseInt(data?.from);
   const assetToId = parseInt(data?.to);
@@ -18,8 +18,8 @@ const postRecurring = async (userId, data) => {
       category: { connect: { id: categoryId } },
       amount: data?.amount,
       description: data?.description,
-      startDate: new Date(),
-      nextDueDate: data?.date,
+      startDate: data?.date,
+      nextDueDate: moment(data?.date)?.add(`${data?.repeat?.unit}s`, data?.repeat?.interval),
       interval: data?.repeat?.interval,
       unit: data?.repeat?.unit,
       auto: data?.auto,
@@ -74,14 +74,14 @@ const postRecurring = async (userId, data) => {
               id: categoryId,
             },
           },
-          ...(assetFromId &&
-            data?.auto && {
-              asset: {
-                connect: {
-                  id: assetFromId,
-                },
-              },
-            }),
+          // ...(assetFromId &&
+          //   data?.auto && {
+          //     asset: {
+          //       connect: {
+          //         id: assetFromId,
+          //       },
+          //     },
+          //   }),
           recurringTemplate: {
             connect: {
               id: recurring?.id,
@@ -288,9 +288,26 @@ const getRecurring = async (userId, query) => {
   };
 };
 
+const editRecurring = async (id, query) => {
+  return ""
+}
+
+const cancelRecurring = async (id, query) => {
+  return ""
+}
+
+const archiveRecurring = async (id, query) => {
+  return ""
+}
+
+
+
 
 
 module.exports = {
   postRecurring,
-  getRecurring
+  getRecurring,
+  editRecurring,
+  cancelRecurring,
+  archiveRecurring
 };

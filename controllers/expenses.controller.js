@@ -91,12 +91,39 @@ const updateExpense = async (req, res, next) => {
 const payExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
-    const response = expenseService.patchPayment(req.user.id, req.body, id, req.file)
+    const response = expenseService.patchPayment(
+      req.user.id,
+      req.body,
+      id,
+      req.file
+    );
     res.status(200).json({
       message: "Payment successful",
       success: true,
-      data: response
-    })
+      data: response,
+    });
+  } catch (err) {
+    console.log("Error while updating expense", err);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
+const updatePayment = async (req, res, next) => {
+  const { id } = req.params;
+  try {
+    const response = expenseService.patchExpensePayment(
+      req.user.id,
+      req.body,
+      id,
+      req.file
+    );
+    res.status(200).json({
+      message: "Payment update successful",
+      success: true,
+      data: response,
+    });
   } catch (err) {
     console.log("Error while updating expense", err);
     return res.status(500).json({
@@ -133,5 +160,6 @@ module.exports = {
   getExpenses,
   updateExpense,
   getGraph,
-  payExpense
+  payExpense,
+  updatePayment
 };

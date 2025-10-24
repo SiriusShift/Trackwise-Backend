@@ -95,20 +95,28 @@ const getExpenses = async (userId, query) => {
       status: true,
       recurringTemplate: {
         select: {
-          fromAssetId: true,
+          fromAsset: true,
           amount: true,
+          type:true,
           // isVariable: true,
           auto: true,
+          unit: true,
+          interval: true,
+          endDate: true
         },
       },
       transactionHistory: {
+        where: {
+          isActive: true,
+        },
         select: {
           id: true,
           transactionType: true,
           amount: true,
           description: true,
           date: true,
-          fromAssetId: true,
+          fromAsset: true,
+          image: true,
         },
       },
     },
@@ -140,9 +148,9 @@ const getExpenses = async (userId, query) => {
   const expensesWithBalance = filteredExpenses?.map((expense) => ({
     ...expense,
     remainingBalance:
-      expense.amount -
+      Number(expense.amount) -
       expense.transactionHistory.reduce(
-        (acc, curr) => acc + (curr?.amount || 0),
+        (acc, curr) => acc + (Number(curr?.amount) || 0),
         0
       ),
   }));
@@ -157,9 +165,11 @@ const getExpenses = async (userId, query) => {
 };
 
 const postExpense = async (userId, data, file) => {
-  const amount = parseInt(data.amount);
-  const categoryId = parseInt(data.category);
-  const assetId = parseInt(data.from);
+  const amount = Number(data.amount);
+  const categoryId = Number(data.category);
+  const assetId = Number(data.from);
+
+  console.log("Amount: ", amount)
 
   validateCategory(categoryId);
   const asset = validateAsset(assetId, userId);
@@ -235,9 +245,10 @@ const updateExpense = async (userId, data, file, id) => {
   console.log("category id", data);
 
   try {
-    const amount = parseInt(data?.amount);
+    const amount = Number(data?.amount);
     const categoryId = parseInt(data.category);
     const assetId = parseInt(data.from);
+    const isFuture = new Date(data.date).getTime() > Date.now();
 
     const expense = await validateExpense(id);
     console.log(expense);
@@ -261,7 +272,7 @@ const updateExpense = async (userId, data, file, id) => {
       data: {
         amount: amount,
         description: data.description,
-        status: new Date(data.date).getTime() > Date.now() ? "Pending" : "Paid",
+        status: isFuture ? "Pending" : "Paid",
         category: {
           connect: {
             id: categoryId,
@@ -292,16 +303,15 @@ const updateExpense = async (userId, data, file, id) => {
     await prisma.transactionHistory.update({
       where: { id: parseInt(transaction?.id) },
       data: {
-        amount: parseInt(data.amount),
+        amount: Number(data.amount),
         description: data.description,
         date: data.date,
         updatedAt: new Date(),
-        image: image,
+        image,
         fromAsset: {
-          connect: {
-            id: assetId,
-          },
+          connect: { id: assetId },
         },
+        isActive: isFuture ? false : true,
       },
     });
 
@@ -416,25 +426,38 @@ const deleteExpense = async (userId, id) => {
 
 const patchPayment = async (userId, data, id, file) => {
   try {
-    const amount = parseInt(data.amount);
+    const amount = Number(data.amount);
+    console.log(amount, "amount!");
+
     const assetId = parseInt(data.from);
 
-    const expense = validateExpense(id);
+    const expense = await validateExpense(id);
+    console.log("expense", expense);
     const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
 
-    prisma.expense.update({
+    const balance = await prisma.transactionHistory.aggregate({
       where: {
-        id: id,
+        expenseId: expense?.id,
+      },
+      _sum: {
+        amount: true,
+      },
+    });
+
+    const expenseUpdate = await prisma.expense.update({
+      where: {
+        id: parseInt(id),
       },
       data: {
         status: amount < expense?.amount ? "Partial" : "Paid",
       },
     });
-    prisma.transactionHistory.create({
+    console.log("test", expenseUpdate);
+    await prisma.transactionHistory.create({
       data: {
         expense: {
           connect: {
-            id: expense.id,
+            id: expenseUpdate.id,
           },
         },
         user: {
@@ -454,7 +477,9 @@ const patchPayment = async (userId, data, id, file) => {
         date: data.date,
       },
     });
+    return;
   } catch (err) {
+    console.log(err);
     throw new Error(err);
   }
 };
@@ -506,7 +531,7 @@ const getExpenseGraph = async (userId, query) => {
         return {
           categoryId: item.categoryId,
           categoryName: category?.name || "Unknown",
-          total: item._sum.amount || 0,
+          total: Number(item._sum.amount) || 0,
         };
       })
     );
@@ -521,7 +546,7 @@ const getExpenseGraph = async (userId, query) => {
     return {
       trend,
       data: detailedCategoryExpenses,
-      total: totalExpense._sum.amount || 0,
+      total: Number(totalExpense._sum.amount) || 0,
     };
   } catch (err) {
     console.log(err);

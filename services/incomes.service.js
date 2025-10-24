@@ -17,7 +17,7 @@ const validateIncome = async (id) => {
   return income;
 };
 const postIncome = async (userId, data, file) => {
-  const amount = parseInt(data.amount);
+  const amount = Number(data.amount);
   const categoryId = parseInt(data.category);
   const assetId = parseInt(data.to);
 
@@ -40,7 +40,6 @@ const postIncome = async (userId, data, file) => {
           id: assetId,
         },
       },
-      image: image,
       user: {
         connect: {
           id: userId,
@@ -63,12 +62,13 @@ const postIncome = async (userId, data, file) => {
             id: userId,
           },
         },
-        fromAsset: {
+        toAsset: {
           connect: {
             id: assetId,
           },
         },
         transactionType: "Income",
+        image: image,
         amount: amount,
         description: data.description,
         date: data.date,
@@ -127,7 +127,7 @@ const getIncome = async (userId, query) => {
 
   const totalCount = await prisma.income.count({ where: filters });
 
-  const incomes = await prisma.expense.findMany({
+  const incomes = await prisma.income.findMany({
     where: filters,
     orderBy: { date: "desc" },
     select: {
@@ -151,10 +151,9 @@ const getIncome = async (userId, query) => {
       },
       description: true,
       amount: true,
-      image: true,
       isActive: true,
       status: true,
-      recurringTemplate: {
+      recurringIncome: {
         select: {
           toAssetId: true,
           amount: true,
@@ -167,9 +166,10 @@ const getIncome = async (userId, query) => {
           id: true,
           transactionType: true,
           amount: true,
+          image: true,
           description: true,
           date: true,
-          fromAssetId: true,
+          toAssetId: true,
         },
       },
     },
@@ -178,21 +178,20 @@ const getIncome = async (userId, query) => {
   });
 
   const filteredIncomes = incomes.filter((item) => item !== undefined);
-  const incomeWithBalance = filteredIncomes?.map((expense) => ({
-    ...expense,
+  const incomeWithBalance = filteredIncomes?.map((income) => ({
+    ...income,
     remainingBalance:
-      expense.amount -
-      expense.transactionHistory.reduce(
+      income.amount -
+      income.transactionHistory.reduce(
         (acc, curr) => acc + (curr?.amount || 0),
         0
       ),
   }));
-  console.log(filteredIncomes);
 
   const totalPages = Math.ceil(totalCount / size);
 
   return {
-    data: filteredIncomes,
+    data: incomeWithBalance,
     totalCount,
     totalPages,
   };
@@ -203,7 +202,7 @@ const updateIncome = async (userId, data, file, id) => {
   console.log("category id", data);
 
   try {
-    const amount = parseInt(data?.amount);
+    const amount = Number(data?.amount);
     const categoryId = parseInt(data.category);
     const assetId = parseInt(data.to);
 
@@ -258,7 +257,7 @@ const updateIncome = async (userId, data, file, id) => {
     await prisma.transactionHistory.update({
       where: { id: parseInt(transaction?.id) },
       data: {
-        amount: parseInt(data.amount),
+        amount: Number(data.amount),
         description: data.description,
         date: data.date,
         updatedAt: new Date(),

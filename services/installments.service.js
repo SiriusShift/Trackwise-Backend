@@ -5,7 +5,7 @@ const { validateAsset } = require("./assets.service");
 const { uploadFileToS3 } = require("./s3.service");
 
 const postInstallment = async (userId, data, file) => {
-  const amount = parseInt(data.amount);
+  const amount = Number(data.amount);
   const categoryId = parseInt(data.category?.id);
   const assetId = parseInt(data.source?.id);
 

@@ -24,6 +24,17 @@ enum Type {
   Transfer
 }
 
+enum NotificationType {
+  General
+  Expense
+  Income
+  Transfer
+  Recurring
+  Installment
+  Reminder
+  System
+}
+
 model User {
   id                 Int                    @id @default(autoincrement())
   firstName          String?                @map("first_name")
@@ -45,16 +56,17 @@ model User {
   transactionHistory TransactionHistory[]
   categoriesTracker  CategoryTracker[]
   transfer           Transfer[]
-  Categories         Categories[]
-  Recurring          RecurringTransaction[]
-  InstallmentPlan    InstallmentPlan[]
+  categories         Categories[]
+  recurring          RecurringTransaction[]
+  installmentPlan    InstallmentPlan[]
   settings           Settings[]
+  notifications      Notification[]
 }
 
 model Asset {
   id        Int      @id @default(autoincrement())
   name      String
-  balance   Float
+  balance   Decimal
   userId    Int
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -81,7 +93,7 @@ model Expense {
   date        DateTime
   categoryId  Int
   description String
-  amount      Float
+  amount      Decimal
   assetId     Int?
   image       String?
   userId      Int
@@ -111,7 +123,7 @@ model Income {
   date        DateTime @default(now())
   categoryId  Int
   description String?
-  amount      Float
+  amount      Decimal
   assetId     Int?
   image       String?
 
@@ -138,7 +150,7 @@ model Transfer {
   userId      Int
   fromAssetId Int
   toAssetId   Int
-  amount      Float
+  amount      Decimal
   description String?
   image       String?
 
@@ -168,7 +180,7 @@ model RecurringTransaction {
   fromAssetId Int? // For Transfer
   toAssetId   Int? // For Transfer
   description String
-  amount      Float
+  amount      Decimal
   startDate   DateTime
   nextDueDate DateTime
   interval    Int
@@ -194,7 +206,7 @@ model InstallmentPlan {
   id          Int      @id @default(autoincrement())
   userId      Int
   description String
-  totalAmount Float
+  totalAmount Decimal
   months      Int
   startDate   DateTime
   categoryId  Int
@@ -211,7 +223,7 @@ model Installment {
   id       Int      @id @default(autoincrement())
   planId   Int
   dueDate  DateTime
-  amount   Float
+  amount   Decimal
   status   Status // "pending", "paid", etc.
   assetId  Int?
   isActive Boolean  @default(true)
@@ -247,14 +259,19 @@ model Settings {
   currency   String @default("PHP")
   userId     Int
 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
   user User @relation(fields: [userId], references: [id])
+
+  @@unique([userId])
 }
 
 model TransactionHistory {
   id              Int       @id @default(autoincrement())
   userId          Int
   transactionType Type
-  amount          Float
+  amount          Decimal
   description     String?
   date            DateTime  @default(now())
   createdAt       DateTime  @default(now())
@@ -289,11 +306,11 @@ model EmailVerification {
 }
 
 model CategoryTracker {
-  id         Int     @id @default(autoincrement())
-  limit      Float?
+  id         Int      @id @default(autoincrement())
+  limit      Decimal?
   userId     Int
   categoryId Int
-  isActive   Boolean @default(true)
+  isActive   Boolean  @default(true)
 
   category Categories @relation(fields: [categoryId], references: [id])
   user     User       @relation(fields: [userId], references: [id])
@@ -311,4 +328,25 @@ model ResetToken {
 
   @@index([token])
   @@index([userId])
+}
+
+model Notification {
+  id          Int              @id @default(autoincrement())
+  userId      Int
+  title       String
+  message     String
+  type        NotificationType @default(General)
+  relatedId   Int? // e.g., transactionId, expenseId, etc.
+  relatedType String? // "Expense", "Income", "Transfer", etc.
+  isRead      Boolean          @default(false)
+  isArchived  Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @default(now()) @updatedAt
+  readAt      DateTime?
+  expiresAt   DateTime? // optional for auto-cleanup of old notifications
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([isRead])
 }

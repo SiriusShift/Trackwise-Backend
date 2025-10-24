@@ -1,6 +1,6 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
-const moment = require("moment")
+const moment = require("moment");
 const validateAsset = async (assetId, userId) => {
   console.log("assetID", assetId);
 
@@ -21,83 +21,45 @@ const getAsset = async (userId, assetData, id) => {
   const assets = await prisma.asset.findMany({
     where: {
       userId: userId, // Assuming `req.user.id` represents the logged-in user
-      ...(id && {id: id})
+      ...(id && { id: id }),
     },
     select: {
       id: true,
       name: true,
       balance: true,
-      expenses: {
-        where: {
-          isActive: true,
-          status: "Paid",
-        },
-      },
-      incomes: {
-        select: {
-          id: true,
-          date: true,
-          categoryId: true,
-          description: true,
-          amount: true,
-          assetId: true,
-          status: true,
-          // recurring: true, // Include recurring field if needed
-        },
-        where: {
-          isActive: true,
-          status: "Received",
-        },
-      },
+      receivedTransactionHistory: true,
+      sentTransactionHistory: true,
     },
   });
 
   const assetsLastMonth = await prisma.asset.findMany({
     where: {
-      userId:userId, // Assuming `req.user.id` represents the logged-in user
+      userId: userId, // Assuming `req.user.id` represents the logged-in user
     },
     select: {
       id: true,
       name: true,
       balance: true,
-      expenses: {
-        where: {
-          isActive: true,
-          date: {
-            lte: moment().subtract(1, "month").endOf("month").toDate(),
-          },
-        },
-      },
-      incomes: {
-        select: {
-          id: true,
-          date: true,
-          categoryId: true,
-          description: true,
-          amount: true,
-          assetId: true,
-          status: true,
-        },
-        where: {
-          isActive: true,
-          date: {
-            lte: moment().subtract(1, "month").endOf("month").toDate(),
-          },
-        },
-      },
+      receivedTransactionHistory: true,
+      sentTransactionHistory: true,
     },
   });
 
+  console.log("assets", assets);
+  console.log("assets prev", assetsLastMonth);
+
   const lastMonthData = assetsLastMonth.map((asset) => {
-    const totalExpenses = asset.expenses.reduce(
-      (sum, expense) => sum + expense.amount,
+    const totalExpenses = asset.sentTransactionHistory.reduce(
+      (sum, expense) => sum + Number(expense.amount),
       0
     );
-    const totalIncomes = asset.incomes.reduce(
-      (sum, income) => sum + income.amount,
+
+    console.log("total expense", totalExpenses)
+    const totalIncomes = asset.receivedTransactionHistory.reduce(
+      (sum, income) => sum + Number(income.amount),
       0
     );
-    const remainingBalance = asset.balance + totalIncomes - totalExpenses;
+    const remainingBalance = Number(asset.balance) + Number(totalIncomes) - Number(totalExpenses);
 
     return {
       ...asset,
@@ -108,15 +70,15 @@ const getAsset = async (userId, assetData, id) => {
   });
 
   const data = assets.map((asset) => {
-    const totalExpenses = asset.expenses.reduce(
-      (sum, expense) => sum + expense.amount,
+    const totalExpenses = asset.sentTransactionHistory.reduce(
+      (sum, expense) => sum + Number(expense.amount),
       0
     );
-    const totalIncomes = asset.incomes.reduce(
-      (sum, income) => sum + income.amount,
+    const totalIncomes = asset.receivedTransactionHistory.reduce(
+      (sum, income) => sum + Number(income.amount),
       0
     );
-    const remainingBalance = asset.balance + totalIncomes - totalExpenses;
+    const remainingBalance = Number(asset.balance) + Number(totalIncomes) - Number(totalExpenses);
 
     return {
       ...asset,
@@ -152,5 +114,5 @@ const getAsset = async (userId, assetData, id) => {
 
 module.exports = {
   validateAsset,
-  getAsset
+  getAsset,
 };

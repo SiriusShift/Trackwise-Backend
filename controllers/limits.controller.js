@@ -77,16 +77,22 @@ const getAllExpenseLimit = async (req, res, next) => {
             type: true,
             expenses: {
               where: {
-                date: {
-                  gte: startDate,
-                  lte: endDate,
-                },
                 isActive: true,
                 // isRecurring: false,
                 userId: parseInt(req.user.id),
               },
               select: {
-                amount: true,
+                transactionHistory: {
+                  where: {
+                    date: {
+                      gte: startDate,
+                      lte: endDate,
+                    },
+                  },
+                  select: {
+                      amount: true
+                  }
+                },
               },
             },
           },
@@ -98,7 +104,7 @@ const getAllExpenseLimit = async (req, res, next) => {
         },
       },
     });
-    console.log("test: ", categoryTracker);
+
     // const categories = await prisma.categoryTracker.findMany({
     //   where: {
     //     user: {
@@ -130,14 +136,14 @@ const getAllExpenseLimit = async (req, res, next) => {
     const result = categoryTracker.map((category) => {
       console.log("Category Tracker : ", category);
       const totalExpense = category.category.expenses.reduce(
-        (sum, expense) => sum + expense.amount,
+        (sum, expense) => sum + expense?.transactionHistory[0]?.amount,
         0
       );
       return {
         id: category.id,
         category: category.category,
         value: category.limit,
-        total: totalExpense,
+        total: totalExpense || 0,
       };
     });
     console.log(result);
