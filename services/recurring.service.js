@@ -208,7 +208,7 @@ const getRecurring = async (userId, query) => {
     userId: parseInt(userId),
     ...(startDate && endDate
       ? {
-          startDate: {
+          nextDueDate: {
             gte: new Date(startDate),
             lte: new Date(endDate),
           },
@@ -225,11 +225,11 @@ const getRecurring = async (userId, query) => {
     };
   }
 
-  if (status) {
-    filters.status = {
-      startsWith: status,
-    };
-  }
+  // if (status) {
+  //   filters.status = {
+  //     startsWith: status,
+  //   };
+  // }
 
   if (Categories !== undefined) {
     filters.categoryId = {
@@ -244,45 +244,65 @@ const getRecurring = async (userId, query) => {
   const recurring = await prisma.recurringTransaction.findMany({
     where: filters,
     orderBy: { startDate: "desc" },
+    select: {
+      id: true,
+      user: true,
+      type: true,
+      category: true,
+      fromAsset: true,
+      toAsset: true,
+      description: true,
+      amount: true,
+      startDate: true,
+      nextDueDate: true,
+      interval: true,
+      unit: true,
+      isActive: true,
+      endDate: true,
+      auto: true,
+      generatedExpenses: true,
+      generatedIncomes: true,
+      generatedTransfers: true
+    },
     skip,
     take: size,
   });
 
-  const detailedRecurring = await Promise.all(
-    recurring.map(async (transaction) => {
-      console.log("transaction:", transaction);
-      let asset;
-      let category;
-      if (transaction?.fromAssetId !== null) {
-        asset = await prisma.asset.findFirst({
-          where: { id: transaction.fromAssetId },
-        });
-      }
-      if (transaction?.toAssetId !== null) {
-        asset = await prisma.asset.findFirst({
-          where: { id: transaction.toAssetId },
-        });
-      }
-      if (transaction?.categoryId !== null) {
-        category = await prisma.categories.findFirst({
-          where: { id: transaction.categoryId },
-        });
-      }
-      console.log("test")
-      return { ...transaction, asset, category };
-    })
-  );
-  console.log(detailedRecurring)
+  // const detailedRecurring = await Promise.all(
+  //   recurring.map(async (transaction) => {
+  //     console.log("transaction:", transaction);
+  //     let asset;
+  //     let category;
+  //     if (transaction?.fromAssetId !== null) {
+  //       asset = await prisma.asset.findFirst({
+  //         where: { id: transaction.fromAssetId },
+  //       });
+  //     }
+  //     if (transaction?.toAssetId !== null) {
+  //       asset = await prisma.asset.findFirst({
+  //         where: { id: transaction.toAssetId },
+  //       });
+  //     }
+  //     if (transaction?.categoryId !== null) {
+  //       category = await prisma.categories.findFirst({
+  //         where: { id: transaction.categoryId },
+  //       });
+  //     }
+  //     console.log("test")
+  //     return { ...transaction, asset, category };
+  //   })
+  // );
+  // console.log(detailedRecurring)
 
-  const filteredRecurring = detailedRecurring.filter(
-    (item) => item !== undefined
-  );
-  console.log(filteredRecurring)
+  // const filteredRecurring = detailedRecurring.filter(
+  //   (item) => item !== undefined
+  // );
+  // console.log(filteredRecurring)
 
   const totalPages = Math.ceil(totalCount / size);
 
   return {
-    data: filteredRecurring,
+    data: recurring,
     totalCount,
     totalPages,
   };

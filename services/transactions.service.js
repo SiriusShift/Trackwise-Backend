@@ -133,62 +133,137 @@ const getHistory = async (userId, request) => {
 
 const editHistory = async (userId, data, file, id) => {
   try {
-    console.log("Test ID", id);
+    console.log("Editing transaction:", id);
 
     const amount = Number(data?.amount);
-    const categoryId = parseInt(data.category);
     const assetFrom = parseInt(data.from);
     const assetTo = parseInt(data.to);
 
     const history = await validateTransactionHistory(id);
+    if (!history) throw new Error("Transaction history not found");
+
+    // Handle image updates
     let image;
-
-    console.log("Test1");
-
     if (file) {
       image = await uploadFileToS3(file, "Expense", userId);
       if (history?.image) {
-        console.log("delete image");
-        await deleteFileFromS3(history?.image);
+        console.log("Deleting old image");
+        await deleteFileFromS3(history.image);
       }
     } else if (data?.image) {
-      image = history?.image;
-    } else {
-      image = await deleteFileFromS3(history?.image);
+      image = history.image; // Keep the existing image
+    } else if (history.image) {
+      await deleteFileFromS3(history.image);
+      image = null;
     }
 
-    const transaction = prisma.transactionHistory.update({
+    // Update transaction history record
+    const transaction = await prisma.transactionHistory.update({
       where: { id: parseInt(id) },
       data: {
-        amount: amount,
+        amount,
         description: data.description,
         ...(assetFrom && {
-          fromAsset: {
-            connect: {
-              id: assetFrom,
-            },
-          },
+          fromAsset: { connect: { id: assetFrom } },
         }),
         ...(assetTo && {
-          toAsset: {
-            connect: {
-              id: assetTo,
-            },
-          },
+          toAsset: { connect: { id: assetTo } },
         }),
         date: data.date,
         updatedAt: new Date(),
-        user: {
-          connect: {
-            id: userId,
-          },
-        },
+        user: { connect: { id: userId } },
+        image,
       },
     });
 
+    // Recalculate expense payment status if it's an Expense
+    if (transaction?.transactionType === "Expense" && transaction?.expenseId) {
+      const expense = await prisma.expense.findUnique({
+        where: { id: transaction.expenseId },
+      });
+
+      if (expense) {
+        // Sum all active transaction history payments for this expense
+        const balance = await prisma.transactionHistory.aggregate({
+          where: {
+            expenseId: expense.id,
+            isActive: true, // include only active
+          },
+          _sum: {
+            amount: true,
+          },
+        });
+
+        // Adjust for the edited transaction (avoid double-counting)
+        const totalPaid = Number(balance._sum.amount || 0);
+
+        console.log("Total Paid:", totalPaid, expense.amount);
+
+        let newStatus = "Unpaid";
+        if (totalPaid >= expense.amount) newStatus = "Paid";
+        else if (totalPaid > 0) newStatus = "Partial";
+
+        await prisma.expense.update({
+          where: { id: expense.id },
+          data: { status: newStatus },
+        });
+      }
+    }
+
     return transaction;
   } catch (err) {
-    console.log(err);
+    console.error(err);
+    throw new Error("Internal server error");
+  }
+};
+
+const deleteHistory = async (id) => {
+  try {
+    const transaction = await prisma.transactionHistory.findUnique({
+      where: { id: Number(id) },
+    });
+
+    if (!transaction) throw new Error("Transaction not found");
+
+    // Soft delete
+    await prisma.transactionHistory.update({
+      where: { id: Number(id) },
+      data: { isActive: false },
+    });
+
+    // Update expense payment status
+    if (transaction.transactionType === "Expense" && transaction.expenseId) {
+      const expense = await prisma.expense.findUnique({
+        where: { id: transaction.expenseId },
+      });
+
+      if (expense) {
+        // Sum all remaining active transactions
+        const balance = await prisma.transactionHistory.aggregate({
+          where: {
+            expenseId: expense.id,
+            isActive: true,
+          },
+          _sum: { amount: true },
+        });
+
+        const totalPaid = Number(balance._sum.amount || 0);
+        let newStatus = expense.status;
+
+        if (totalPaid === 0) newStatus = "Unpaid";
+        else if (totalPaid < expense.amount) newStatus = "Partial";
+        else if (totalPaid >= expense.amount) newStatus = "Paid";
+
+        await prisma.expense.update({
+          where: { id: expense.id },
+          data: { status: newStatus },
+        });
+      }
+    }
+
+    return;
+  } catch (err) {
+    console.error(err);
     throw new Error("Internal server error");
   }
 };
@@ -196,4 +271,5 @@ const editHistory = async (userId, data, file, id) => {
 module.exports = {
   getHistory,
   editHistory,
+  deleteHistory,
 };

@@ -65,7 +65,7 @@ const updateExpense = async (req, res, next) => {
 
     //IF DELETING (soft delete)
     if (req.body.delete) {
-      updateExpense = expenseService.deleteExpense(req.user.id, id);
+      updateExpense = await expenseService.deleteExpense(req.user.id, id);
     } else {
       // update only
       updateExpense = await expenseService.updateExpense(

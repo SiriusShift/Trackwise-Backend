@@ -26,8 +26,7 @@ const editHistory = async (req, res) => {
       req.user.id,
       req.body,
       req.file,
-            id,
-
+      id
     );
     res.status(200).json({
       message: "Transaction history successfully edited",
@@ -35,7 +34,24 @@ const editHistory = async (req, res) => {
       data: response,
     });
   } catch (err) {
-    console.log(err)
+    console.log(err);
+    res.status(500).json({
+      message: "Internal server error",
+    });
+  }
+};
+
+const deleteHistory = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const response = await transactionService.deleteHistory(id);
+    res.status(200).json({
+      message: "Transaction history successfully deleted",
+      success: true,
+      data: response,
+    });
+  } catch (err) {
+    console.log(err);
     res.status(500).json({
       message: "Internal server error",
     });
@@ -45,4 +61,5 @@ const editHistory = async (req, res) => {
 module.exports = {
   getHistory,
   editHistory,
+  deleteHistory
 };

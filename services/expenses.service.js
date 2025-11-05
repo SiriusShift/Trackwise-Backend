@@ -97,12 +97,12 @@ const getExpenses = async (userId, query) => {
         select: {
           fromAsset: true,
           amount: true,
-          type:true,
+          type: true,
           // isVariable: true,
           auto: true,
           unit: true,
           interval: true,
-          endDate: true
+          endDate: true,
         },
       },
       transactionHistory: {
@@ -169,7 +169,7 @@ const postExpense = async (userId, data, file) => {
   const categoryId = Number(data.category);
   const assetId = Number(data.from);
 
-  console.log("Amount: ", amount)
+  console.log("Amount: ", amount);
 
   validateCategory(categoryId);
   const asset = validateAsset(assetId, userId);
@@ -295,25 +295,25 @@ const updateExpense = async (userId, data, file, id) => {
 
     console.log(expenseUpdate);
 
-    // Fetch the transaction history record related to the expense
-    const transaction = await prisma.transactionHistory.findFirst({
-      where: { expenseId: parseInt(id) }, // Ensure expenseId is properly converted to an integer
-    });
+    // // Fetch the transaction history record related to the expense
+    // const transaction = await prisma.transactionHistory.findFirst({
+    //   where: { expenseId: parseInt(id) }, // Ensure expenseId is properly converted to an integer
+    // });
 
-    await prisma.transactionHistory.update({
-      where: { id: parseInt(transaction?.id) },
-      data: {
-        amount: Number(data.amount),
-        description: data.description,
-        date: data.date,
-        updatedAt: new Date(),
-        image,
-        fromAsset: {
-          connect: { id: assetId },
-        },
-        isActive: isFuture ? false : true,
-      },
-    });
+    // await prisma.transactionHistory.update({
+    //   where: { id: parseInt(transaction?.id) },
+    //   data: {
+    //     amount: Number(data.amount),
+    //     description: data.description,
+    //     date: data.date,
+    //     updatedAt: new Date(),
+    //     image,
+    //     fromAsset: {
+    //       connect: { id: assetId },
+    //     },
+    //     isActive: isFuture ? false : true,
+    //   },
+    // });
 
     console.log("return");
 
@@ -427,56 +427,48 @@ const deleteExpense = async (userId, id) => {
 const patchPayment = async (userId, data, id, file) => {
   try {
     const amount = Number(data.amount);
-    console.log(amount, "amount!");
-
     const assetId = parseInt(data.from);
 
     const expense = await validateExpense(id);
-    console.log("expense", expense);
     const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
 
+    // Sum of previous payments for this expense
     const balance = await prisma.transactionHistory.aggregate({
       where: {
-        expenseId: expense?.id,
+        expenseId: expense.id,
       },
       _sum: {
         amount: true,
       },
     });
 
+    const previousPayments = balance._sum.amount || 0;
+    const totalPaid = previousPayments + amount;
+
+    let newStatus = "Unpaid";
+    if (totalPaid >= expense.amount) newStatus = "Paid";
+    else if (totalPaid > 0) newStatus = "Partial";
+
     const expenseUpdate = await prisma.expense.update({
-      where: {
-        id: parseInt(id),
-      },
+      where: { id: parseInt(id) },
       data: {
-        status: amount < expense?.amount ? "Partial" : "Paid",
+        status: newStatus,
       },
     });
-    console.log("test", expenseUpdate);
+
     await prisma.transactionHistory.create({
       data: {
-        expense: {
-          connect: {
-            id: expenseUpdate.id,
-          },
-        },
-        user: {
-          connect: {
-            id: userId,
-          },
-        },
-        fromAsset: {
-          connect: {
-            id: assetId,
-          },
-        },
-        image: image,
+        expense: { connect: { id: expenseUpdate.id } },
+        user: { connect: { id: userId } },
+        fromAsset: { connect: { id: assetId } },
+        image,
         transactionType: "Expense",
-        amount: amount,
+        amount,
         description: data.description,
         date: data.date,
       },
     });
+
     return;
   } catch (err) {
     console.log(err);
