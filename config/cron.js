@@ -39,36 +39,9 @@ cron.schedule("0 0 * * *", async () => {
   }
 });
 
-// cron.schedule("0 0 * * *", async () => {
-//   const today = moment().startOf("day"); // Ensures time is 00:00:00
-//   try {
-//     const recurring = prisma.recurringTransaction.findMany({
-//       where: {
-//         isActive: true
-//       }
-//     })
-//     for (const transaction of recurring){
-//       const dueDate = moment(transaction.dueDate).startOf("day")
-//       const endDate = moment(transaction.endDate).startOf("day")
-//       if(endDate.isBefore(today)){
-//         continue;
-//       }
-//       switch(transaction?.type){
-//         case(transaction?.type === "Expense"):
-//         const transaction = prisma.expense.findFirst({
-          
-//         })
-//         case(transaction?.type === "Income"):
+cron.schedule("0 0 * * *", async () => {
 
-//         case(transaction?.type === "Transfer"):
-//       }
-//     }
-//   } catch (err) {
-//     console.error("Error processing recurring expenses:", err);
-//   } finally {
-//     await prisma.$disconnect(); // ✅ Ensure Prisma disconnects properly
-//   }
-// });
+});
 
 /* Create a scheduler where 
 1.) A scheduler where it will check everyday 12am, to check all expenses that exceeds their due date, 
