@@ -84,7 +84,12 @@ const register = async (req, res, next) => {
         connect: {
           id: user.id
         }
-      }
+      },
+      timeFormat: "hh:mm A",
+      currency: "PHP",
+      emailNotification: false,
+      mobileNotification: false,
+      notifyDays: 2
     }
   })
   console.log(user);

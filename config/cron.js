@@ -6,30 +6,99 @@ const prisma = new PrismaClient();
 
 // Run every day at 12 AM
 cron.schedule("0 0 * * *", async () => {
-  const today = moment().startOf("day"); // Ensures time is 00:00:00
-  console.log("Running expense overdue check...");
+  const today = moment().startOf("day");
+  console.log("Running overdue check for expenses, income, and transfers...");
+
+  const models = [
+    { name: "expense", model: prisma.expense },
+    { name: "income", model: prisma.income },
+    { name: "transfer", model: prisma.transfer },
+  ];
 
   try {
-    const recurring = await prisma.expense.findMany({
-      where: {
-        recurringId: {
-          not: null,
+    for (const { name, model } of models) {
+      const recurring = await model.findMany({
+        where: {
+          recurringId: { not: null },
+          isActive: true,
+          status: "Pending",
         },
+      });
+
+      for (const item of recurring) {
+        const dueDate = moment(item.date).startOf("day");
+
+        if (dueDate.isBefore(today)) {
+          await model.update({
+            where: { id: item.id },
+            data: { status: "Overdue" },
+          });
+          console.log(`Updated ${name} ${item.id} to Overdue`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error("Error processing recurring records:", err);
+  } finally {
+    await prisma.$disconnect();
+  }
+});
+
+cron.schedule("0 0 * * *", async () => {
+  const today = moment().startOf("day"); // Ensures time is 00:00:00
+  const models = [
+    { name: "Expense", model: prisma.expense },
+    { name: "Income", model: prisma.income },
+    { name: "Transfer", model: prisma.transfer },
+  ];
+  try {
+    const recurring = prisma.recurringTransaction.findMany({
+      where: {
         isActive: true,
-        status: "Pending",
       },
     });
+    for (const transaction of recurring) {
+      const transactionModel = models.find((m) => m.name === item.type);
+      if (!transactionModel) {
+        console.warn(`⚠️ No model found for type: ${item.type}`);
+        continue;
+      }
 
-    for (const expense of recurring) {
-      // ✅ Use for...of instead of forEach
-      const dueDate = moment(expense.date).startOf("day"); // Normalize time
+      // Example: check if today is the next scheduled date
+      const nextDate = moment(item.nextDate).startOf("day");
 
-      if (dueDate.isBefore(today)) {
-        await prisma.expense.update({
-          where: { id: expense.id },
-          data: { status: "Overdue" },
+      if (today.isSameOrAfter(nextDate)) {
+        await transactionModel.model.create({
+          data: {
+            amount: item.amount,
+            date: today.toDate(),
+            description: item.description,
+            status: "Pending",
+            recurringId: item.id,
+            isActive: true,
+            category: {
+              connect: {
+                id: transaction?.categoryId,
+              },
+            },
+            user: {
+              connect: {
+                id: transaction?.userId,
+              },
+            },
+          },
         });
-        console.log(`Updated expense ${expense.id} to Overdue`);
+
+        await prisma.recurringTransaction.update({
+          where: {
+            id: transaction?.id,
+          },
+          data: {
+            nextDueDate: moment(nextDate)
+              .add(transaction.interval, transaction?.unit)
+              .toDate(),
+          },
+        });
       }
     }
   } catch (err) {
@@ -40,7 +109,13 @@ cron.schedule("0 0 * * *", async () => {
 });
 
 cron.schedule("0 0 * * *", async () => {
-
+  const today = moment().startOf("day"); // Ensures time is 00:00:00
+  try {
+  } catch (err) {
+    console.error("Error processing recurring expenses:", err);
+  } finally {
+    await prisma.$disconnect(); // ✅ Ensure Prisma disconnects properly
+  }
 });
 
 /* Create a scheduler where 
