@@ -88,11 +88,11 @@ const getAllExpenseLimit = async (req, res, next) => {
                       gte: startDate,
                       lte: endDate,
                     },
-                    isActive: true
+                    isActive: true,
                   },
                   select: {
-                      amount: true
-                  }
+                    amount: true,
+                  },
                 },
               },
             },
@@ -134,19 +134,27 @@ const getAllExpenseLimit = async (req, res, next) => {
     // });
 
     // Calculate total expenses per category
-    const result = categoryTracker.map((category) => {
-      console.log("Category Tracker : ", category);
-      const totalExpense = category.category.expenses.reduce(
-        (sum, expense) => Number(sum) + Number(expense?.transactionHistory[0]?.amount),
-        0
-      );
+    console.log(categoryTracker, "category!");
+    const result = categoryTracker.map(({ id, category, limit }) => {
+      const totalExpense =
+        category?.expenses?.reduce((expenseAcc, expense) => {
+          const transactionTotal =
+            expense?.transactionHistory?.reduce(
+              (txAcc, tx) => txAcc + Number(tx?.amount || 0),
+              0
+            ) || 0;
+
+          return expenseAcc + transactionTotal;
+        }, 0) || 0;
+
       return {
-        id: category.id,
-        category: category.category,
-        value: Number(category.limit),
-        total: Number(totalExpense) || 0,
+        id,
+        category,
+        value: Number(limit),
+        total: totalExpense,
       };
     });
+
     console.log(result);
 
     res.status(200).json({

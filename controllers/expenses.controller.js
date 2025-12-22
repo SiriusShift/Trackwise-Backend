@@ -91,7 +91,7 @@ const updateExpense = async (req, res, next) => {
 const payExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
-    const response = expenseService.patchPayment(
+    const response = expenseService.postPayment(
       req.user.id,
       req.body,
       id,

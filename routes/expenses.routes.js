@@ -16,6 +16,7 @@ const multer = require("multer");
 const {
   postRecurring,
   getRecurring,
+  transactRecurring,
 } = require("../controllers/recurring.controller");
 const upload = multer(); // For text-only formData, or configure for file uploads
 
@@ -34,6 +35,7 @@ router.route("/graph").get(isLoggedIn, catchAsync(getGraph));
 router
   .route("/pay/:id")
   .patch(isLoggedIn, upload.single("image"), catchAsync(payExpense));
+router.route("/pay/auto/:id").post(isLoggedIn, catchAsync(transactRecurring))
 //Recurring
 router.route("/recurring").post(isLoggedIn, catchAsync(postRecurring));
 router.route("/recurring").get(isLoggedIn, catchAsync(getRecurring));

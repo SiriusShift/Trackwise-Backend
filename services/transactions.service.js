@@ -1,4 +1,5 @@
 const { PrismaClient } = require("@prisma/client");
+const { validateAsset } = require("./assets.service");
 const prisma = new PrismaClient();
 
 const validateTransactionHistory = async (id) => {
@@ -268,8 +269,202 @@ const deleteHistory = async (id) => {
   }
 };
 
+const createTransactionRecord = async (data) => {
+  const {
+    amount,
+    description,
+    status,
+    categoryId,
+    assetFromId,
+    assetToId,
+    type,
+    recurringId,
+    date,
+    userId,
+    auto,
+  } = data;
+
+  let transaction;
+
+  if (type === "Expense") {
+    transaction = await prisma.expense.create({
+      data: {
+        amount: amount,
+        description: description,
+        status: status,
+        category: {
+          connect: {
+            id: categoryId,
+          },
+        },
+        ...(assetFromId &&
+          auto && {
+            asset: {
+              connect: {
+                id: assetFromId,
+              },
+            },
+          }),
+        recurringTemplate: {
+          connect: {
+            id: recurringId,
+          },
+        },
+        date: date,
+        user: {
+          connect: {
+            id: userId,
+          },
+        },
+      },
+    });
+  } else if (type === "Income") {
+    transaction = await prisma.income.create({
+      data: {
+        amount: amount,
+        description: description,
+        // image: image,
+        status: status,
+        category: {
+          connect: {
+            id: categoryId,
+          },
+        },
+        ...(assetToId &&
+          auto && {
+            asset: {
+              connect: {
+                id: assetToId,
+              },
+            },
+          }),
+        recurringTemplate: {
+          connect: {
+            id: recurringId,
+          },
+        },
+        date: data.date,
+        user: {
+          connect: {
+            id: userId,
+          },
+        },
+      },
+    });
+  } else if (type === "Transfer") {
+    transaction = await prisma.transfer.create({
+      data: {
+        amount: amount,
+        description: description,
+        status: status,
+        fromAsset: {
+          connect: { id: assetFromId },
+        },
+        toAsset: {
+          connect: { id: assetToId },
+        },
+        recurringTransfer: {
+          connect: { id: recurringId },
+        },
+        date: date,
+        user: {
+          connect: { id: userId },
+        },
+      },
+    });
+  }
+
+  return transaction;
+};
+
+const createTransactionHistory = async (id, data) => {
+  const { amount, description, userId, assetFromId, type, assetToId, date } =
+    data;
+
+  await prisma.transactionHistory.create({
+    data: {
+      ...(type === "Expense" && {
+        expense: { connect: { id: id } },
+      }),
+      ...(type === "Income" && {
+        income: { connect: { id: id } },
+      }),
+      ...(type === "Transfer" && {
+        transfer: { connect: { id: id } },
+      }),
+      user: { connect: { id: userId } },
+      ...(type !== "Income" &&
+        assetFromId && {
+          fromAsset: { connect: { id: assetFromId } },
+        }),
+      ...(type !== "Expense" &&
+        assetToId && {
+          toAsset: { connect: { id: assetToId } },
+        }),
+      transactionType: type,
+      amount,
+      description,
+      date: date || new Date(),
+    },
+  });
+};
+
+const createTransactionNotification = async (data) => {
+  const { amount, description, userId, date, recurringId, status } = data;
+
+  if (!status || status === "Paid" || status === "Received") {
+    return; // No notification needed for successful transactions
+  }
+
+  let notificationData = {
+    user: { connect: { id: userId } },
+    relatedId: recurringId,
+    relatedType: "RecurringTransaction",
+  };
+
+  if (status === "Failed") {
+    notificationData.type = "Error";
+    notificationData.title = "Recurring Payment Failed";
+    notificationData.message = `Insufficient funds for "${description}". Required: ${amount}`;
+  } else if (status === "Pending") {
+    notificationData.type = "Warning";
+    notificationData.title = "Payment Due";
+    notificationData.message = `"${description}" payment of ${amount} is due on ${date}`;
+  }
+
+  await prisma.notification.create({ data: notificationData });
+  return;
+};
+
+const determineTransactionStatus = async (type, auto, fromAssetId, amount) => {
+  if (!auto) {
+    return "Pending";
+  }
+
+  // Income always succeeds (adds money)
+  if (type === "Income") {
+    return "Received";
+  }
+
+  // Check balance for Expense and Transfer
+  const asset = await validateAsset(fromAssetId);
+
+  console.log(asset.balance, amount)
+  if (asset.balance < amount) {
+    return "Failed";
+  }
+  if (type === "Expense") {
+    return "Paid";
+  }
+  return "Completed";
+};
+
 module.exports = {
   getHistory,
   editHistory,
   deleteHistory,
+  createTransactionRecord,
+  createTransactionHistory,
+  createTransactionNotification,
+  determineTransactionStatus
 };

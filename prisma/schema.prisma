@@ -26,14 +26,13 @@ enum Type {
 }
 
 enum NotificationType {
-  General
-  Expense
-  Income
-  Transfer
-  Recurring
-  Installment
   Reminder
   System
+  General
+  Warning
+  Info
+  Success
+  Error
 }
 
 model User {
@@ -174,23 +173,24 @@ model Transfer {
 }
 
 model RecurringTransaction {
-  id          Int       @id @default(autoincrement())
-  userId      Int
-  type        Type
-  categoryId  Int // For Expense & Income
-  fromAssetId Int? // For Transfer
-  toAssetId   Int? // For Transfer
-  description String
-  amount      Decimal
-  startDate   DateTime
-  nextDueDate DateTime
-  interval    Int
-  unit        String // "day", "week", "month", "year"
-  isActive    Boolean   @default(true)
-  endDate     DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
-  auto        Boolean   @default(false)
+  id             Int       @id @default(autoincrement())
+  userId         Int
+  type           Type
+  categoryId     Int // For Expense & Income
+  fromAssetId    Int? // For Transfer
+  toAssetId      Int? // For Transfer
+  description    String
+  amount         Decimal
+  startDate      DateTime
+  nextDueDate    DateTime
+  nextTriggerUTC DateTime?
+  interval       Int
+  unit           String // "day", "week", "month", "year"
+  isActive       Boolean   @default(true)
+  endDate        DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  auto           Boolean   @default(false)
   // isVariable  Boolean?   @default(false)
 
   user      User       @relation(fields: [userId], references: [id])
@@ -264,7 +264,7 @@ model Settings {
   notifyDays         Int     @default(1)
 
   createdAt DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id])
 

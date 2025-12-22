@@ -147,6 +147,7 @@ const getExpenses = async (userId, query) => {
   console.log(filteredExpenses, "filtered");
   const expensesWithBalance = filteredExpenses?.map((expense) => ({
     ...expense,
+    type: "Expense",
     remainingBalance:
       Number(expense.amount) -
       expense.transactionHistory.reduce(
@@ -172,11 +173,13 @@ const postExpense = async (userId, data, file) => {
   console.log("Amount: ", amount);
 
   validateCategory(categoryId);
-  const asset = validateAsset(assetId, userId);
+  if (assetId) {
+    const asset = validateAsset(assetId, userId);
 
-  // Check if the balance is sufficient
-  if (asset.balance < amount) {
-    throw new Error("Insufficient balance");
+    // Check if the balance is sufficient
+    if (data?.date <= moment() && asset.balance < amount) {
+      throw new Error("Insufficient balance");
+    }
   }
 
   const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
@@ -194,11 +197,13 @@ const postExpense = async (userId, data, file) => {
           id: categoryId,
         },
       },
-      asset: {
-        connect: {
-          id: assetId,
+      ...(assetId && {
+        asset: {
+          connect: {
+            id: assetId,
+          },
         },
-      },
+      }),
       date: data.date,
       user: {
         connect: {
@@ -424,10 +429,11 @@ const deleteExpense = async (userId, id) => {
   });
 };
 
-const patchPayment = async (userId, data, id, file) => {
+const postPayment = async (userId, data, id, file) => {
   try {
     const amount = Number(data.amount);
     const assetId = parseInt(data.from);
+    console.log(data, "data from patch payment");
 
     const expense = await validateExpense(id);
     const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
@@ -443,7 +449,9 @@ const patchPayment = async (userId, data, id, file) => {
     });
 
     const previousPayments = balance._sum.amount || 0;
-    const totalPaid = previousPayments + amount;
+    const totalPaid = Number(previousPayments) + amount;
+    console.log(previousPayments, "previous payments")
+    console.log(totalPaid, "total paid")
 
     let newStatus = "Unpaid";
     if (totalPaid >= expense.amount) newStatus = "Paid";
@@ -487,17 +495,16 @@ const getExpenseGraph = async (userId, query) => {
         lte: endDate,
       },
       isActive: true,
-      status: "Paid",
     };
     console.log("filters", filters);
     const groupedExpenses = await prisma.$queryRawUnsafe(
       `SELECT 
         date_trunc('${mode}', "date") AS "${mode}",
         sum(amount) AS total
-      FROM "Expense"
+      FROM "TransactionHistory"
       WHERE "date" >= '${moment(startDate)
         .subtract(1, "month")
-        .toISOString()}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true AND "status" = 'Paid'
+        .toISOString()}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true AND "transactionType" = 'Expense'
       GROUP BY "${mode}"
       ORDER BY "${mode}"`
     );
@@ -509,20 +516,26 @@ const getExpenseGraph = async (userId, query) => {
       100
     ).toFixed(2);
 
-    const categoryExpenses = await prisma.expense.groupBy({
-      by: ["categoryId"],
-      where: filters,
+    const categoryExpenses = await prisma.transactionHistory.groupBy({
+      by: ["expenseId"],
+      where: {
+        ...filters,
+        transactionType: "Expense",
+      },
       _sum: { amount: true },
     });
 
+    console.log(categoryExpenses);
+
     const detailedCategoryExpenses = await Promise.all(
       categoryExpenses.map(async (item) => {
-        const category = await prisma.categories.findFirst({
-          where: { id: item.categoryId },
+        const expense = await prisma.expense.findFirst({
+          where: { id: item.expenseId },
+          include: { category: true },
         });
         return {
-          categoryId: item.categoryId,
-          categoryName: category?.name || "Unknown",
+          categoryId: expense.categoryId,
+          categoryName: expense?.category?.name || "Unknown",
           total: Number(item._sum.amount) || 0,
         };
       })
@@ -530,15 +543,15 @@ const getExpenseGraph = async (userId, query) => {
 
     console.log("detailed category", detailedCategoryExpenses);
 
-    const totalExpense = await prisma.expense.aggregate({
-      where: filters,
-      _sum: { amount: true },
-    });
+    const totalExpense = detailedCategoryExpenses.reduce(
+      (acc, curr) => acc + curr.total,
+      0
+    );
 
     return {
       trend,
       data: detailedCategoryExpenses,
-      total: Number(totalExpense._sum.amount) || 0,
+      total: Number(totalExpense) || 0,
     };
   } catch (err) {
     console.log(err);
@@ -552,5 +565,5 @@ module.exports = {
   updateExpense,
   deleteExpense,
   getExpenseGraph,
-  patchPayment,
+  postPayment,
 };

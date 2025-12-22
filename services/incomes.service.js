@@ -155,21 +155,28 @@ const getIncome = async (userId, query) => {
       status: true,
       recurringIncome: {
         select: {
-          toAssetId: true,
+          fromAsset: true,
           amount: true,
+          type: true,
           // isVariable: true,
           auto: true,
+          unit: true,
+          interval: true,
+          endDate: true,
         },
       },
       transactionHistory: {
+        where: {
+          isActive: true,
+        },
         select: {
           id: true,
           transactionType: true,
           amount: true,
-          image: true,
           description: true,
           date: true,
           toAssetId: true,
+          image: true,
         },
       },
     },
@@ -180,10 +187,11 @@ const getIncome = async (userId, query) => {
   const filteredIncomes = incomes.filter((item) => item !== undefined);
   const incomeWithBalance = filteredIncomes?.map((income) => ({
     ...income,
+    type: "Income",
     remainingBalance:
-      income.amount -
+      Number(income.amount) -
       income.transactionHistory.reduce(
-        (acc, curr) => acc + (curr?.amount || 0),
+        (acc, curr) => acc + Number(curr?.amount || 0),
         0
       ),
   }));
@@ -250,24 +258,24 @@ const updateIncome = async (userId, data, file, id) => {
     });
 
     // Fetch the transaction history record related to the expense
-    const transaction = await prisma.transactionHistory.findFirst({
-      where: { incomeId: parseInt(id) }, // Ensure expenseId is properly converted to an integer
-    });
+    // const transaction = await prisma.transactionHistory.findFirst({
+    //   where: { incomeId: parseInt(id) }, // Ensure expenseId is properly converted to an integer
+    // });
 
-    await prisma.transactionHistory.update({
-      where: { id: parseInt(transaction?.id) },
-      data: {
-        amount: Number(data.amount),
-        description: data.description,
-        date: data.date,
-        updatedAt: new Date(),
-        toAsset: {
-          connect: {
-            id: assetId,
-          },
-        },
-      },
-    });
+    // await prisma.transactionHistory.update({
+    //   where: { id: parseInt(transaction?.id) },
+    //   data: {
+    //     amount: Number(data.amount),
+    //     description: data.description,
+    //     date: data.date,
+    //     updatedAt: new Date(),
+    //     toAsset: {
+    //       connect: {
+    //         id: assetId,
+    //       },
+    //     },
+    //   },
+    // });
 
     console.log("return");
 
@@ -315,8 +323,8 @@ const getIncomeGraph = async (userId, query) => {
       `SELECT 
         date_trunc('${mode}', "date") AS "${mode}",
         sum(amount) AS total
-      FROM "Income"
-      WHERE "date" >= '${startDate}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true AND "status" = 'Received'
+      FROM "TransactionHistory"
+      WHERE "date" >= '${startDate}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true AND "transactionType" = 'Income'
       GROUP BY "${mode}"
       ORDER BY "${mode}"`
     );
@@ -328,21 +336,25 @@ const getIncomeGraph = async (userId, query) => {
       100
     ).toFixed(2);
 
-    const categoryIncomes = await prisma.income.groupBy({
-      by: ["categoryId"],
-      where: filters,
+    const categoryIncomes = await prisma.transactionHistory.groupBy({
+      by: ["incomeId"],
+      where: {
+        ...filters,
+        transactionType: "Income",
+      },
       _sum: { amount: true },
     });
 
     const detailedCategoryIncomes = await Promise.all(
       categoryIncomes.map(async (item) => {
-        const category = await prisma.categories.findFirst({
-          where: { id: item.categoryId },
+        const income = await prisma.income.findFirst({
+          where: { id: item.incomeId },
+          include: { category: true },
         });
         return {
-          categoryId: item.categoryId,
-          categoryName: category?.name || "Unknown",
-          total: item._sum.amount || 0,
+          categoryId: income.categoryId,
+          categoryName: income?.category?.name || "Unknown",
+          total: Number(item._sum.amount) || 0,
         };
       })
     );

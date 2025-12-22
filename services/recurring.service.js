@@ -1,14 +1,30 @@
 const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 const { validateCategory } = require("./categories.service");
-const { connect } = require("../routes/emails.routes");
-const { validateAsset } = require("./assets.service");
-const moment = require("moment")
+const moment = require("moment");
+const {
+  determineTransactionStatus,
+  createTransactionHistory,
+  createTransactionNotification,
+  createTransactionRecord,
+} = require("./transactions.service");
+// const { postPayment } = require('./expenses.service');
+
 const postRecurring = async (userId, data) => {
   const amount = Number(data.amount);
   const categoryId = parseInt(data.category);
   const assetFromId = parseInt(data?.from);
   const assetToId = parseInt(data?.to);
+
+  console.log(amount, "Amount!");
+
+  const status = await determineTransactionStatus(
+    data?.type,
+    data?.auto,
+    assetFromId,
+    amount
+  );
+  console.log(status, "status");
   try {
     await validateCategory(categoryId);
 
@@ -19,7 +35,13 @@ const postRecurring = async (userId, data) => {
       amount: data?.amount,
       description: data?.description,
       startDate: data?.date,
-      nextDueDate: moment(data?.date)?.add(`${data?.repeat?.unit}s`, data?.repeat?.interval),
+      nextDueDate: moment(data?.date)
+        ?.add(
+          `${data?.repeat?.unit}s`,
+
+          data?.repeat?.interval
+        )
+        .toDate(),
       interval: data?.repeat?.interval,
       unit: data?.repeat?.unit,
       auto: data?.auto,
@@ -29,28 +51,18 @@ const postRecurring = async (userId, data) => {
     console.log(recurringData);
 
     if (data?.auto) {
-      console.log("test3");
-      if (data?.type !== "Income") {
-        const asset = await validateAsset(assetFromId, userId);
-
-        // Check if the balance is sufficient
-        if (asset.balance < amount) {
-          throw new Error("Insufficient balance");
-        }
-      }
-
       if (data?.type === "Expense" || data?.type === "Transfer") {
         recurringData.fromAsset = {
           connect: { id: assetFromId },
         };
       }
-
       if (data?.type === "Income" || data?.type === "Transfer") {
         recurringData.toAsset = {
           connect: { id: assetToId },
         };
       }
     }
+
     if (data?.endDate) {
       recurringData.endDate = data?.endDate;
     }
@@ -61,124 +73,27 @@ const postRecurring = async (userId, data) => {
       data: recurringData,
     });
 
-    let transaction;
+    const transformedData = {
+      amount: amount,
+      description: data?.description,
+      status: status,
+      categoryId: categoryId,
+      assetFromId: assetFromId,
+      assetToId: assetToId,
+      type: data?.type,
+      recurringId: recurring?.id,
+      date: data?.date,
+      userId: userId,
+      auto: data?.auto,
+    };
 
-    if (data?.type === "Expense") {
-      transaction = await prisma.expense.create({
-        data: {
-          amount: amount,
-          description: data.description,
-          status: data?.auto ? "Paid" : "Pending",
-          category: {
-            connect: {
-              id: categoryId,
-            },
-          },
-          // ...(assetFromId &&
-          //   data?.auto && {
-          //     asset: {
-          //       connect: {
-          //         id: assetFromId,
-          //       },
-          //     },
-          //   }),
-          recurringTemplate: {
-            connect: {
-              id: recurring?.id,
-            },
-          },
-          date: data.date,
-          user: {
-            connect: {
-              id: userId,
-            },
-          },
-        },
-      });
-    } else if (data?.type === "Income") {
-      transaction = await prisma.income.create({
-        data: {
-          amount: amount,
-          description: data.description,
-          image: image,
-          status: data?.auto ? "Paid" : "Pending",
-          category: {
-            connect: {
-              id: categoryId,
-            },
-          },
-          ...(assetToId &&
-            data?.auto && {
-              asset: {
-                connect: {
-                  id: assetFromId,
-                },
-              },
-            }),
-          recurringTemplate: {
-            connect: {
-              id: recurring?.id,
-            },
-          },
-          date: data.date,
-          user: {
-            connect: {
-              id: userId,
-            },
-          },
-        },
-      });
+    const transaction = await createTransactionRecord(transformedData);
+
+    console.log("transaction!", transaction);
+    if (data?.auto && status === "Paid") {
+      await createTransactionHistory(transaction?.id, transformedData);
     }
-    if (data?.auto) {
-      await prisma.transactionHistory.create({
-        data: {
-          ...(data?.type === "Expense" && {
-            expense: {
-              connect: {
-                id: transaction.id,
-              },
-            },
-          }),
-          ...(data?.type === "Income" && {
-            income: {
-              connect: {
-                id: transaction.id,
-              },
-            },
-          }),
-          ...(data?.type === "Transfer" && {
-            transfer: {
-              connect: {
-                id: transaction.id,
-              },
-            },
-          }),
-          user: {
-            connect: {
-              id: userId,
-            },
-          },
-          ...(data?.type !== "Income" && {
-            fromAsset: {
-              connect: {
-                id: assetFromId,
-              },
-            },
-          }),
-          ...(data?.type !== "Expense" && {
-            toAsset: {
-              connect: {
-                id: assetToId,
-              },
-            },
-          }),
-          transactionType: data?.type,
-          amount: amount,
-          description: data.description,
-          date: new Date(),
-        },
-      });
-    }
+    await createTransactionNotification(transformedData);
     return transaction;
   } catch (err) {
     console.log(err);
@@ -198,7 +113,7 @@ const getRecurring = async (userId, query) => {
     status,
   } = query;
 
-  console.log(type, "type!")
+  console.log(type, "type!");
 
   const page = parseInt(pageIndex) >= 0 ? parseInt(pageIndex) + 1 : 1;
   const size = parseInt(pageSize) > 0 ? parseInt(pageSize) : 10;
@@ -215,7 +130,7 @@ const getRecurring = async (userId, query) => {
         }
       : {}),
     isActive: true,
-    type: type
+    type: type,
   };
 
   if (search) {
@@ -262,42 +177,11 @@ const getRecurring = async (userId, query) => {
       auto: true,
       generatedExpenses: true,
       generatedIncomes: true,
-      generatedTransfers: true
+      generatedTransfers: true,
     },
     skip,
     take: size,
   });
-
-  // const detailedRecurring = await Promise.all(
-  //   recurring.map(async (transaction) => {
-  //     console.log("transaction:", transaction);
-  //     let asset;
-  //     let category;
-  //     if (transaction?.fromAssetId !== null) {
-  //       asset = await prisma.asset.findFirst({
-  //         where: { id: transaction.fromAssetId },
-  //       });
-  //     }
-  //     if (transaction?.toAssetId !== null) {
-  //       asset = await prisma.asset.findFirst({
-  //         where: { id: transaction.toAssetId },
-  //       });
-  //     }
-  //     if (transaction?.categoryId !== null) {
-  //       category = await prisma.categories.findFirst({
-  //         where: { id: transaction.categoryId },
-  //       });
-  //     }
-  //     console.log("test")
-  //     return { ...transaction, asset, category };
-  //   })
-  // );
-  // console.log(detailedRecurring)
-
-  // const filteredRecurring = detailedRecurring.filter(
-  //   (item) => item !== undefined
-  // );
-  // console.log(filteredRecurring)
 
   const totalPages = Math.ceil(totalCount / size);
 
@@ -309,19 +193,72 @@ const getRecurring = async (userId, query) => {
 };
 
 const editRecurring = async (id, query) => {
-  return ""
-}
+  return "";
+};
 
 const cancelRecurring = async (id, query) => {
-  return ""
-}
+  return "";
+};
 
 const archiveRecurring = async (id, query) => {
-  return ""
-}
+  return "";
+};
 
+const transactRecurring = async (userId, id, type) => {
+  const model = {
+    Expense: prisma.expense,
+    Income: prisma.income,
+    Transfer: prisma.transfer,
+  };
 
+  const transactionModel = model[type];
+  if (!transactionModel) throw new Error(`Invalid transaction type: ${type}`);
 
+  const transaction = await transactionModel.findUnique({ where: { id: Number(id) } });
+  if (!transaction) throw new Error(`${type} with id ${id} not found`);
+
+  const status = await determineTransactionStatus(
+    type,
+    true,
+    Number(transaction.assetId),
+    Number(transaction.amount)
+  );
+
+  // Balance insufficient
+  if (status === "Failed") {
+    return {
+      success: false,
+      message: "Transaction failed due to insufficient balance.",
+    };
+  }
+
+  /** --- EXPENSE HANDLING --- **/
+  if (type === "Expense") {
+    // Update status
+    await prisma.expense.update({
+      where: { id: Number(id) },
+      data: { status },
+    });
+
+    // Write transaction history using correct fields
+    await prisma.transactionHistory.create({
+      data: {
+        expense: { connect: { id: transaction.id } },
+        user: { connect: { id: userId } },
+        fromAsset: { connect: { id: transaction.assetId } },
+        transactionType: type,
+        amount: Number(transaction.amount),
+        description: `${transaction.name} — ${moment(transaction.date).format(
+          "YYYY-MM-DD"
+        )} (Manual retry due to insufficient balance)`,
+
+        date: new Date(), // use now unless you pass a date
+      },
+    });
+  }
+
+  return { success: true, transaction };
+};
 
 
 module.exports = {
@@ -329,5 +266,6 @@ module.exports = {
   getRecurring,
   editRecurring,
   cancelRecurring,
-  archiveRecurring
+  archiveRecurring,
+  transactRecurring,
 };
