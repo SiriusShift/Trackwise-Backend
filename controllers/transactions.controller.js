@@ -3,7 +3,7 @@ const getHistory = async (req, res) => {
   try {
     const response = await transactionService.getHistory(
       req.user.id,
-      req.query
+      req.query,
     );
     res.status(200).json({
       message: "Transaction history successfully fetched",
@@ -26,7 +26,7 @@ const editHistory = async (req, res) => {
       req.user.id,
       req.body,
       req.file,
-      id
+      id,
     );
     res.status(200).json({
       message: "Transaction history successfully edited",
@@ -58,8 +58,34 @@ const deleteHistory = async (req, res) => {
   }
 };
 
+const getStatistics = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const response = await transactionService.getStatistics(
+      req.user.id,
+      req.query,
+    );
+    console.log(response, "response");
+
+    // Step 3: Return the response
+    res.status(200).json({
+      success: true,
+      message: "Statistics fetched successfully",
+      ...response,
+    });
+  } catch (error) {
+    console.error("Error fetching statistics", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to fetch statistics",
+      error: error.message,
+    });
+  }
+};
+
 module.exports = {
   getHistory,
   editHistory,
-  deleteHistory
+  deleteHistory,
+  getStatistics
 };

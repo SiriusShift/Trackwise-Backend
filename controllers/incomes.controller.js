@@ -78,9 +78,33 @@ const updateIncome = async (req, res, next) => {
   }
 };
 
+const collectIncome = async (req, res, next) => {
+  const { id } = req.params;
+  try {
+    const response = incomeService.collectIncome(
+      req.user.id,
+      req.body,
+      id,
+      req.file
+    );
+    res.status(200).json({
+      message: "Receive successful",
+      success: true,
+      data: response,
+    });
+  } catch (err) {
+    console.log("Error while updating expense", err);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
+
 module.exports = {
   postIncome,
   updateIncome,
   getIncome,
   getGraph,
+  collectIncome
 };

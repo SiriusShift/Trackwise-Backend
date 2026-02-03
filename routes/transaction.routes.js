@@ -1,5 +1,5 @@
 const { Router } = require("express");
-const { getHistory, editHistory, deleteHistory } = require("../controllers/transactions.controller");
+const { getHistory, editHistory, deleteHistory, getStatistics } = require("../controllers/transactions.controller");
 const IncomeRouter = require("./incomes.routes");
 const ExpenseRouter = require("./expenses.routes");
 const { isLoggedIn } = require("../middleware/validate");
@@ -12,7 +12,7 @@ const upload = multer(); // For text-only formData, or configure for file upload
 router.route("/history").get(isLoggedIn, catchAsync(getHistory));
 router.route("/edit/:id").patch(isLoggedIn, upload.single("image"), catchAsync(editHistory))
 router.route("/delete/:id").patch(isLoggedIn, catchAsync(deleteHistory))
-
+router.route("/statistics").get(isLoggedIn, catchAsync(getStatistics))
 //Child routes
 router.use("/income", IncomeRouter);
 router.use("/expense", ExpenseRouter);

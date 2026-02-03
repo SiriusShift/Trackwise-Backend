@@ -3,7 +3,7 @@ const prisma = new PrismaClient();
 const { validateCategory } = require("./categories.service");
 const { uploadFileToS3, deleteFileFromS3 } = require("./s3.service");
 const { validateAsset } = require("./assets.service");
-
+const moment = require("moment");
 const validateIncome = async (id) => {
   const income = prisma.income.findFirst({
     where: {
@@ -27,25 +27,27 @@ const postIncome = async (userId, data, file) => {
   const image = file ? await uploadFileToS3(file, "Income", userId) : null;
   const income = await prisma.income.create({
     data: {
-      date: data?.date,
+      amount: amount,
+      description: data?.description,
+      status: new Date(data?.date) > new Date() ? "Pending" : "Received",
       category: {
         connect: {
           id: categoryId,
         },
       },
-      description: data?.description,
-      amount: amount,
-      asset: {
-        connect: {
-          id: assetId,
+      ...(assetId && {
+        asset: {
+          connect: {
+            id: assetId,
+          },
         },
-      },
+      }),
+      date: data?.date,
       user: {
         connect: {
           id: userId,
         },
       },
-      status: new Date(data?.date) > new Date() ? "Pending" : "Received",
     },
   });
   console.log("income-", income);
@@ -57,18 +59,20 @@ const postIncome = async (userId, data, file) => {
             id: income.id,
           },
         },
+        image: image,
         user: {
           connect: {
             id: userId,
           },
         },
-        toAsset: {
-          connect: {
-            id: assetId,
+        ...(assetId && {
+          toAsset: {
+            connect: {
+              id: assetId,
+            },
           },
-        },
+        }),
         transactionType: "Income",
-        image: image,
         amount: amount,
         description: data.description,
         date: data.date,
@@ -192,7 +196,7 @@ const getIncome = async (userId, query) => {
       Number(income.amount) -
       income.transactionHistory.reduce(
         (acc, curr) => acc + Number(curr?.amount || 0),
-        0
+        0,
       ),
   }));
 
@@ -213,6 +217,7 @@ const updateIncome = async (userId, data, file, id) => {
     const amount = Number(data?.amount);
     const categoryId = parseInt(data.category);
     const assetId = parseInt(data.to);
+    const isFuture = new Date(data.date).getTime() > Date.now();
 
     const income = validateIncome(id);
     let image;
@@ -233,10 +238,7 @@ const updateIncome = async (userId, data, file, id) => {
       data: {
         amount: amount,
         description: data.description,
-        recurring: data.recurring,
-        image: image,
-        status:
-          new Date(data.date).getTime() > Date.now() ? "Pending" : "Received",
+        status: isFuture ? "Pending" : "Received",
         category: {
           connect: {
             id: categoryId,
@@ -299,77 +301,156 @@ const deleteIncome = async (id) => {
   });
 
   await prisma.transactionHistory.update({
-    where: { expenseId: parseInt(id) },
+    where: { incomeId: parseInt(id) },
     data: { isActive: false },
   });
 
   return;
 };
 
+const collectIncome = async (userId, data, id, file) => {
+  try {
+    const amount = Number(data.amount);
+    const assetId = parseInt(data.to);
+    console.log(data, "data from patch payment");
+
+    const income = await validateIncome(id);
+    const image = file ? await uploadFileToS3(file, "Income", userId) : null;
+
+    // Sum of previous payments for this expense
+    const balance = await prisma.transactionHistory.aggregate({
+      where: {
+        incomeId: income.id,
+      },
+      _sum: {
+        amount: true,
+      },
+    });
+
+    const previousPayments = balance._sum.amount || 0;
+    const totalReceived = Number(previousPayments) + amount;
+    console.log(previousPayments, "previous collections");
+    console.log(totalReceived, "total received");
+
+    let newStatus = "Pending";
+    if (totalReceived >= income.amount) newStatus = "Received";
+    else if (totalReceived > 0) newStatus = "Partial";
+
+    const incomeUpdate = await prisma.income.update({
+      where: { id: parseInt(id) },
+      data: {
+        status: newStatus,
+      },
+    });
+
+    await prisma.transactionHistory.create({
+      data: {
+        income: { connect: { id: incomeUpdate.id } },
+        user: { connect: { id: userId } },
+        toAsset: { connect: { id: assetId } },
+        image,
+        transactionType: "Income",
+        amount,
+        description: data.description,
+        date: data.date,
+      },
+    });
+
+    return;
+  } catch (err) {
+    console.log(err);
+    throw new Error(err);
+  }
+};
 const getIncomeGraph = async (userId, query) => {
   const { startDate, endDate, mode } = query;
 
+  const userIdNum = Number(userId);
+
+  const filters = {
+    userId: userIdNum,
+    date: {
+      gte: startDate,
+      lte: endDate,
+    },
+    isActive: true,
+    transactionType: "Income",
+  };
+
   try {
-    const filters = {
-      userId: parseInt(userId),
-      date: {
-        gte: startDate,
-        lte: endDate,
-      },
-      isActive: true,
-    };
-    console.log("filters", filters);
-    const groupedIncomes = await prisma.$queryRawUnsafe(
-      `SELECT 
-        date_trunc('${mode}', "date") AS "${mode}",
-        sum(amount) AS total
+    const trendData = await prisma.$queryRawUnsafe(`
+      SELECT
+        date_trunc('${mode}', "date") AS period,
+        SUM(amount) AS total
       FROM "TransactionHistory"
-      WHERE "date" >= '${startDate}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true AND "transactionType" = 'Income'
-      GROUP BY "${mode}"
-      ORDER BY "${mode}"`
-    );
-    console.log("group income!", groupedIncomes);
+      WHERE
+        "date" >= '${moment(startDate)
+          .subtract(1, "month")
+          .toISOString()}'::timestamp
+        AND "date" <= '${endDate}'::timestamp
+        AND "isActive" = true
+        AND "transactionType" = 'Income'
+      GROUP BY period
+      ORDER BY period
+    `);
 
-    const trend = (
-      ((groupedIncomes[1]?.total - groupedIncomes[0]?.total) /
-        groupedIncomes[0]?.total) *
-      100
-    ).toFixed(2);
+    const trend =
+      trendData.length >= 2 && trendData[0].total
+        ? (
+            ((Number(trendData[1].total) - Number(trendData[0].total)) /
+              Number(trendData[0].total)) *
+            100
+          ).toFixed(2)
+        : "0.00";
 
-    const categoryIncomes = await prisma.transactionHistory.groupBy({
+    const incomeGroups = await prisma.transactionHistory.groupBy({
       by: ["incomeId"],
-      where: {
-        ...filters,
-        transactionType: "Income",
-      },
-      _sum: { amount: true },
-    });
-
-    const detailedCategoryIncomes = await Promise.all(
-      categoryIncomes.map(async (item) => {
-        const income = await prisma.income.findFirst({
-          where: { id: item.incomeId },
-          include: { category: true },
-        });
-        return {
-          categoryId: income.categoryId,
-          categoryName: income?.category?.name || "Unknown",
-          total: Number(item._sum.amount) || 0,
-        };
-      })
-    );
-
-    console.log("detailed category", detailedCategoryIncomes);
-
-    const totalIncome = await prisma.income.aggregate({
       where: filters,
       _sum: { amount: true },
     });
 
+    const incomeIds = incomeGroups.map((e) => e.incomeId).filter(Boolean);
+
+    const incomes = await prisma.income.findMany({
+      where: { id: { in: incomeIds } },
+      include: { category: true },
+    });
+
+    const incomeMap = new Map(
+      incomes.map((e) => [
+        e.id,
+        {
+          categoryId: e.categoryId,
+          categoryName: e.category?.name ?? "Unknown",
+        },
+      ]),
+    );
+
+    const categoryTotals = incomeGroups.reduce((acc, item) => {
+      const meta = incomeMap.get(item.incomeId);
+      if (!meta) return acc;
+
+      if (!acc[meta.categoryId]) {
+        acc[meta.categoryId] = {
+          categoryId: meta.categoryId,
+          categoryName: meta.categoryName,
+          total: 0,
+        };
+      }
+
+      acc[meta.categoryId].total += Number(item._sum.amount ?? 0);
+      return acc;
+    }, {});
+
+    const data = Object.values(categoryTotals);
+
+    const totalIncome = data.reduce((sum, item) => sum + item.total, 0);
+
+    /* ------------------ RESPONSE ------------------ */
     return {
       trend,
-      data: detailedCategoryIncomes,
-      total: totalIncome._sum.amount || 0,
+      data,
+      total: totalIncome,
     };
   } catch (err) {
     console.log(err);
@@ -383,4 +464,5 @@ module.exports = {
   updateIncome,
   deleteIncome,
   getIncomeGraph,
+  collectIncome,
 };

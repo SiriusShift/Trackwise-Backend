@@ -227,17 +227,18 @@ const postExpense = async (userId, data, file) => {
             id: userId,
           },
         },
-        fromAsset: {
+        ...(assetId && {fromAsset: {
           connect: {
             id: assetId,
           },
-        },
+        }}),
         transactionType: "Expense",
         amount: amount,
         description: data.description,
         date: data.date,
       },
     });
+    return expense;
   }
 
   // Create a transaction history record
@@ -333,91 +334,6 @@ const deleteExpense = async (userId, id) => {
   // If the expense is a recurring parent
   validateExpense(id);
 
-  // if (data.isRecurring) {
-  //   console.log("Recurring Expense:", data);
-
-  //   // Mark the parent expense as deleted
-  //   await prisma.expense.update({
-  //     where: { id: parseInt(id) },
-  //     data: { isActive: false },
-  //   });
-
-  //   if (data.status === "Paid") {
-  //     // Update all linked recurring expenses
-  //     await prisma.expense.updateMany({
-  //       where: { recurringExpenseId: parseInt(id) },
-  //       data: { isActive: false },
-  //     });
-
-  //     // Update transaction history for ALL linked expenses
-  //     await prisma.transactionHistory.updateMany({
-  //       where: { expenseId: parseInt(id) },
-  //       data: { isActive: false },
-  //     });
-
-  //     // Also update transaction history for all child expenses
-  //     await prisma.transactionHistory.updateMany({
-  //       where: {
-  //         expenseId: {
-  //           in: (
-  //             await prisma.expense.findMany({
-  //               where: { recurringExpenseId: parseInt(id) },
-  //               select: { id: true },
-  //             })
-  //           ).map((expense) => expense.id),
-  //         },
-  //       },
-  //       data: { isActive: false },
-  //     });
-  //   }
-  // }
-  // // If it's a child expense in a recurring series
-  // else if (data.recurringExpenseId !== null && !data.isRecurring) {
-  //   console.log("Child of Recurring Expense:", data);
-
-  //   if (data.status === "Paid") {
-  //     // Delete all expenses tied to the recurringExpenseId
-  //     await prisma.expense.updateMany({
-  //       where: { recurringExpenseId: parseInt(data.recurringExpenseId) },
-  //       data: { isActive: false },
-  //     });
-
-  //     // Delete transaction history for all related expenses
-  //     await prisma.transactionHistory.updateMany({
-  //       where: { expenseId: parseInt(id) },
-  //       data: { isActive: false },
-  //     });
-
-  //     // Also update transaction history for all child expenses
-  //     await prisma.transactionHistory.updateMany({
-  //       where: {
-  //         expenseId: {
-  //           in: (
-  //             await prisma.expense.findMany({
-  //               where: {
-  //                 recurringExpenseId: parseInt(data.recurringExpenseId),
-  //               },
-  //               select: { id: true },
-  //             })
-  //           ).map((expense) => expense.id),
-  //         },
-  //       },
-  //       data: { isActive: false },
-  //     });
-  //   } else {
-  //     await prisma.expense.update({
-  //       where: { id: parseInt(id) },
-  //       data: { isActive: false },
-  //     });
-
-  //     await prisma.transactionHistory.updateMany({
-  //       where: { expenseId: parseInt(id) },
-  //       data: { isActive: false },
-  //     });
-  //   }
-  // }
-  // If it's a standalone expense
-
   await prisma.expense.update({
     where: { id: parseInt(id) },
     data: { isActive: false },
@@ -427,6 +343,8 @@ const deleteExpense = async (userId, id) => {
     where: { expenseId: parseInt(id) },
     data: { isActive: false },
   });
+
+  return;
 };
 
 const postPayment = async (userId, data, id, file) => {
@@ -442,6 +360,7 @@ const postPayment = async (userId, data, id, file) => {
     const balance = await prisma.transactionHistory.aggregate({
       where: {
         expenseId: expense.id,
+        isActive: true
       },
       _sum: {
         amount: true,
@@ -450,10 +369,10 @@ const postPayment = async (userId, data, id, file) => {
 
     const previousPayments = balance._sum.amount || 0;
     const totalPaid = Number(previousPayments) + amount;
-    console.log(previousPayments, "previous payments")
-    console.log(totalPaid, "total paid")
+    console.log(previousPayments, "previous payments");
+    console.log(totalPaid, "total paid");
 
-    let newStatus = "Unpaid";
+    let newStatus = "Pending";
     if (totalPaid >= expense.amount) newStatus = "Paid";
     else if (totalPaid > 0) newStatus = "Partial";
 
@@ -487,74 +406,100 @@ const postPayment = async (userId, data, id, file) => {
 const getExpenseGraph = async (userId, query) => {
   const { startDate, endDate, mode } = query;
 
+  const userIdNum = Number(userId);
+
+  const filters = {
+    userId: userIdNum,
+    date: {
+      gte: startDate,
+      lte: endDate,
+    },
+    isActive: true,
+    transactionType: "Expense",
+  };
+
   try {
-    const filters = {
-      userId: parseInt(userId),
-      date: {
-        gte: startDate,
-        lte: endDate,
-      },
-      isActive: true,
-    };
-    console.log("filters", filters);
-    const groupedExpenses = await prisma.$queryRawUnsafe(
-      `SELECT 
-        date_trunc('${mode}', "date") AS "${mode}",
-        sum(amount) AS total
+    /* ------------------ TREND DATA ------------------ */
+    const trendData = await prisma.$queryRawUnsafe(`
+      SELECT
+        date_trunc('${mode}', "date") AS period,
+        SUM(amount) AS total
       FROM "TransactionHistory"
-      WHERE "date" >= '${moment(startDate)
-        .subtract(1, "month")
-        .toISOString()}'::timestamp AND "date" <= '${endDate}'::timestamp AND "isActive" = true AND "transactionType" = 'Expense'
-      GROUP BY "${mode}"
-      ORDER BY "${mode}"`
-    );
-    console.log("group expense!", groupedExpenses);
+      WHERE
+        "date" >= '${moment(startDate).subtract(1, "month").toISOString()}'::timestamp
+        AND "date" <= '${endDate}'::timestamp
+        AND "isActive" = true
+        AND "transactionType" = 'Expense'
+      GROUP BY period
+      ORDER BY period
+    `);
 
-    const trend = (
-      ((groupedExpenses[1]?.total - groupedExpenses[0]?.total) /
-        groupedExpenses[0]?.total) *
-      100
-    ).toFixed(2);
+    const trend =
+      trendData.length >= 2 && trendData[0].total
+        ? (
+            ((Number(trendData[1].total) - Number(trendData[0].total)) /
+              Number(trendData[0].total)) *
+            100
+          ).toFixed(2)
+        : "0.00";
 
-    const categoryExpenses = await prisma.transactionHistory.groupBy({
+    /* ---------------- CATEGORY TOTALS ---------------- */
+    const expenseGroups = await prisma.transactionHistory.groupBy({
       by: ["expenseId"],
-      where: {
-        ...filters,
-        transactionType: "Expense",
-      },
+      where: filters,
       _sum: { amount: true },
     });
 
-    console.log(categoryExpenses);
+    const expenseIds = expenseGroups
+      .map(e => e.expenseId)
+      .filter(Boolean);
 
-    const detailedCategoryExpenses = await Promise.all(
-      categoryExpenses.map(async (item) => {
-        const expense = await prisma.expense.findFirst({
-          where: { id: item.expenseId },
-          include: { category: true },
-        });
-        return {
-          categoryId: expense.categoryId,
-          categoryName: expense?.category?.name || "Unknown",
-          total: Number(item._sum.amount) || 0,
-        };
-      })
+    const expenses = await prisma.expense.findMany({
+      where: { id: { in: expenseIds } },
+      include: { category: true },
+    });
+
+    const expenseMap = new Map(
+      expenses.map(e => [
+        e.id,
+        {
+          categoryId: e.categoryId,
+          categoryName: e.category?.name ?? "Unknown",
+        },
+      ])
     );
 
-    console.log("detailed category", detailedCategoryExpenses);
+    const categoryTotals = expenseGroups.reduce((acc, item) => {
+      const meta = expenseMap.get(item.expenseId);
+      if (!meta) return acc;
 
-    const totalExpense = detailedCategoryExpenses.reduce(
-      (acc, curr) => acc + curr.total,
+      if (!acc[meta.categoryId]) {
+        acc[meta.categoryId] = {
+          categoryId: meta.categoryId,
+          categoryName: meta.categoryName,
+          total: 0,
+        };
+      }
+
+      acc[meta.categoryId].total += Number(item._sum.amount ?? 0);
+      return acc;
+    }, {});
+
+    const data = Object.values(categoryTotals);
+
+    const totalExpense = data.reduce(
+      (sum, item) => sum + item.total,
       0
     );
 
+    /* ------------------ RESPONSE ------------------ */
     return {
       trend,
-      data: detailedCategoryExpenses,
-      total: Number(totalExpense) || 0,
+      data,
+      total: totalExpense,
     };
-  } catch (err) {
-    console.log(err);
+  } catch (error) {
+    console.error("getExpenseGraph error:", error);
     throw new Error("Internal server error");
   }
 };

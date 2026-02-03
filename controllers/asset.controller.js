@@ -27,10 +27,10 @@ const createAsset = async (req, res, next) => {
 };
 
 const getAsset = async (req, res) => {
-  const {id} = req.params
+  const {id} = req.params;
   try {
     // Step 1: Fetch all assets along with related expenses and incomes
-    const response =  await assetService.getAsset(req.user.id, req.body, id);
+    const response =  await assetService.getAsset(req.user.id, req.query, id);
     console.log(response, "response")
 
     // Step 3: Return the response

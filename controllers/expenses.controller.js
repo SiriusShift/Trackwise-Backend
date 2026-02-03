@@ -110,28 +110,6 @@ const payExpense = async (req, res, next) => {
   }
 };
 
-const updatePayment = async (req, res, next) => {
-  const { id } = req.params;
-  try {
-    const response = expenseService.patchExpensePayment(
-      req.user.id,
-      req.body,
-      id,
-      req.file
-    );
-    res.status(200).json({
-      message: "Payment update successful",
-      success: true,
-      data: response,
-    });
-  } catch (err) {
-    console.log("Error while updating expense", err);
-    return res.status(500).json({
-      error: "Internal server error",
-    });
-  }
-};
-
 // Expense Graph
 const getGraph = async (req, res, next) => {
   try {
@@ -161,5 +139,4 @@ module.exports = {
   updateExpense,
   getGraph,
   payExpense,
-  updatePayment
 };

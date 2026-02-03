@@ -18,52 +18,51 @@ const validateAsset = async (assetId, userId) => {
 };
 
 const getAsset = async (userId, assetData, id) => {
-const assets = await prisma.asset.findMany({
-  where: {
-    userId,
-    ...(id && { id }),
-  },
-  select: {
-    id: true,
-    name: true,
-    balance: true,
-    receivedTransactionHistory: {
-      where: { isActive: true },
+  const assets = await prisma.asset.findMany({
+    where: {
+      userId,
+      ...(id && { id }),
     },
-    sentTransactionHistory: {
-      where: { isActive: true },
+    select: {
+      id: true,
+      name: true,
+      balance: true,
+      receivedTransactionHistory: {
+        where: { isActive: true },
+      },
+      sentTransactionHistory: {
+        where: { isActive: true },
+      },
     },
-  },
-});
+  });
 
-const assetsLastMonth = await prisma.asset.findMany({
-  where: {
-    userId,
-    ...(id && { id }),
-  },
-  select: {
-    id: true,
-    name: true,
-    balance: true,
-    receivedTransactionHistory: {
-      where: {
-        isActive: true,
-        date: {
-          lte: moment().subtract(1, "months").endOf("month").toDate(),
+  const assetsLastMonth = await prisma.asset.findMany({
+    where: {
+      userId,
+      ...(id && { id }),
+    },
+    select: {
+      id: true,
+      name: true,
+      balance: true,
+      receivedTransactionHistory: {
+        where: {
+          isActive: true,
+          date: {
+            lte: moment().subtract(1, "months").endOf("month").toDate(),
+          },
+        },
+      },
+      sentTransactionHistory: {
+        where: {
+          isActive: true,
+          date: {
+            lte: moment().subtract(1, "months").endOf("month").toDate(),
+          },
         },
       },
     },
-    sentTransactionHistory: {
-      where: {
-        isActive: true,
-        date: {
-          lte: moment().subtract(1, "months").endOf("month").toDate(),
-        },
-      },
-    },
-  },
-});
-
+  });
 
   console.log("assets", assets);
   console.log("assets prev", assetsLastMonth);
@@ -71,13 +70,13 @@ const assetsLastMonth = await prisma.asset.findMany({
   const lastMonthData = assetsLastMonth.map((asset) => {
     const totalExpenses = asset.sentTransactionHistory.reduce(
       (sum, expense) => sum + Number(expense.amount),
-      0
+      0,
     );
 
     console.log("total expense", totalExpenses);
     const totalIncomes = asset.receivedTransactionHistory.reduce(
       (sum, income) => sum + Number(income.amount),
-      0
+      0,
     );
     const remainingBalance =
       Number(asset.balance) + Number(totalIncomes) - Number(totalExpenses);
@@ -90,16 +89,16 @@ const assetsLastMonth = await prisma.asset.findMany({
     };
   });
 
-  console.log(lastMonthData, "Last month data")
+  console.log(lastMonthData, "Last month data");
 
   const data = assets.map((asset) => {
     const totalExpenses = asset.sentTransactionHistory.reduce(
       (sum, expense) => sum + Number(expense.amount),
-      0
+      0,
     );
     const totalIncomes = asset.receivedTransactionHistory.reduce(
       (sum, income) => sum + Number(income.amount),
-      0
+      0,
     );
     const remainingBalance =
       Number(asset.balance) + Number(totalIncomes) - Number(totalExpenses);
@@ -112,17 +111,16 @@ const assetsLastMonth = await prisma.asset.findMany({
     };
   });
 
-    console.log(data, "Latest data")
-
+  console.log(data, "Latest data");
 
   const totalRemainingBalance = data.reduce(
     (sum, asset) => sum + asset.remainingBalance,
-    0
+    0,
   );
 
   const previousTotalBalance = lastMonthData.reduce(
     (sum, asset) => sum + asset.remainingBalance,
-    0
+    0,
   );
 
   console.log(totalRemainingBalance, previousTotalBalance);
