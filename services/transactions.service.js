@@ -1,7 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const { validateAsset } = require("./assets.service");
 const prisma = new PrismaClient();
-const moment = require("moment")
+const moment = require("moment");
 const validateTransactionHistory = async (id) => {
   const history = await prisma.transactionHistory.findFirst({
     where: { id: parseInt(id) },
@@ -137,8 +137,18 @@ const getStatistics = async (userId, data) => {
 
   const selectedDates = {
     start: moment(startDate),
-    end: moment(endDate)
+    end: moment(endDate),
   };
+
+  const assets = await prisma.asset.aggregate({
+    _sum: { balance: true },
+    where: {
+      isActive: true,
+      userId: userId
+    }
+  });
+
+  console.log(assets)
 
   const current = {
     start: selectedDates.start.startOf(mode).toDate(),
@@ -149,9 +159,6 @@ const getStatistics = async (userId, data) => {
     start: selectedDates.start.subtract(1, mode).toDate(),
     end: selectedDates.end.subtract(1, mode).toDate(),
   };
-
-  console.log(current, "current")
-  console.log(previous, "previous")
 
   const allTimeIncome = await prisma.transactionHistory.aggregate({
     _sum: { amount: true },
@@ -196,10 +203,11 @@ const getStatistics = async (userId, data) => {
   });
 
   const balance =
-    (allTimeIncome._sum.amount || 0) - (allTimeExpense._sum.amount || 0);
+    Number(assets?._sum?.balance) + ((allTimeIncome._sum.amount || 0) - (allTimeExpense._sum.amount || 0));
 
-  const prevBalance = 
-  (previousAllTimeIncome._sum.amount || 0) - (previousAllTimeExpense._sum.amount || 0)
+  const prevBalance =
+    Number(assets?._sum?.balance) + ((previousAllTimeIncome._sum.amount || 0) -
+    (previousAllTimeExpense._sum.amount || 0));
 
   const income = await prisma.transactionHistory.aggregate({
     _sum: { amount: true },
@@ -259,22 +267,13 @@ const getStatistics = async (userId, data) => {
     return (((curr - prev) / prev) * 100).toFixed(2);
   }
 
-  console.log(expense, prevExpense, "expenses!")
+  console.log(balance, prevBalance, "balances!");
 
-  const expenseTrend = calcTrend(
-    expense._sum.amount,
-    prevExpense._sum.amount,
-  );
+  const expenseTrend = calcTrend(expense._sum.amount, prevExpense._sum.amount);
 
-  const incomeTrend = calcTrend(
-    income._sum.amount,
-    prevIncome._sum.amount,
-  );
+  const incomeTrend = calcTrend(income._sum.amount, prevIncome._sum.amount);
 
-  const balanceTrend = calcTrend(
-    balance,
-    prevBalance
-  )
+  const balanceTrend = calcTrend(balance, prevBalance);
 
   return {
     balance: balance,
@@ -404,13 +403,13 @@ const deleteHistory = async (id) => {
 
         const totalPaid = Number(balance._sum.amount || 0);
         let newStatus = expense.status;
-        console.log(totalPaid, "total paid delete")
+        console.log(totalPaid, "total paid delete");
 
         if (totalPaid === 0) newStatus = "Pending";
         else if (totalPaid < expense.amount) newStatus = "Partial";
         else if (totalPaid >= expense.amount) newStatus = "Paid";
 
-        console.log(newStatus, "status")
+        console.log(newStatus, "status");
         await prisma.expense.update({
           where: { id: expense.id },
           data: { status: newStatus },
@@ -605,7 +604,7 @@ const determineTransactionStatus = async (type, auto, fromAssetId, amount) => {
   // Check balance for Expense and Transfer
   const asset = await validateAsset(fromAssetId);
 
-  console.log(asset.balance, amount)
+  console.log(asset.balance, amount);
   if (asset.balance < amount) {
     return "Failed";
   }
@@ -623,5 +622,5 @@ module.exports = {
   createTransactionHistory,
   createTransactionNotification,
   determineTransactionStatus,
-  getStatistics
+  getStatistics,
 };

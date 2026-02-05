@@ -179,7 +179,7 @@ const getIncome = async (userId, query) => {
           amount: true,
           description: true,
           date: true,
-          toAssetId: true,
+          toAsset: true,
           image: true,
         },
       },
