@@ -92,7 +92,7 @@ cron.schedule("0 * * * *", async () => {
               date: todayLocal.toDate(), // stored as UTC
               description: item.description,
               status: "Pending",
-              recurringId: item.id,
+              recurringTransaction: {connect : {id: item.id}},
               isActive: true,
               category: { connect: { id: item.categoryId } },
               user: { connect: { id: item.userId } },

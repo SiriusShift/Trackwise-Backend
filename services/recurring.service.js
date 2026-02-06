@@ -22,7 +22,7 @@ const postRecurring = async (userId, data) => {
     data?.type,
     data?.auto,
     assetFromId,
-    amount
+    amount,
   );
   console.log(status, "status");
   try {
@@ -39,7 +39,7 @@ const postRecurring = async (userId, data) => {
         ?.add(
           `${data?.repeat?.unit}s`,
 
-          data?.repeat?.interval
+          data?.repeat?.interval,
         )
         .toDate(),
       interval: data?.repeat?.interval,
@@ -140,12 +140,6 @@ const getRecurring = async (userId, query) => {
     };
   }
 
-  // if (status) {
-  //   filters.status = {
-  //     startsWith: status,
-  //   };
-  // }
-
   if (Categories !== undefined) {
     filters.categoryId = {
       in: JSON.parse(Categories),
@@ -196,13 +190,23 @@ const editRecurring = async (id, query) => {
   return "";
 };
 
-const cancelRecurring = async (id, query) => {
-  return "";
+const cancelRecurring = async (id) => {
+  try {
+    await prisma.recurringTransaction.update({
+      where: {
+        id,
+      },
+      data: {
+        isActive: false,
+        endedAt: new Date(), // 👈 important
+      },
+    });
+  } catch (err) {
+    console.error(err);
+    throw new Error("Internal server error");
+  }
 };
 
-const archiveRecurring = async (id, query) => {
-  return "";
-};
 
 const transactRecurring = async (userId, id, type) => {
   const model = {
@@ -214,14 +218,16 @@ const transactRecurring = async (userId, id, type) => {
   const transactionModel = model[type];
   if (!transactionModel) throw new Error(`Invalid transaction type: ${type}`);
 
-  const transaction = await transactionModel.findUnique({ where: { id: Number(id) } });
+  const transaction = await transactionModel.findUnique({
+    where: { id: Number(id) },
+  });
   if (!transaction) throw new Error(`${type} with id ${id} not found`);
 
   const status = await determineTransactionStatus(
     type,
     true,
     Number(transaction.assetId),
-    Number(transaction.amount)
+    Number(transaction.amount),
   );
 
   // Balance insufficient
@@ -249,7 +255,7 @@ const transactRecurring = async (userId, id, type) => {
         transactionType: type,
         amount: Number(transaction.amount),
         description: `${transaction.name} — ${moment(transaction.date).format(
-          "YYYY-MM-DD"
+          "YYYY-MM-DD",
         )} (Manual retry due to insufficient balance)`,
 
         date: new Date(), // use now unless you pass a date
@@ -260,12 +266,10 @@ const transactRecurring = async (userId, id, type) => {
   return { success: true, transaction };
 };
 
-
 module.exports = {
   postRecurring,
   getRecurring,
   editRecurring,
   cancelRecurring,
-  archiveRecurring,
   transactRecurring,
 };

@@ -55,7 +55,7 @@ const editRecurring = async (req, res, next) => {
 const cancelRecurring = async (req, res, next) => {
   const { id } = req.params;
   try {
-    const response = await recurringService.cancelRecurring(id, req.query);
+    const response = await recurringService.cancelRecurring(id);
     res.status(200).json({
       message: `Successfully cancelled recurring ${req.query.type}`,
       success: true,
@@ -69,22 +69,22 @@ const cancelRecurring = async (req, res, next) => {
   }
 };
 
-const archiveRecurring = async (req, res, next) => {
-  const { id } = req.params;
-  try {
-    const response = await recurringService.archiveRecurring(id, req.query);
-    res.status(200).json({
-      message: `Successfully archived recurring ${req.query.type}`,
-      success: true,
-      ...response,
-    });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({
-      error: "Internal server error",
-    });
-  }
-};
+// const archiveRecurring = async (req, res, next) => {
+//   const { id } = req.params;
+//   try {
+//     const response = await recurringService.archiveRecurring(id, req.query);
+//     res.status(200).json({
+//       message: `Successfully archived recurring ${req.query.type}`,
+//       success: true,
+//       ...response,
+//     });
+//   } catch (err) {
+//     console.log(err);
+//     res.status(500).json({
+//       error: "Internal server error",
+//     });
+//   }
+// };
 
 const transactRecurring = async (req, res) => {
   const type = req.body.type;
@@ -118,6 +118,6 @@ module.exports = {
   getRecurring,
   editRecurring,
   cancelRecurring,
-  archiveRecurring,
+  // archiveRecurring,
   transactRecurring,
 };

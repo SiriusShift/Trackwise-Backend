@@ -95,6 +95,7 @@ const getExpenses = async (userId, query) => {
       status: true,
       recurringTemplate: {
         select: {
+          id: true,
           fromAsset: true,
           amount: true,
           type: true,
@@ -103,6 +104,7 @@ const getExpenses = async (userId, query) => {
           unit: true,
           interval: true,
           endDate: true,
+          isActive: true,
         },
       },
       transactionHistory: {

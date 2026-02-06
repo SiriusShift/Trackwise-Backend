@@ -190,6 +190,7 @@ model RecurringTransaction {
   endDate        DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+  endedAt        DateTime?
   auto           Boolean   @default(false)
   // isVariable  Boolean?   @default(false)
 
