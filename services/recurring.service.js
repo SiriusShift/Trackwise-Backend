@@ -190,11 +190,11 @@ const editRecurring = async (id, query) => {
   return "";
 };
 
-const cancelRecurring = async (id) => {
+const cancelRecurring = async (id) => { 
   try {
     await prisma.recurringTransaction.update({
       where: {
-        id,
+        id: Number(id),
       },
       data: {
         isActive: false,
