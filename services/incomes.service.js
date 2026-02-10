@@ -167,6 +167,8 @@ const getIncome = async (userId, query) => {
           unit: true,
           interval: true,
           endDate: true,
+                    isActive: true,
+
         },
       },
       transactionHistory: {
@@ -300,7 +302,7 @@ const deleteIncome = async (id) => {
     },
   });
 
-  await prisma.transactionHistory.update({
+  await prisma.transactionHistory.updateMany({
     where: { incomeId: parseInt(id) },
     data: { isActive: false },
   });
@@ -321,6 +323,7 @@ const collectIncome = async (userId, data, id, file) => {
     const balance = await prisma.transactionHistory.aggregate({
       where: {
         incomeId: income.id,
+        isActive: true
       },
       _sum: {
         amount: true,

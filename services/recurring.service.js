@@ -36,11 +36,7 @@ const postRecurring = async (userId, data) => {
       description: data?.description,
       startDate: data?.date,
       nextDueDate: moment(data?.date)
-        ?.add(
-          `${data?.repeat?.unit}s`,
-
-          data?.repeat?.interval,
-        )
+        ?.add(data?.repeat?.interval, `${data?.repeat?.unit}s`)
         .toDate(),
       interval: data?.repeat?.interval,
       unit: data?.repeat?.unit,
@@ -86,6 +82,8 @@ const postRecurring = async (userId, data) => {
       userId: userId,
       auto: data?.auto,
     };
+
+    console.log(transformedData, 'transformed')
 
     const transaction = await createTransactionRecord(transformedData);
 

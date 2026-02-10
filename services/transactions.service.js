@@ -1,5 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 const { validateAsset } = require("./assets.service");
+const { uploadFileToS3, deleteFileFromS3 } = require("./s3.service");
+
 const prisma = new PrismaClient();
 const moment = require("moment");
 const validateTransactionHistory = async (id) => {
@@ -144,11 +146,11 @@ const getStatistics = async (userId, data) => {
     _sum: { balance: true },
     where: {
       isActive: true,
-      userId: userId
-    }
+      userId: userId,
+    },
   });
 
-  console.log(assets)
+  console.log(assets);
 
   const current = {
     start: selectedDates.start.startOf(mode).toDate(),
@@ -203,11 +205,13 @@ const getStatistics = async (userId, data) => {
   });
 
   const balance =
-    Number(assets?._sum?.balance) + ((allTimeIncome._sum.amount || 0) - (allTimeExpense._sum.amount || 0));
+    Number(assets?._sum?.balance) +
+    ((allTimeIncome._sum.amount || 0) - (allTimeExpense._sum.amount || 0));
 
   const prevBalance =
-    Number(assets?._sum?.balance) + ((previousAllTimeIncome._sum.amount || 0) -
-    (previousAllTimeExpense._sum.amount || 0));
+    Number(assets?._sum?.balance) +
+    ((previousAllTimeIncome._sum.amount || 0) -
+      (previousAllTimeExpense._sum.amount || 0));
 
   const income = await prisma.transactionHistory.aggregate({
     _sum: { amount: true },
@@ -362,6 +366,40 @@ const editHistory = async (userId, data, file, id) => {
           data: { status: newStatus },
         });
       }
+    } else if (
+      transaction?.transactionType === "Income" &&
+      transaction?.incomeId
+    ) {
+      const income = await prisma.income.findUnique({
+        where: { id: transaction.incomeId },
+      });
+
+      if (income) {
+        // Sum all active transaction history payments for this income
+        const balance = await prisma.transactionHistory.aggregate({
+          where: {
+            incomeId: income.id,
+            isActive: true, // include only active
+          },
+          _sum: {
+            amount: true,
+          },
+        });
+
+        // Adjust for the edited transaction (avoid double-counting)
+        const totalReceived = Number(balance._sum.amount || 0);
+
+        console.log("Total Received:", totalReceived, income.amount);
+
+        let newStatus = "Pending";
+        if (totalReceived >= income.amount) newStatus = "Received";
+        else if (totalReceived > 0) newStatus = "Partial";
+
+        await prisma.income.update({
+          where: { id: income.id },
+          data: { status: newStatus },
+        });
+      }
     }
 
     return transaction;
@@ -412,6 +450,36 @@ const deleteHistory = async (id) => {
         console.log(newStatus, "status");
         await prisma.expense.update({
           where: { id: expense.id },
+          data: { status: newStatus },
+        });
+      }
+    }
+        if (transaction.transactionType === "Income" && transaction.incomeId) {
+      const income = await prisma.income.findUnique({
+        where: { id: transaction.incomeId },
+      });
+
+      if (income) {
+        // Sum all remaining active transactions
+        const balance = await prisma.transactionHistory.aggregate({
+          where: {
+            incomeId: income.id,
+            isActive: true,
+          },
+          _sum: { amount: true },
+        });
+
+        const totalReceived = Number(balance._sum.amount || 0);
+        let newStatus = income.status;
+        console.log(totalReceived, "total received delete");
+
+        if (totalReceived === 0) newStatus = "Pending";
+        else if (totalReceived < income.amount) newStatus = "Partial";
+        else if (totalReceived >= income.amount) newStatus = "Paid";
+
+        console.log(newStatus, "status");
+        await prisma.income.update({
+          where: { id: income.id },
           data: { status: newStatus },
         });
       }
@@ -493,7 +561,7 @@ const createTransactionRecord = async (data) => {
               },
             },
           }),
-        recurringTemplate: {
+        recurringIncome: {
           connect: {
             id: recurringId,
           },
