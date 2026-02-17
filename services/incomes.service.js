@@ -157,9 +157,9 @@ const getIncome = async (userId, query) => {
       amount: true,
       isActive: true,
       status: true,
-      recurringIncome: {
+      recurringTemplate: {
         select: {
-          fromAsset: true,
+          toAsset: true,
           amount: true,
           type: true,
           // isVariable: true,
@@ -321,6 +321,7 @@ const collectIncome = async (userId, data, id, file) => {
     const balance = await prisma.transactionHistory.aggregate({
       where: {
         incomeId: income.id,
+        isActive: true
       },
       _sum: {
         amount: true,

@@ -135,7 +135,7 @@ model Income {
 
   recurringId Int?
 
-  recurringIncome RecurringTransaction? @relation("RecurringIncomes", fields: [recurringId], references: [id])
+  recurringTemplate RecurringTransaction? @relation("RecurringIncomes", fields: [recurringId], references: [id])
   category        Categories            @relation(fields: [categoryId], references: [id])
   asset           Asset?                @relation(fields: [assetId], references: [id])
   user            User                  @relation(fields: [userId], references: [id])
@@ -162,7 +162,7 @@ model Transfer {
 
   recurringId Int?
 
-  recurringTransfer RecurringTransaction? @relation("RecurringTransfers", fields: [recurringId], references: [id])
+  recurringTemplate RecurringTransaction? @relation("RecurringTransfers", fields: [recurringId], references: [id])
   user              User                  @relation(fields: [userId], references: [id])
   fromAsset         Asset                 @relation("FromAsset", fields: [fromAssetId], references: [id])
   toAsset           Asset                 @relation("ToAsset", fields: [toAssetId], references: [id])

@@ -81,7 +81,7 @@ const updateIncome = async (req, res, next) => {
 const collectIncome = async (req, res, next) => {
   const { id } = req.params;
   try {
-    const response = incomeService.collectIncome(
+    const response = await incomeService.collectIncome(
       req.user.id,
       req.body,
       id,
