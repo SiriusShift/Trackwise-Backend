@@ -492,7 +492,7 @@ const createTransactionRecord = async (data) => {
               },
             },
           }),
-        recurringExpense: {
+        recurringTemplate: {
           connect: {
             id: recurringId,
           },
@@ -525,7 +525,7 @@ const createTransactionRecord = async (data) => {
               },
             },
           }),
-        recurringExpense: {
+        recurringTemplate: {
           connect: {
             id: recurringId,
           },
