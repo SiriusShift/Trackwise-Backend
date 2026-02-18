@@ -27,11 +27,12 @@ const router = Router();
 router
   .route("/")
   .post(isLoggedIn, upload.single("image"), catchAsync(postExpense));
+  router.route("/").get(isLoggedIn, catchAsync(getExpenses));
+
 //UPDATE AND DELETE
 router
   .route("/:id")
   .patch(isLoggedIn, upload.single("image"), catchAsync(updateExpense));
-router.route("/").get(isLoggedIn, catchAsync(getExpenses));
 router.route("/graph").get(isLoggedIn, catchAsync(getGraph));
 router
   .route("/pay/:id")

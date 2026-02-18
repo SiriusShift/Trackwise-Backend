@@ -1,12 +1,7 @@
 const { PrismaClient } = require("@prisma/client");
 // const { skip } = require("@prisma/client/runtime/library");
 const prisma = new PrismaClient();
-const moment = require("moment");
-const {
-  uploadBase64ToS3,
-  uploadFileToS3,
-  deleteFileFromS3,
-} = require("../services/s3.service");
+
 const expenseService = require("../services/expenses.service");
 
 const getExpenses = async (req, res, next) => {
@@ -91,7 +86,7 @@ const updateExpense = async (req, res, next) => {
 const payExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
-    const response = expenseService.postPayment(
+    const response = await expenseService.postPayment(
       req.user.id,
       req.body,
       id,
