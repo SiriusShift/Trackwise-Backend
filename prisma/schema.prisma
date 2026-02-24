@@ -149,7 +149,7 @@ model Transfer {
   id          Int     @id @default(autoincrement())
   userId      Int
   fromAssetId Int
-  toAssetId   Int
+  toAssetId   Int?
   categoryId  Int
   amount      Decimal
   description String?
@@ -167,7 +167,7 @@ model Transfer {
   user              User                  @relation(fields: [userId], references: [id])
   category          Categories            @relation(fields: [categoryId], references: [id])
   fromAsset         Asset                 @relation("FromAsset", fields: [fromAssetId], references: [id])
-  toAsset           Asset                 @relation("ToAsset", fields: [toAssetId], references: [id])
+  toAsset           Asset?                 @relation("ToAsset", fields: [toAssetId], references: [id])
 
   transactionHistory TransactionHistory[]
 

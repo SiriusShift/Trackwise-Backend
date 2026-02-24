@@ -107,7 +107,7 @@ const transfer = async (req, res, next) => {
 // Expense Graph
 const getGraph = async (req, res, next) => {
   try {
-    const response = await transferService.getExpenseGraph(
+    const response = await transferService.getTransferGraph(
       req.user.id,
       req.query
     );

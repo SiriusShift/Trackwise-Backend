@@ -81,7 +81,14 @@ const getTransfers = async (userId, query) => {
           isActive: true,
         },
       },
-      asset: {
+      fromAsset: {
+        select: {
+          id: true,
+          name: true,
+          balance: true,
+        },
+      },
+            toAsset: {
         select: {
           id: true,
           name: true,
@@ -151,7 +158,7 @@ const getTransfers = async (userId, query) => {
   const totalPages = Math.ceil(totalCount / size);
 
   return {
-    data: filteredExpenses,
+    data: filteredTransfers,
     totalCount,
     totalPages,
   };
@@ -395,7 +402,7 @@ const postPayment = async (userId, data, id, file) => {
   }
 };
 
-const getExpenseGraph = async (userId, query) => {
+const getTransferGraph = async (userId, query) => {
   const { startDate, endDate, mode } = query;
 
   const userIdNum = Number(userId);
@@ -501,6 +508,6 @@ module.exports = {
   postExpense,
   updateExpense,
   deleteExpense,
-  getExpenseGraph,
+  getTransferGraph,
   postPayment,
 };
