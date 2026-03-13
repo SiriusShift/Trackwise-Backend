@@ -88,7 +88,7 @@ const getTransfers = async (userId, query) => {
           balance: true,
         },
       },
-            toAsset: {
+      toAsset: {
         select: {
           id: true,
           name: true,
@@ -125,6 +125,7 @@ const getTransfers = async (userId, query) => {
           description: true,
           date: true,
           fromAsset: true,
+          toAsset: true,
           image: true,
         },
       },
@@ -164,42 +165,57 @@ const getTransfers = async (userId, query) => {
   };
 };
 
-const postExpense = async (userId, data, file) => {
+const postTransfer = async (userId, data, file) => {
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
-  const assetId = Number(data.from);
+  const fromAssetId = Number(data.from);
+  const toAssetId = Number(data.to);
 
   console.log("Amount: ", amount);
 
-  validateCategory(categoryId);
-  if (assetId) {
-    const asset = validateAsset(assetId, userId);
+  const category = await validateCategory(categoryId);
 
-    // Check if the balance is sufficient
-    if (data?.date <= moment() && asset.balance < amount) {
+  if (category.subType === "INTERNAL" && !toAssetId) {
+    throw new Error("Internal transfer requires destination asset");
+  }
+
+  if (fromAssetId) {
+    const asset = await validateAsset(fromAssetId, userId);
+
+    const txDate = new Date(data.date);
+    const now = new Date();
+
+    if (txDate <= now && asset.balance < amount) {
       throw new Error("Insufficient balance");
     }
   }
 
-  const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
+  const image = file ? await uploadFileToS3(file, "Transfer", userId) : null;
 
   console.log("image :", image);
 
   // Create the expense
-  const expense = await prisma.expense.create({
+  const transfer = await prisma.transfer.create({
     data: {
       amount: amount,
       description: data.description,
-      status: new Date(data.date) > new Date() ? "Pending" : "Paid",
+      status: new Date(data.date) > new Date() ? "Pending" : "Completed",
       category: {
         connect: {
           id: categoryId,
         },
       },
-      ...(assetId && {
-        asset: {
+      ...(fromAssetId && {
+        fromAsset: {
           connect: {
-            id: assetId,
+            id: fromAssetId,
+          },
+        },
+      }),
+      ...(toAssetId && {
+        toAsset: {
+          connect: {
+            id: toAssetId,
           },
         },
       }),
@@ -215,9 +231,9 @@ const postExpense = async (userId, data, file) => {
   if (new Date(data?.date) <= new Date()) {
     await prisma.transactionHistory.create({
       data: {
-        expense: {
+        transfer: {
           connect: {
-            id: expense.id,
+            id: transfer.id,
           },
         },
         image: image,
@@ -226,23 +242,32 @@ const postExpense = async (userId, data, file) => {
             id: userId,
           },
         },
-        ...(assetId && {fromAsset: {
-          connect: {
-            id: assetId,
+        ...(fromAssetId && {
+          fromAsset: {
+            connect: {
+              id: fromAssetId,
+            },
           },
-        }}),
-        transactionType: "Expense",
+        }),
+        ...(toAssetId && {
+          toAsset: {
+            connect: {
+              id: toAssetId,
+            },
+          },
+        }),
+        transactionType: "Transfer",
         amount: amount,
         description: data.description,
         date: data.date,
       },
     });
-    return expense;
+    return transfer;
   }
 
   // Create a transaction history record
 
-  return expense;
+  return transfer;
 };
 
 const updateExpense = async (userId, data, file, id) => {
@@ -359,7 +384,7 @@ const postPayment = async (userId, data, id, file) => {
     const balance = await prisma.transactionHistory.aggregate({
       where: {
         expenseId: expense.id,
-        isActive: true
+        isActive: true,
       },
       _sum: {
         amount: true,
@@ -443,33 +468,31 @@ const getTransferGraph = async (userId, query) => {
         : "0.00";
 
     /* ---------------- CATEGORY TOTALS ---------------- */
-    const expenseGroups = await prisma.transactionHistory.groupBy({
+    const transferGroups = await prisma.transactionHistory.groupBy({
       by: ["transferId"],
       where: filters,
       _sum: { amount: true },
     });
 
-    const expenseIds = expenseGroups
-      .map(e => e.expenseId)
-      .filter(Boolean);
+    const transferIds = transferGroups.map((e) => e.transferId).filter(Boolean);
 
-    const expenses = await prisma.expense.findMany({
-      where: { id: { in: expenseIds } },
+    const transfers = await prisma.transfer.findMany({
+      where: { id: { in: transferIds } },
       include: { category: true },
     });
 
-    const expenseMap = new Map(
-      expenses.map(e => [
+    const transferMap = new Map(
+      transfers.map((e) => [
         e.id,
         {
           categoryId: e.categoryId,
           categoryName: e.category?.name ?? "Unknown",
         },
-      ])
+      ]),
     );
 
-    const categoryTotals = expenseGroups.reduce((acc, item) => {
-      const meta = expenseMap.get(item.expenseId);
+    const categoryTotals = transferGroups.reduce((acc, item) => {
+      const meta = transferMap.get(item.transferId);
       if (!meta) return acc;
 
       if (!acc[meta.categoryId]) {
@@ -486,16 +509,13 @@ const getTransferGraph = async (userId, query) => {
 
     const data = Object.values(categoryTotals);
 
-    const totalExpense = data.reduce(
-      (sum, item) => sum + item.total,
-      0
-    );
+    const totalTransfer = data.reduce((sum, item) => sum + item.total, 0);
 
     /* ------------------ RESPONSE ------------------ */
     return {
       trend,
       data,
-      total: totalExpense,
+      total: totalTransfer,
     };
   } catch (error) {
     console.error("getExpenseGraph error:", error);
@@ -505,7 +525,7 @@ const getTransferGraph = async (userId, query) => {
 
 module.exports = {
   getTransfers,
-  postExpense,
+  postTransfer,
   updateExpense,
   deleteExpense,
   getTransferGraph,

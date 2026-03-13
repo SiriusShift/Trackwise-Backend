@@ -30,7 +30,7 @@ const getTransfers = async (req, res, next) => {
 
 const postTransfer = async (req, res, next) => {
   try {
-    const expense = await expenseService.postExpense(
+    const expense = await transferService.postTransfer(
       req.user.id,
       req.body,
       req.file
@@ -38,7 +38,7 @@ const postTransfer = async (req, res, next) => {
     // Respond with success message
     res.status(200).json({
       success: true,
-      message: "Expense created successfully",
+      message: "Transfer created successfully",
       data: expense,
     });
   } catch (err) {

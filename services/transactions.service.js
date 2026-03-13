@@ -76,6 +76,17 @@ const getHistory = async (userId, request) => {
             },
           },
         },
+         transfer: {
+          select: {
+            status: true,
+            category: {
+              select: {
+                name: true,
+                icon: true,
+              },
+            },
+          },
+        },
       },
       orderBy: [
         {
@@ -105,6 +116,13 @@ const getHistory = async (userId, request) => {
             icon: item?.income?.category?.icon,
           },
           status: item?.income?.status,
+        }),
+                ...(item?.transfer && {
+          category: {
+            name: item?.transfer?.category?.name,
+            icon: item?.transfer?.category?.icon,
+          },
+          status: item?.transfer?.status,
         }),
         // ...(item?.transfer && {
         //   category: {

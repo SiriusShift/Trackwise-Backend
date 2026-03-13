@@ -176,7 +176,7 @@ const postExpense = async (userId, data, file) => {
 
   validateCategory(categoryId);
   if (assetId) {
-    const asset = validateAsset(assetId, userId);
+    const asset = await validateAsset(assetId, userId);
 
     // Check if the balance is sufficient
     if (data?.date <= moment() && asset.balance < amount) {

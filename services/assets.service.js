@@ -137,6 +137,10 @@ const getAsset = async (userId, assetData, id) => {
   };
 };
 
+const getAssetBalance = async (id) => {
+  
+}
+
 module.exports = {
   validateAsset,
   getAsset,
