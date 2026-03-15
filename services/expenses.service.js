@@ -513,4 +513,5 @@ module.exports = {
   deleteExpense,
   getExpenseGraph,
   postPayment,
+  validateExpense
 };

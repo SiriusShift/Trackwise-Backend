@@ -3,7 +3,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 const expenseService = require("../services/expenses.service");
-
+const transactionService = require("../services/transactions.service");
 const getExpenses = async (req, res, next) => {
   try {
     if (!req.user?.id) {
@@ -34,7 +34,7 @@ const postExpense = async (req, res, next) => {
     const expense = await expenseService.postExpense(
       req.user.id,
       req.body,
-      req.file
+      req.file,
     );
     // Respond with success message
     res.status(200).json({
@@ -55,21 +55,13 @@ const postExpense = async (req, res, next) => {
 const updateExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
-    let updateExpense;
-    console.log(req.body);
-
-    //IF DELETING (soft delete)
-    if (req.body.delete) {
-      updateExpense = await expenseService.deleteExpense(req.user.id, id);
-    } else {
-      // update only
-      updateExpense = await expenseService.updateExpense(
-        req.user.id,
-        req.body,
-        req.file,
-        id
-      );
-    }
+    // update only
+    const updateExpense = await expenseService.updateExpense(
+      req.user.id,
+      req.body,
+      req.file,
+      id,
+    );
     res.status(200).json({
       success: true,
       message: "Expense updated successfully",
@@ -83,6 +75,23 @@ const updateExpense = async (req, res, next) => {
   }
 };
 
+// const archiveExpense = async (req, res, next) => {
+//   const { id } = req.params;
+//   try {
+//     const updateExpense = await expenseService.deleteExpense("expense", id);
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Expense archived successfully",
+//       data: updateExpense,
+//     });
+//   } catch (err) {
+//     console.log("Error while archiving expense", err);
+//     return res.status(500).json({
+//       error: "Internal server error",
+//     });
+//   }
+// };
 const payExpense = async (req, res, next) => {
   const { id } = req.params;
   try {
@@ -90,7 +99,7 @@ const payExpense = async (req, res, next) => {
       req.user.id,
       req.body,
       id,
-      req.file
+      req.file,
     );
     res.status(200).json({
       message: "Payment successful",
@@ -110,7 +119,7 @@ const getGraph = async (req, res, next) => {
   try {
     const response = await expenseService.getExpenseGraph(
       req.user.id,
-      req.query
+      req.query,
     );
     console.log("response!: ", response);
 
@@ -134,4 +143,5 @@ module.exports = {
   updateExpense,
   getGraph,
   payExpense,
+  // archiveExpense,
 };

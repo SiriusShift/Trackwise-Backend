@@ -468,4 +468,5 @@ module.exports = {
   deleteIncome,
   getIncomeGraph,
   collectIncome,
+  validateIncome
 };

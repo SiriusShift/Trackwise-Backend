@@ -4,7 +4,7 @@ const catchAsync = require("../utils/catchAsync");
 // const { postIncome, getIncome, getGraph, updateIncome, collectIncome } = require("../controllers/incomes.controller");
 const {postRecurring, getRecurring, transactRecurring} = require("../controllers/recurring.controller")
 const multer = require("multer");
-const { getTransfers, transfer, updateTransfer, postTransfer, getGraph } = require("../controllers/transfers.controller");
+const { getTransfers, transfer, updateTransfer, postTransfer, getGraph, archiveTransfer } = require("../controllers/transfers.controller");
 
 const router = Router();
 const upload = multer();
@@ -14,7 +14,8 @@ router
   .route("/")
   .post(isLoggedIn, upload.single("image"), catchAsync(postTransfer));
 // Update and delete transfer
-router.route("/:id").patch(isLoggedIn, upload.single("image"), catchAsync(updateTransfer))
+router.route("/:id").put(isLoggedIn, upload.single("image"), catchAsync(updateTransfer))
+// router.route("/:id").patch(isLoggedIn, catchAsync(archiveTransfer))
 router.route("/graph").get(isLoggedIn, catchAsync(getGraph))
 router
   .route("/transfer/:id")

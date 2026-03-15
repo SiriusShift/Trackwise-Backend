@@ -6,6 +6,7 @@ const {
   payExpense,
   updateExpense,
   getGraph,
+  archiveExpense,
 } = require("../controllers/expenses.controller");
 const {
   postInstallmentController,
@@ -27,19 +28,22 @@ const router = Router();
 router
   .route("/")
   .post(isLoggedIn, upload.single("image"), catchAsync(postExpense));
-  router.route("/").get(isLoggedIn, catchAsync(getExpenses));
+router.route("/").get(isLoggedIn, catchAsync(getExpenses));
 
 //UPDATE AND DELETE
 router
   .route("/:id")
-  .patch(isLoggedIn, upload.single("image"), catchAsync(updateExpense));
+  .put(isLoggedIn, upload.single("image"), catchAsync(updateExpense));
+// router
+//   .route("/:id")
+//   .patch(isLoggedIn, catchAsync(archiveExpense));
 router.route("/graph").get(isLoggedIn, catchAsync(getGraph));
 router
   .route("/pay/:id")
   .patch(isLoggedIn, upload.single("image"), catchAsync(payExpense));
-router.route("/pay/auto/:id").post(isLoggedIn, catchAsync(transactRecurring))
+router.route("/pay/auto/:id").post(isLoggedIn, catchAsync(transactRecurring));
 //Recurring
 router.route("/recurring").post(isLoggedIn, catchAsync(postRecurring));
 router.route("/recurring").get(isLoggedIn, catchAsync(getRecurring));
-router.route("/recurring/:id").patch(isLoggedIn, catchAsync(cancelRecurring))
+router.route("/recurring/:id").patch(isLoggedIn, catchAsync(cancelRecurring));
 module.exports = router;

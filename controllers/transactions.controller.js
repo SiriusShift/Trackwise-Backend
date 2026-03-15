@@ -83,9 +83,28 @@ const getStatistics = async (req, res) => {
   }
 };
 
+const archiveTransaction = async (req, res, next) => {
+  const { id } = req.params;
+  try {
+    const updateExpense = await transactionService.archiveTransaction(req.query.type, id);
+
+    res.status(200).json({
+      success: true,
+      message: "Expense archived successfully",
+      data: updateExpense,
+    });
+  } catch (err) {
+    console.log("Error while archiving expense", err);
+    return res.status(500).json({
+      error: "Internal server error",
+    });
+  }
+};
+
 module.exports = {
   getHistory,
   editHistory,
   deleteHistory,
-  getStatistics
+  getStatistics,
+  archiveTransaction
 };

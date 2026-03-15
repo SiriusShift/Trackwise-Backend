@@ -2,6 +2,10 @@ const { PrismaClient } = require("@prisma/client");
 const { validateAsset } = require("./assets.service");
 const prisma = new PrismaClient();
 const moment = require("moment");
+const { mode } = require("crypto-js");
+const { validateTransfers } = require("./transfers.service");
+const { validateExpense } = require("./expenses.service");
+const { validateIncome } = require("./incomes.service");
 const validateTransactionHistory = async (id) => {
   const history = await prisma.transactionHistory.findFirst({
     where: { id: parseInt(id) },
@@ -76,7 +80,7 @@ const getHistory = async (userId, request) => {
             },
           },
         },
-         transfer: {
+        transfer: {
           select: {
             status: true,
             category: {
@@ -117,7 +121,7 @@ const getHistory = async (userId, request) => {
           },
           status: item?.income?.status,
         }),
-                ...(item?.transfer && {
+        ...(item?.transfer && {
           category: {
             name: item?.transfer?.category?.name,
             icon: item?.transfer?.category?.icon,
@@ -664,6 +668,46 @@ const determineTransactionStatus = async (type, auto, fromAssetId, amount) => {
   return "Completed";
 };
 
+const archiveTransaction = async (type, id) => {
+  // If the expense is a recurring parent
+  console.log(type, "type!");
+  switch (type) {
+    case "expense":
+      validateExpense(id);
+      break;
+    case "income":
+      validateIncome(id);
+      break;
+    case "transfer":
+      validateTransfers(id);
+      break;
+  }
+
+  const models = [
+    { name: "expense", model: prisma.expense },
+    { name: "income", model: prisma.income },
+    { name: "transfer", model: prisma.transfer },
+  ];
+
+  const model = models.find((model) => model.name === type);
+
+  await model.model.update({
+    where: { id: parseInt(id) },
+    data: { isActive: false },
+  });
+
+  await prisma.transactionHistory.updateMany({
+    where: {
+      ...(type === "expense" && { expenseId: parseInt(id) }),
+      ...(type === "income" && { incomeId: parseInt(id) }),
+      ...(type === "transfer" && { transferId: parseInt(id) }),
+    },
+    data: { isActive: false },
+  });
+
+  return;
+};
+
 module.exports = {
   getHistory,
   editHistory,
@@ -673,4 +717,5 @@ module.exports = {
   createTransactionNotification,
   determineTransactionStatus,
   getStatistics,
+  archiveTransaction,
 };

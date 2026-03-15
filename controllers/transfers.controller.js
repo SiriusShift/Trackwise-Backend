@@ -33,7 +33,7 @@ const postTransfer = async (req, res, next) => {
     const expense = await transferService.postTransfer(
       req.user.id,
       req.body,
-      req.file
+      req.file,
     );
     // Respond with success message
     res.status(200).json({
@@ -54,21 +54,12 @@ const postTransfer = async (req, res, next) => {
 const updateTransfer = async (req, res, next) => {
   const { id } = req.params;
   try {
-    let updateExpense;
-    console.log(req.body);
-
-    //IF DELETING (soft delete)
-    if (req.body.delete) {
-      updateExpense = await expenseService.deleteExpense(req.user.id, id);
-    } else {
-      // update only
-      updateExpense = await expenseService.updateExpense(
-        req.user.id,
-        req.body,
-        req.file,
-        id
-      );
-    }
+    const updateExpense = await expenseService.updateExpense(
+      req.user.id,
+      req.body,
+      req.file,
+      id,
+    );
     res.status(200).json({
       success: true,
       message: "Expense updated successfully",
@@ -82,6 +73,24 @@ const updateTransfer = async (req, res, next) => {
   }
 };
 
+// const archiveTransfer = async (req, res, next) => {
+//   const { id } = req.params;
+//   try {
+//     const updateExpense = await expenseService.deleteExpense("transfer", id);
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Transfer archived successfully",
+//       data: updateExpense,
+//     });
+//   } catch (err) {
+//     console.log("Error while archiving transfer", err);
+//     return res.status(500).json({
+//       error: "Internal server error",
+//     });
+//   }
+// };
+
 const transfer = async (req, res, next) => {
   const { id } = req.params;
   try {
@@ -89,7 +98,7 @@ const transfer = async (req, res, next) => {
       req.user.id,
       req.body,
       id,
-      req.file
+      req.file,
     );
     res.status(200).json({
       message: "Payment successful",
@@ -109,7 +118,7 @@ const getGraph = async (req, res, next) => {
   try {
     const response = await transferService.getTransferGraph(
       req.user.id,
-      req.query
+      req.query,
     );
     console.log("response!: ", response);
 
@@ -127,4 +136,11 @@ const getGraph = async (req, res, next) => {
   }
 };
 
-module.exports = { getTransfers, getGraph, postTransfer, updateTransfer, transfer };
+module.exports = {
+  getTransfers,
+  getGraph,
+  postTransfer,
+  updateTransfer,
+  transfer,
+  // archiveTransfer
+};

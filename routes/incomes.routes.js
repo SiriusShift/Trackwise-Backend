@@ -1,7 +1,7 @@
 const { Router } = require("express");
 const { isLoggedIn } = require("../middleware/validate");
 const catchAsync = require("../utils/catchAsync");
-const { postIncome, getIncome, getGraph, updateIncome, collectIncome } = require("../controllers/incomes.controller");
+const { postIncome, getIncome, getGraph, updateIncome, collectIncome, archiveIncome } = require("../controllers/incomes.controller");
 const {postRecurring, getRecurring, transactRecurring} = require("../controllers/recurring.controller")
 const multer = require("multer");
 
@@ -13,7 +13,8 @@ router
   .route("/")
   .post(isLoggedIn, upload.single("image"), catchAsync(postIncome));
 // Update and delete income
-router.route("/:id").patch(isLoggedIn, upload.single("image"), catchAsync(updateIncome))
+router.route("/:id").put(isLoggedIn, upload.single("image"), catchAsync(updateIncome))
+// router.route("/:id").patch(isLoggedIn, catchAsync(archiveIncome))
 router.route("/graph").get(isLoggedIn, catchAsync(getGraph))
 router
   .route("/receive/:id")

@@ -53,17 +53,13 @@ const getGraph = async (req, res, next) => {
 const updateIncome = async (req, res, next) => {
   const { id } = req.params;
   try {
-    let income
-    if (req.body.delete) {
-      income = await incomeService.deleteIncome(req.user.id, req.query)
-    } else {
-      income = await incomeService.updateIncome(
+
+     const income = await incomeService.updateIncome(
         req.user.id,
         req.body,
         req.file,
         id
       );
-    }
 
     res.status(200).json({
       success: true,
@@ -77,6 +73,25 @@ const updateIncome = async (req, res, next) => {
     });
   }
 };
+
+
+// const archiveIncome = async (req, res, next) => {
+//   const { id } = req.params;
+//   try {
+//     const updateExpense = await expenseService.deleteExpense("income", id);
+
+//     res.status(200).json({
+//       success: true,
+//       message: "Income archived successfully",
+//       data: updateExpense,
+//     });
+//   } catch (err) {
+//     console.log("Error while archiving expense", err);
+//     return res.status(500).json({
+//       error: "Internal server error",
+//     });
+//   }
+// };
 
 const collectIncome = async (req, res, next) => {
   const { id } = req.params;
@@ -106,5 +121,6 @@ module.exports = {
   updateIncome,
   getIncome,
   getGraph,
-  collectIncome
+  collectIncome,
+  // archiveIncome
 };
