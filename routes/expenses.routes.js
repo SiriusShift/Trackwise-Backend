@@ -7,6 +7,7 @@ const {
   updateExpense,
   getGraph,
   archiveExpense,
+  getBills,
 } = require("../controllers/expenses.controller");
 const {
   postInstallmentController,
@@ -46,4 +47,6 @@ router.route("/pay/auto/:id").post(isLoggedIn, catchAsync(transactRecurring));
 router.route("/recurring").post(isLoggedIn, catchAsync(postRecurring));
 router.route("/recurring").get(isLoggedIn, catchAsync(getRecurring));
 router.route("/recurring/:id").patch(isLoggedIn, catchAsync(cancelRecurring));
+
+router.route("/bills").get(isLoggedIn, catchAsync(getBills))
 module.exports = router;

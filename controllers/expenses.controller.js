@@ -137,11 +137,29 @@ const getGraph = async (req, res, next) => {
   }
 };
 
+const getBills = async (req, res) => {
+  try {
+    const response = await expenseService.getBills(req.user.id);
+    return res.status(200).json({
+      success: true,
+      message: "Bills fetched successfully",
+      data: response,
+    });
+  } catch (err) {
+    console.error("Error while fetching bills:", err);
+    return res.status(500).json({
+      success: false,
+      error: "Internal server error",
+    });
+  }
+};
+
 module.exports = {
   postExpense,
   getExpenses,
   updateExpense,
   getGraph,
   payExpense,
+  getBills
   // archiveExpense,
 };

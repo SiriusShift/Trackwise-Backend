@@ -154,7 +154,7 @@ const getExpenses = async (userId, query) => {
       Number(expense.amount) -
       expense.transactionHistory.reduce(
         (acc, curr) => acc + (Number(curr?.amount) || 0),
-        0
+        0,
       ),
   }));
 
@@ -229,11 +229,13 @@ const postExpense = async (userId, data, file) => {
             id: userId,
           },
         },
-        ...(assetId && {fromAsset: {
-          connect: {
-            id: assetId,
+        ...(assetId && {
+          fromAsset: {
+            connect: {
+              id: assetId,
+            },
           },
-        }}),
+        }),
         transactionType: "Expense",
         amount: amount,
         description: data.description,
@@ -332,7 +334,7 @@ const updateExpense = async (userId, data, file, id) => {
   }
 };
 
-const deleteExpense = async (userId, id) => {
+const deleteExpense = async (id) => {
   // If the expense is a recurring parent
   validateExpense(id);
 
@@ -362,7 +364,7 @@ const postPayment = async (userId, data, id, file) => {
     const balance = await prisma.transactionHistory.aggregate({
       where: {
         expenseId: expense.id,
-        isActive: true
+        isActive: true,
       },
       _sum: {
         amount: true,
@@ -452,9 +454,7 @@ const getExpenseGraph = async (userId, query) => {
       _sum: { amount: true },
     });
 
-    const expenseIds = expenseGroups
-      .map(e => e.expenseId)
-      .filter(Boolean);
+    const expenseIds = expenseGroups.map((e) => e.expenseId).filter(Boolean);
 
     const expenses = await prisma.expense.findMany({
       where: { id: { in: expenseIds } },
@@ -462,13 +462,13 @@ const getExpenseGraph = async (userId, query) => {
     });
 
     const expenseMap = new Map(
-      expenses.map(e => [
+      expenses.map((e) => [
         e.id,
         {
           categoryId: e.categoryId,
           categoryName: e.category?.name ?? "Unknown",
         },
-      ])
+      ]),
     );
 
     const categoryTotals = expenseGroups.reduce((acc, item) => {
@@ -489,10 +489,7 @@ const getExpenseGraph = async (userId, query) => {
 
     const data = Object.values(categoryTotals);
 
-    const totalExpense = data.reduce(
-      (sum, item) => sum + item.total,
-      0
-    );
+    const totalExpense = data.reduce((sum, item) => sum + item.total, 0);
 
     /* ------------------ RESPONSE ------------------ */
     return {
@@ -506,6 +503,24 @@ const getExpenseGraph = async (userId, query) => {
   }
 };
 
+const getBills = async (userId) => {
+  try {
+    const expenses = await prisma.expense.findMany({
+      where: {
+        status: {
+          not: "Paid",
+        },
+        isActive: true
+      },
+    });
+
+    return expenses;
+  } catch (err) {
+    console.error("getExpenseGraph error:", err);
+    throw new Error("Internal server error");
+  }
+};
+
 module.exports = {
   getExpenses,
   postExpense,
@@ -513,5 +528,6 @@ module.exports = {
   deleteExpense,
   getExpenseGraph,
   postPayment,
-  validateExpense
+  validateExpense,
+  getBills,
 };
