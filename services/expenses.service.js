@@ -510,11 +510,41 @@ const getBills = async (userId) => {
         status: {
           not: "Paid",
         },
-        isActive: true
+        isActive: true,
+        userId: userId,
       },
+      select: {
+        id: true,
+        date: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            icon: true
+          }
+        },
+        description: true,
+        amount: true,
+        asset: true,
+        image: true,
+        userId: true,
+        status: true,
+        recurringTemplate: true
+      }
     });
 
-    return expenses;
+    console.log(expenses, "expenses!");
+
+    const sorted = expenses.sort((a, b) => {
+      const status = {
+        overdue: 1,
+        failed: 2,
+        partial: 3,
+      };
+      return status[a.status.toLowerCase()] - status[b.status.toLowerCase()] || a.date - b.date;
+    });
+
+    return sorted;
   } catch (err) {
     console.error("getExpenseGraph error:", err);
     throw new Error("Internal server error");
