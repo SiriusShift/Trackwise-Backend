@@ -319,7 +319,7 @@ const collectIncome = async (userId, data, id, file) => {
     const income = await validateIncome(id);
     const image = file ? await uploadFileToS3(file, "Income", userId) : null;
 
-    // Sum of previous payments for this expense
+    // Sum of previous payments for this income
     const balance = await prisma.transactionHistory.aggregate({
       where: {
         incomeId: income.id,

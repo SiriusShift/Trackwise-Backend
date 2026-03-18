@@ -157,155 +157,155 @@ const getHistory = async (userId, request) => {
 const getStatistics = async (userId, data) => {
   const { startDate, endDate, mode } = data;
 
-  const selectedDates = {
-    start: moment(startDate),
-    end: moment(endDate),
+  // ✅ Convert to plain dates immediately — avoids moment mutation bugs
+  const start     = moment(startDate).startOf(mode).toDate();
+  const end       = moment(endDate).endOf(mode).toDate();
+  const prevStart = moment(startDate).clone().subtract(1, mode).startOf(mode).toDate();
+  const prevEnd   = moment(endDate).clone().subtract(1, mode).endOf(mode).toDate();
+
+  const dateFilter     = { gte: start,     lte: end     };
+  const prevDateFilter = { gte: prevStart,  lte: prevEnd  };
+
+  // ✅ Run independent queries in parallel
+  const [assetsResult, assets] = await Promise.all([
+    prisma.asset.aggregate({
+      _sum: { balance: true },
+      where: { isActive: true, userId },
+    }),
+    prisma.asset.findMany({
+      where: { isActive: true, userId },
+      select: {
+        name: true,
+        balance: true,
+        sentTransactionHistory:     { where: { isActive: true } },
+        receivedTransactionHistory: { where: { isActive: true } },
+      },
+    }),
+  ]);
+
+  const assetBalance = assets.map((item) => ({
+    name: item.name,
+    balance:
+      Number(item.balance) +
+      item.receivedTransactionHistory.reduce((a, c) => a + Number(c.amount), 0) -
+      item.sentTransactionHistory.reduce((a, c) => a + Number(c.amount), 0),
+  }));
+
+  // ✅ Reusable breakdown helper — filters at every relation level
+  const getCategoryBreakdown = async (type, dateFilter) => {
+    // Income categories link via `incomes`, Expense via `expenses`
+    const relation = type === "Income" ? "incomes" : "expenses";
+
+    const breakdown = await prisma.categories.findMany({
+      where: {
+        type,
+        isActive: true,
+        [relation]: {
+          some: {
+            transactionHistory: {
+              some: { userId, isActive: true, date: dateFilter },
+            },
+          },
+        },
+      },
+      select: {
+        name: true,
+        [relation]: {
+          // ✅ Filter the relation itself so only in-range incomes/expenses are included
+          where: {
+            transactionHistory: {
+              some: { userId, isActive: true, date: dateFilter },
+            },
+          },
+          select: {
+            // ✅ Filter transactionHistory too — double filter prevents leaks
+            transactionHistory: {
+              where: { userId, isActive: true, date: dateFilter },
+            },
+          },
+        },
+      },
+    });
+
+    return breakdown.map((item) => ({
+      name: item.name,
+      amount: item[relation].reduce(
+        (acc, rel) =>
+          acc +
+          rel.transactionHistory.reduce((a, c) => a + Number(c.amount), 0),
+        0,
+      ),
+    }));
   };
 
-  const assets = await prisma.asset.aggregate({
-    _sum: { balance: true },
-    where: {
-      isActive: true,
-      userId: userId,
-    },
-  });
+  // ✅ All aggregates + breakdowns in parallel
+  const [
+    income,
+    expense,
+    prevIncome,
+    prevExpense,
+    allTimeIncome,
+    allTimeExpense,
+    prevAllTimeIncome,
+    prevAllTimeExpense,
+    incomeBreakdown,
+    expenseBreakdown,
+  ] = await Promise.all([
+    prisma.transactionHistory.aggregate({
+      _sum: { amount: true },
+      where: { userId, transactionType: "Income",  isActive: true, date: dateFilter },
+    }),
+    prisma.transactionHistory.aggregate({
+      _sum: { amount: true },
+      where: { userId, transactionType: "Expense", isActive: true, date: dateFilter },
+    }),
+    prisma.transactionHistory.aggregate({
+      _sum: { amount: true },
+      where: { userId, transactionType: "Income",  isActive: true, date: prevDateFilter },
+    }),
+    prisma.transactionHistory.aggregate({
+      _sum: { amount: true },
+      where: { userId, transactionType: "Expense", isActive: true, date: prevDateFilter },
+    }),
+    prisma.transactionHistory.aggregate({
+      _sum: { amount: true },
+      where: { userId, transactionType: "Income",  isActive: true },
+    }),
+    prisma.transactionHistory.aggregate({
+      _sum: { amount: true },
+      where: { userId, transactionType: "Expense", isActive: true },
+    }),
+    prisma.transactionHistory.aggregate({
+      _sum: { amount: true },
+      where: { userId, transactionType: "Income",  isActive: true, date: { lte: prevEnd } },
+    }),
+    prisma.transactionHistory.aggregate({
+      _sum: { amount: true },
+      where: { userId, transactionType: "Expense", isActive: true, date: { lte: prevEnd } },
+    }),
+    getCategoryBreakdown("Income",  dateFilter),
+    getCategoryBreakdown("Expense", dateFilter),
+  ]);
 
-  console.log(assets);
-
-  const current = {
-    start: selectedDates.start.startOf(mode).toDate(),
-    end: selectedDates.end.endOf(mode).toDate(),
-  };
-
-  const previous = {
-    start: selectedDates.start.subtract(1, mode).toDate(),
-    end: selectedDates.end.subtract(1, mode).toDate(),
-  };
-
-  const allTimeIncome = await prisma.transactionHistory.aggregate({
-    _sum: { amount: true },
-    where: {
-      userId,
-      transactionType: "Income",
-      isActive: true,
-    },
-  });
-
-  const allTimeExpense = await prisma.transactionHistory.aggregate({
-    _sum: { amount: true },
-    where: {
-      userId,
-      transactionType: "Expense",
-      isActive: true,
-    },
-  });
-
-  const previousAllTimeExpense = await prisma.transactionHistory.aggregate({
-    _sum: { amount: true },
-    where: {
-      userId,
-      transactionType: "Expense",
-      isActive: true,
-      date: {
-        lte: moment().subtract(1, mode).toDate(),
-      },
-    },
-  });
-
-  const previousAllTimeIncome = await prisma.transactionHistory.aggregate({
-    _sum: { amount: true },
-    where: {
-      userId,
-      transactionType: "Income",
-      isActive: true,
-      date: {
-        lte: moment().subtract(1, mode).toDate(),
-      },
-    },
-  });
-
-  const balance =
-    Number(assets?._sum?.balance) +
-    ((allTimeIncome._sum.amount || 0) - (allTimeExpense._sum.amount || 0));
-
-  const prevBalance =
-    Number(assets?._sum?.balance) +
-    ((previousAllTimeIncome._sum.amount || 0) -
-      (previousAllTimeExpense._sum.amount || 0));
-
-  const income = await prisma.transactionHistory.aggregate({
-    _sum: { amount: true },
-    where: {
-      userId,
-      transactionType: "Income",
-      isActive: true,
-      date: {
-        gte: current.start,
-        lte: current.end,
-      },
-    },
-  });
-
-  const expense = await prisma.transactionHistory.aggregate({
-    _sum: { amount: true },
-    where: {
-      userId,
-      transactionType: "Expense",
-      isActive: true,
-      date: {
-        gte: current.start,
-        lte: current.end,
-      },
-    },
-  });
-
-  const prevIncome = await prisma.transactionHistory.aggregate({
-    _sum: { amount: true },
-    where: {
-      userId,
-      transactionType: "Income",
-      isActive: true,
-      date: {
-        gte: previous.start,
-        lte: previous.end,
-      },
-    },
-  });
-
-  const prevExpense = await prisma.transactionHistory.aggregate({
-    _sum: { amount: true },
-    where: {
-      userId,
-      transactionType: "Expense",
-      isActive: true,
-      date: {
-        gte: previous.start,
-        lte: previous.end,
-      },
-    },
-  });
+  const baseBalance = Number(assetsResult._sum.balance ?? 0);
+  const balance     = baseBalance + Number(allTimeIncome._sum.amount  ?? 0) - Number(allTimeExpense._sum.amount  ?? 0);
+  const prevBalance = baseBalance + Number(prevAllTimeIncome._sum.amount ?? 0) - Number(prevAllTimeExpense._sum.amount ?? 0);
 
   function calcTrend(curr, prev) {
     if (!prev || prev === 0) return 0;
-
-    return (((curr - prev) / prev) * 100).toFixed(2);
+    return Number((((curr - prev) / prev) * 100).toFixed(2));
   }
 
-  console.log(balance, prevBalance, "balances!");
-
-  const expenseTrend = calcTrend(expense._sum.amount, prevExpense._sum.amount);
-
-  const incomeTrend = calcTrend(income._sum.amount, prevIncome._sum.amount);
-
-  const balanceTrend = calcTrend(balance, prevBalance);
-
   return {
-    balance: balance,
-    expense: expense._sum.amount || 0,
-    income: income._sum.amount || 0,
-    expenseTrend,
-    incomeTrend,
-    balanceTrend,
+    balance,
+    expense:          Number(expense._sum.amount   ?? 0),
+    income:           Number(income._sum.amount    ?? 0),
+    expenseTrend:     calcTrend(expense._sum.amount,  prevExpense._sum.amount),
+    incomeTrend:      calcTrend(income._sum.amount,   prevIncome._sum.amount),
+    balanceTrend:     calcTrend(balance, prevBalance),
+    assetBreakdown:   assetBalance,
+    incomeBreakdown,
+    expenseBreakdown,
   };
 };
 
