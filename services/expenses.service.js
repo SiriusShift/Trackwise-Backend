@@ -54,7 +54,7 @@ const getExpenses = async (userId, query) => {
 
   if (status) {
     filters.status = {
-      startsWith: status,
+      equals: status,
     };
   }
 
