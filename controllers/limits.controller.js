@@ -52,6 +52,8 @@ const addExpenseLimit = async (req, res, next) => {
 
 const getAllExpenseLimit = async (req, res, next) => {
   const { startDate, endDate } = req.query;
+  const start = new Date(startDate);
+  const end = new Date(endDate);
   try {
     const categoryTracker = await prisma.categoryTracker.findMany({
       where: {
@@ -61,47 +63,67 @@ const getAllExpenseLimit = async (req, res, next) => {
         },
         category: {
           type: "Expense",
-        },
-        isActive: true,
-        limit: { not: null }, // Filter categories that have a limit
-      },
-      select: {
-        id: true,
-        limit: true,
-        userId: true,
-        category: {
-          select: {
-            id: true,
-            name: true,
-            icon: true,
-            type: true,
-            expenses: {
-              where: {
-                isActive: true,
-                // isRecurring: false,
-                userId: parseInt(req.user.id),
-              },
-              select: {
-                transactionHistory: {
-                  where: {
-                    date: {
-                      gte: startDate,
-                      lte: endDate,
-                    },
-                    isActive: true,
+          expenses: {
+            some: {
+              isActive: true,
+              userId: parseInt(req.user.id),
+              transactionHistory: {
+                some: {
+                  date: {
+                    gte: start,
+                    lte: end,
                   },
-                  select: {
-                    amount: true,
-                  },
+                  isActive: true,
                 },
               },
             },
           },
         },
+        isActive: true,
+        limit: { not: null },
       },
-      orderBy: {
+      select: {
+        id: true,
+        limit: true,
         category: {
-          name: "asc",
+          select: {
+            id: true,
+            name: true,
+            icon: true,
+            expenses: {
+              where: {
+                isActive: true,
+                userId: parseInt(req.user.id),
+                transactionHistory: {
+                  some: {
+                    date: {
+                      gte: start,
+                      lte: end,
+                    },
+                    isActive: true,
+                  },
+                },
+              },
+              select: {
+                id: true,
+                description: true,
+                transactionHistory: {
+                  where: {
+                    date: {
+                      gte: start,
+                      lte: end,
+                    },
+                    isActive: true,
+                  },
+                  select: {
+                    amount: true,
+                    description: true,
+                    date: true
+                  },
+                },
+              },
+            },
+          },
         },
       },
     });

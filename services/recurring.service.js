@@ -3,11 +3,11 @@ const prisma = new PrismaClient();
 const { validateCategory } = require("./categories.service");
 const moment = require("moment");
 const {
-  determineTransactionStatus,
   createTransactionHistory,
   createTransactionNotification,
   createTransactionRecord,
 } = require("./transactions.service");
+const { determineTransactionStatus } = require("../utils/transaction.utils");
 // const { postPayment } = require('./expenses.service');
 
 const postRecurring = async (userId, data) => {
@@ -23,6 +23,7 @@ const postRecurring = async (userId, data) => {
     data?.auto,
     assetFromId,
     amount,
+    userId
   );
   console.log(status, "status");
   try {
@@ -221,11 +222,15 @@ const transactRecurring = async (userId, id, type) => {
   });
   if (!transaction) throw new Error(`${type} with id ${id} not found`);
 
+  const assetId = transaction?.assetId
+  const amount = transaction?.amount
+
   const status = await determineTransactionStatus(
     type,
     true,
-    Number(transaction.assetId),
-    Number(transaction.amount),
+    assetId,
+    amount,
+    userId
   );
 
   // Balance insufficient
@@ -252,7 +257,7 @@ const transactRecurring = async (userId, id, type) => {
         fromAsset: { connect: { id: transaction.assetId } },
         transactionType: type,
         amount: Number(transaction.amount),
-        description: `${transaction.name} — ${moment(transaction.date).format(
+        description: `${transaction.description} — ${moment(transaction.date).format(
           "YYYY-MM-DD",
         )} (Manual retry due to insufficient balance)`,
 

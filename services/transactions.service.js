@@ -107,6 +107,7 @@ const getHistory = async (userId, request) => {
         type: item.transactionType,
         amount: item.amount,
         description: item.description,
+        date: item?.date,
         ...(item?.expense && {
           category: {
             name: item?.expense?.category?.name,
@@ -645,28 +646,7 @@ const createTransactionNotification = async (data) => {
   return;
 };
 
-const determineTransactionStatus = async (type, auto, fromAssetId, amount) => {
-  if (!auto) {
-    return "Pending";
-  }
 
-  // Income always succeeds (adds money)
-  if (type === "Income") {
-    return "Received";
-  }
-
-  // Check balance for Expense and Transfer
-  const asset = await validateAsset(fromAssetId);
-
-  console.log(asset.balance, amount);
-  if (asset.balance < amount) {
-    return "Failed";
-  }
-  if (type === "Expense") {
-    return "Paid";
-  }
-  return "Completed";
-};
 
 const archiveTransaction = async (type, id) => {
   // If the expense is a recurring parent
@@ -715,7 +695,6 @@ module.exports = {
   createTransactionRecord,
   createTransactionHistory,
   createTransactionNotification,
-  determineTransactionStatus,
   getStatistics,
   archiveTransaction,
 };
