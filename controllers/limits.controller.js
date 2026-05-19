@@ -69,10 +69,6 @@ const getAllExpenseLimit = async (req, res, next) => {
               userId: parseInt(req.user.id),
               transactionHistory: {
                 some: {
-                  date: {
-                    gte: start,
-                    lte: end,
-                  },
                   isActive: true,
                 },
               },

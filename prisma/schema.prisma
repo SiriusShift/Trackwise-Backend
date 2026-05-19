@@ -1,360 +1,325 @@
-generator client {
-  provider = "prisma-client-js"
-}
+  generator client {
+    provider = "prisma-client-js"
+  }
 
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
+  datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+  }
 
-enum Status {
-  Pending
-  Paid
-  Received
-  Completed
-  Overdue
-  Cancelled
-  Failed
-  Partial
-  OverduePartial
-}
+  enum Status {
+    Pending
+    Paid
+    Received
+    Completed
+    Overdue
+    Cancelled
+    Failed
+    Partial
+    OverduePartial
+  }
 
-enum Type {
-  Expense
-  Income
-  Transfer
-}
+  enum Type {
+    Expense
+    Income
+    Transfer
+  }
 
-enum NotificationType {
-  Reminder
-  System
-  General
-  Warning
-  Info
-  Success
-  Error
-}
+  enum NotificationType {
+    Reminder
+    System
+    General
+    Warning
+    Info
+    Success
+    Error
+  }
 
-model User {
-  id                 Int                    @id @default(autoincrement())
-  firstName          String?                @map("first_name")
-  lastName           String?                @map("last_name")
-  email              String                 @unique
-  username           String?                @unique
-  password           String?                @map("password")
-  role               String                 @default("user")
-  phoneNumber        String?                @map("phone_number")
-  profileImageUrl    String?                @map("profile_image_url")
-  isActive           Boolean                @default(true)
-  createdAt          DateTime               @default(now()) @map("created_at")
-  updatedAt          DateTime               @default(now()) @updatedAt
-  google_id          String?                @unique
-  assets             Asset[]
-  expenses           Expense[]
-  incomes            Income[]
-  resetTokens        ResetToken[]
-  transactionHistory TransactionHistory[]
-  categoriesTracker  CategoryTracker[]
-  transfer           Transfer[]
-  categories         Categories[]
-  recurring          RecurringTransaction[]
-  installmentPlan    InstallmentPlan[]
-  settings           Settings[]
-  notifications      Notification[]
-}
+  model User {
+    id                 Int                    @id @default(autoincrement())
+    firstName          String?                @map("first_name")
+    lastName           String?                @map("last_name")
+    email              String                 @unique
+    username           String?                @unique
+    password           String?                @map("password")
+    role               String                 @default("user")
+    phoneNumber        String?                @map("phone_number")
+    profileImageUrl    String?                @map("profile_image_url")
+    isActive           Boolean                @default(true)
+    createdAt          DateTime               @default(now()) @map("created_at")
+    updatedAt          DateTime               @default(now()) @updatedAt
+    google_id          String?                @unique
+    assets             Asset[]
+    expenses           Expense[]
+    incomes            Income[]
+    resetTokens        ResetToken[]
+    categoriesTracker  CategoryTracker[]
+    transfer           Transfer[]
+    categories         Categories[]
+    recurring          RecurringTransaction[]
+    installmentPlan    InstallmentPlan[]
+    settings           Settings[]
+    notifications      Notification[]
+  }
 
-model Asset {
-  id        Int      @id @default(autoincrement())
-  name      String
-  balance   Decimal
-  userId    Int
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  isActive  Boolean  @default(true)
+  model Asset {
+    id        Int      @id @default(autoincrement())
+    name      String
+    balance   Decimal
+    userId    Int
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    isActive  Boolean  @default(true)
 
-  user     User      @relation(fields: [userId], references: [id])
-  expenses Expense[]
-  incomes  Income[]
+    user     User      @relation(fields: [userId], references: [id])
+    expenses Expense[]
+    incomes  Income[]
 
-  sentTransfers              Transfer[]             @relation("FromAsset") // Matches fromAsset in Transfer
-  receivedTransfers          Transfer[]             @relation("ToAsset") // Matches toAsset in Transfer
-  sentTransactionHistory     TransactionHistory[]   @relation("TH_FromAsset")
-  receivedTransactionHistory TransactionHistory[]   @relation("TH_ToAsset")
-  // RecurringTransaction       RecurringTransaction[]  
-  // RecurringTransaction       RecurringTransaction[]
-  recurringTransactionFrom   RecurringTransaction[] @relation("RecurringTransferFrom")
-  recurringTransactionTo     RecurringTransaction[] @relation("RecurringTransferTo")
+    sentTransfers              Transfer[]             @relation("FromAsset") // Matches fromAsset in Transfer
+    receivedTransfers          Transfer[]             @relation("ToAsset") // Matches toAsset in Transfer
 
-  @@index([userId])
-}
+    recurringTransactionFrom   RecurringTransaction[] @relation("RecurringTransferFrom")
+    recurringTransactionTo     RecurringTransaction[] @relation("RecurringTransferTo")
 
-model Expense {
-  id          Int      @id @default(autoincrement())
-  date        DateTime
-  categoryId  Int
-  description String
-  amount      Decimal
-  assetId     Int?
-  image       String?
-  userId      Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  isActive    Boolean  @default(true)
-  status      Status?
+    @@index([userId])
+  }
 
-  // Foreign Keys for Recurring and Installment
-  recurringId   Int?
-  installmentId Int?
+  model Expense {
+    id          Int      @id @default(autoincrement())
+    date        DateTime
+    categoryId  Int
+    description String
+    amount      Decimal
+    assetId     Int?
+    image       String?
+    userId      Int
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    isActive    Boolean  @default(true)
+    status      Status?
 
-  category Categories @relation(fields: [categoryId], references: [id])
-  asset    Asset?     @relation(fields: [assetId], references: [id])
-  user     User       @relation(fields: [userId], references: [id])
+    // Foreign Keys for Recurring and Installment
+    recurringId   Int?
+    installmentId Int?
 
-  // Relations
-  recurringTemplate  RecurringTransaction? @relation("RecurringExpenses", fields: [recurringId], references: [id])
-  installment        Installment?          @relation(fields: [installmentId], references: [id])
-  transactionHistory TransactionHistory[]
+    category Categories @relation(fields: [categoryId], references: [id])
+    asset    Asset?     @relation(fields: [assetId], references: [id])
+    user     User       @relation(fields: [userId], references: [id])
 
-  @@index([userId])
-}
+    // Relations
+    recurringTemplate  RecurringTransaction? @relation("RecurringExpenses", fields: [recurringId], references: [id])
+    installment        Installment?          @relation(fields: [installmentId], references: [id])
 
-model Income {
-  id          Int      @id @default(autoincrement())
-  date        DateTime @default(now())
-  categoryId  Int
-  description String?
-  amount      Decimal
-  assetId     Int?
-  image       String?
+    @@index([userId])
+  }
 
-  userId    Int
-  status    Status?  @default(Pending)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  isActive  Boolean  @default(true)
+  model Income {
+    id          Int      @id @default(autoincrement())
+    date        DateTime @default(now())
+    categoryId  Int
+    description String?
+    amount      Decimal
+    assetId     Int?
+    image       String?
 
-  recurringId Int?
+    userId    Int
+    status    Status?  @default(Pending)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    isActive  Boolean  @default(true)
 
-  recurringTemplate RecurringTransaction? @relation("RecurringIncomes", fields: [recurringId], references: [id])
-  category          Categories            @relation(fields: [categoryId], references: [id])
-  asset             Asset?                @relation(fields: [assetId], references: [id])
-  user              User                  @relation(fields: [userId], references: [id])
+    recurringId Int?
 
-  transactionHistory TransactionHistory[]
+    recurringTemplate RecurringTransaction? @relation("RecurringIncomes", fields: [recurringId], references: [id])
+    category          Categories            @relation(fields: [categoryId], references: [id])
+    asset             Asset?                @relation(fields: [assetId], references: [id])
+    user              User                  @relation(fields: [userId], references: [id])
 
-  @@index([userId])
-}
+    @@index([userId])
+  }
 
-model Transfer {
-  id          Int     @id @default(autoincrement())
-  userId      Int
-  fromAssetId Int
-  toAssetId   Int?
-  categoryId  Int
-  amount      Decimal
-  description String?
-  image       String?
+  model Transfer {
+    id          Int     @id @default(autoincrement())
+    userId      Int
+    fromAssetId Int
+    toAssetId   Int?
+    categoryId  Int
+    amount      Decimal
+    description String?
+    image       String?
 
-  date      DateTime @default(now())
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  isActive  Boolean  @default(true)
-  status    Status   @default(Pending)
+    date      DateTime @default(now())
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    isActive  Boolean  @default(true)
+    status    Status   @default(Pending)
 
-  recurringId Int?
+    recurringId Int?
 
-  recurringTemplate RecurringTransaction? @relation("RecurringTransfers", fields: [recurringId], references: [id])
-  user              User                  @relation(fields: [userId], references: [id])
-  category          Categories            @relation(fields: [categoryId], references: [id])
-  fromAsset         Asset                 @relation("FromAsset", fields: [fromAssetId], references: [id])
-  toAsset           Asset?                 @relation("ToAsset", fields: [toAssetId], references: [id])
+    recurringTemplate RecurringTransaction? @relation("RecurringTransfers", fields: [recurringId], references: [id])
+    user              User                  @relation(fields: [userId], references: [id])
+    category          Categories            @relation(fields: [categoryId], references: [id])
+    fromAsset         Asset                 @relation("FromAsset", fields: [fromAssetId], references: [id])
+    toAsset           Asset?                 @relation("ToAsset", fields: [toAssetId], references: [id])
 
-  transactionHistory TransactionHistory[]
+    @@index([userId])
+  }
 
-  @@index([userId])
-}
+  model RecurringTransaction {
+    id             Int       @id @default(autoincrement())
+    userId         Int
+    type           Type
+    categoryId     Int // For Expense & Income
+    fromAssetId    Int? // For Transfer
+    toAssetId      Int? // For Transfer
+    description    String
+    amount         Decimal
+    startDate      DateTime
+    nextDueDate    DateTime
+    nextTriggerUTC DateTime?
+    interval       Int
+    unit           String // "day", "week", "month", "year"
+    isActive       Boolean   @default(true)
+    endDate        DateTime?
+    createdAt      DateTime  @default(now())
+    updatedAt      DateTime  @updatedAt
+    endedAt        DateTime?
+    auto           Boolean   @default(false)
+    // isVariable  Boolean?   @default(false)
 
-model RecurringTransaction {
-  id             Int       @id @default(autoincrement())
-  userId         Int
-  type           Type
-  categoryId     Int // For Expense & Income
-  fromAssetId    Int? // For Transfer
-  toAssetId      Int? // For Transfer
-  description    String
-  amount         Decimal
-  startDate      DateTime
-  nextDueDate    DateTime
-  nextTriggerUTC DateTime?
-  interval       Int
-  unit           String // "day", "week", "month", "year"
-  isActive       Boolean   @default(true)
-  endDate        DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  endedAt        DateTime?
-  auto           Boolean   @default(false)
-  // isVariable  Boolean?   @default(false)
+    user      User       @relation(fields: [userId], references: [id])
+    category  Categories @relation(fields: [categoryId], references: [id])
+    fromAsset Asset?     @relation("RecurringTransferFrom", fields: [fromAssetId], references: [id])
+    toAsset   Asset?     @relation("RecurringTransferTo", fields: [toAssetId], references: [id])
 
-  user      User       @relation(fields: [userId], references: [id])
-  category  Categories @relation(fields: [categoryId], references: [id])
-  fromAsset Asset?     @relation("RecurringTransferFrom", fields: [fromAssetId], references: [id])
-  toAsset   Asset?     @relation("RecurringTransferTo", fields: [toAssetId], references: [id])
+    generatedExpenses  Expense[]  @relation("RecurringExpenses")
+    generatedIncomes   Income[]   @relation("RecurringIncomes")
+    generatedTransfers Transfer[] @relation("RecurringTransfers")
+  }
 
-  generatedExpenses  Expense[]  @relation("RecurringExpenses")
-  generatedIncomes   Income[]   @relation("RecurringIncomes")
-  generatedTransfers Transfer[] @relation("RecurringTransfers")
-}
+  model InstallmentPlan {
+    id          Int      @id @default(autoincrement())
+    userId      Int
+    description String
+    totalAmount Decimal
+    months      Int
+    startDate   DateTime
+    categoryId  Int
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+    isActive    Boolean  @default(true)
 
-model InstallmentPlan {
-  id          Int      @id @default(autoincrement())
-  userId      Int
-  description String
-  totalAmount Decimal
-  months      Int
-  startDate   DateTime
-  categoryId  Int
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  isActive    Boolean  @default(true)
+    user         User          @relation(fields: [userId], references: [id])
+    category     Categories    @relation(fields: [categoryId], references: [id])
+    installments Installment[]
+  }
 
-  user         User          @relation(fields: [userId], references: [id])
-  category     Categories    @relation(fields: [categoryId], references: [id])
-  installments Installment[]
-}
+  model Installment {
+    id       Int      @id @default(autoincrement())
+    planId   Int
+    dueDate  DateTime
+    amount   Decimal
+    status   Status // "pending", "paid", etc.
+    assetId  Int?
+    isActive Boolean  @default(true)
 
-model Installment {
-  id       Int      @id @default(autoincrement())
-  planId   Int
-  dueDate  DateTime
-  amount   Decimal
-  status   Status // "pending", "paid", etc.
-  assetId  Int?
-  isActive Boolean  @default(true)
+    plan    InstallmentPlan @relation(fields: [planId], references: [id])
+    expense Expense[]
+  }
 
-  plan    InstallmentPlan @relation(fields: [planId], references: [id])
-  expense Expense[]
-}
+  model Categories {
+    id                Int               @id @default(autoincrement())
+    name              String
+    type              String
+    icon              String            @default("default_icon") // Default value added
+    isActive          Boolean           @default(true)
+    createdAt         DateTime          @default(now())
+    updatedAt         DateTime          @updatedAt
+    userId            Int?
+    expenses          Expense[]
+    incomes           Income[]
+    categoriesTracker CategoryTracker[]
 
-model Categories {
-  id                Int               @id @default(autoincrement())
-  name              String
-  type              String
-  icon              String            @default("default_icon") // Default value added
-  isActive          Boolean           @default(true)
-  createdAt         DateTime          @default(now())
-  updatedAt         DateTime          @updatedAt
-  userId            Int?
-  expenses          Expense[]
-  incomes           Income[]
-  categoriesTracker CategoryTracker[]
+    user            User?                  @relation(fields: [userId], references: [id])
+    Recurring       RecurringTransaction[]
+    InstallmentPlan InstallmentPlan[]
+    transfers       Transfer[]
 
-  user            User?                  @relation(fields: [userId], references: [id])
-  Recurring       RecurringTransaction[]
-  InstallmentPlan InstallmentPlan[]
-  transfers       Transfer[]
+    @@index([userId])
+  }
 
-  @@index([userId])
-}
+  model Settings {
+    id                 Int     @id @default(autoincrement())
+    timezone           String  @default("Asia/Manila")
+    timeFormat         String  @default("hh:mm A")
+    currency           String  @default("PHP")
+    userId             Int
+    emailNotification  Boolean @default(false)
+    mobileNotification Boolean @default(false)
+    notifyDays         Int     @default(1)
 
-model Settings {
-  id                 Int     @id @default(autoincrement())
-  timezone           String  @default("Asia/Manila")
-  timeFormat         String  @default("hh:mm A")
-  currency           String  @default("PHP")
-  userId             Int
-  emailNotification  Boolean @default(false)
-  mobileNotification Boolean @default(false)
-  notifyDays         Int     @default(1)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+    user User @relation(fields: [userId], references: [id])
 
-  user User @relation(fields: [userId], references: [id])
+    @@unique([userId])
+  }
 
-  @@unique([userId])
-}
+  model EmailVerification {
+    id               Int      @id @default(autoincrement())
+    email            String
+    verificationCode String
+    expirationTime   DateTime
+    isVerified       Boolean  @default(false)
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @default(now()) @updatedAt
 
-model TransactionHistory {
-  id              Int       @id @default(autoincrement())
-  userId          Int
-  transactionType Type
-  amount          Decimal
-  description     String?
-  date            DateTime  @default(now())
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @default(now()) @updatedAt
-  fromAssetId     Int?
-  toAssetId       Int?
-  expenseId       Int?
-  incomeId        Int?
-  transferId      Int?
-  image           String?
-  isActive        Boolean   @default(true)
-  fromAsset       Asset?    @relation("TH_FromAsset", fields: [fromAssetId], references: [id])
-  toAsset         Asset?    @relation("TH_ToAsset", fields: [toAssetId], references: [id])
-  expense         Expense?  @relation(fields: [expenseId], references: [id])
-  user            User      @relation(fields: [userId], references: [id])
-  income          Income?   @relation(fields: [incomeId], references: [id])
-  transfer        Transfer? @relation(fields: [transferId], references: [id])
+    @@map("email_verifications")
+  }
 
-  @@index([userId])
-}
+  model CategoryTracker {
+    id         Int      @id @default(autoincrement())
+    limit      Decimal?
+    userId     Int
+    categoryId Int
+    isActive   Boolean  @default(true)
 
-model EmailVerification {
-  id               Int      @id @default(autoincrement())
-  email            String
-  verificationCode String
-  expirationTime   DateTime
-  isVerified       Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @default(now()) @updatedAt
+    category Categories @relation(fields: [categoryId], references: [id])
+    user     User       @relation(fields: [userId], references: [id])
 
-  @@map("email_verifications")
-}
+    @@index([userId])
+  }
 
-model CategoryTracker {
-  id         Int      @id @default(autoincrement())
-  limit      Decimal?
-  userId     Int
-  categoryId Int
-  isActive   Boolean  @default(true)
+  model ResetToken {
+    id        Int      @id @default(autoincrement())
+    token     String   @unique
+    userId    Int
+    expiresAt DateTime
+    createdAt DateTime @default(now())
+    user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  category Categories @relation(fields: [categoryId], references: [id])
-  user     User       @relation(fields: [userId], references: [id])
+    @@index([token])
+    @@index([userId])
+  }
 
-  @@index([userId])
-}
+  model Notification {
+    id          Int              @id @default(autoincrement())
+    userId      Int
+    title       String
+    message     String
+    type        NotificationType @default(General)
+    relatedId   Int? // e.g., transactionId, expenseId, etc.
+    relatedType String? // "Expense", "Income", "Transfer", etc.
+    isRead      Boolean          @default(false)
+    isArchived  Boolean          @default(false)
+    createdAt   DateTime         @default(now())
+    updatedAt   DateTime         @default(now()) @updatedAt
+    readAt      DateTime?
+    expiresAt   DateTime? // optional for auto-cleanup of old notifications
 
-model ResetToken {
-  id        Int      @id @default(autoincrement())
-  token     String   @unique
-  userId    Int
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    user User @relation(fields: [userId], references: [id])
 
-  @@index([token])
-  @@index([userId])
-}
-
-model Notification {
-  id          Int              @id @default(autoincrement())
-  userId      Int
-  title       String
-  message     String
-  type        NotificationType @default(General)
-  relatedId   Int? // e.g., transactionId, expenseId, etc.
-  relatedType String? // "Expense", "Income", "Transfer", etc.
-  isRead      Boolean          @default(false)
-  isArchived  Boolean          @default(false)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @default(now()) @updatedAt
-  readAt      DateTime?
-  expiresAt   DateTime? // optional for auto-cleanup of old notifications
-
-  user User @relation(fields: [userId], references: [id])
-
-  @@index([userId])
-  @@index([isRead])
-}
+    @@index([userId])
+    @@index([isRead])
+  }
