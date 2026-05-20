@@ -1,15 +1,15 @@
-const CryptoJS = require("crypto-js");
-const {saltkey} = require("./saltkey");
-const crypto = require("crypto");
+import CryptoJS from "crypto-js";
+import {saltkey} from "./saltkey.js";
+import crypto from "crypto";
 
-const decryptString = (data) => {
+export const decryptString = (data) => {
   if (!data) return null;
   const bytes = CryptoJS.AES.decrypt(data, saltkey);
   const decryptedData = JSON.parse(bytes.toString(CryptoJS.enc.Utf8));
   return decryptedData;
 };
 
-const encryptString = (data) => {
+export const encryptString = (data) => {
   if (!data) return null;
   const ciphertext = CryptoJS.AES.encrypt(
     JSON.stringify(data),
@@ -18,8 +18,6 @@ const encryptString = (data) => {
   return ciphertext;
 };
 
-const generateToken = () => {
+export const generateToken = () => {
   return crypto.randomBytes(32).toString('hex');
 }
-
-module.exports = { decryptString, encryptString, generateToken };

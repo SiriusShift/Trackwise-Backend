@@ -1,6 +1,6 @@
-const { validateAsset, getAssetBalance } = require("../services/assets.service");
+import { validateAsset, getAssetBalance } from "../services/assets.service.js";
 
-const determineTransactionStatus = async (type, auto, fromAssetId, amount, userId) => {
+export const determineTransactionStatus = async (type, auto, fromAssetId, amount, userId) => {
   console.log("test!")
   if (!auto) {
     return "Pending";
@@ -23,5 +23,3 @@ const determineTransactionStatus = async (type, auto, fromAssetId, amount, userI
   }
   return "Completed";
 };
-
-module.exports = {determineTransactionStatus} 

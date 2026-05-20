@@ -1,10 +1,7 @@
-const { PrismaClient } = require("@prisma/client");
-// const { skip } = require("@prisma/client/runtime/library");
-const prisma = new PrismaClient();
+import * as expenseService from "../services/expenses.service.js";
 
-const expenseService = require("../services/expenses.service");
-const transactionService = require("../services/transactions.service");
-const getExpenses = async (req, res, next) => {
+/* ---------------- GET EXPENSES ---------------- */
+export const getExpenses = async (req, res) => {
   try {
     if (!req.user?.id) {
       return res.status(400).json({
@@ -13,7 +10,10 @@ const getExpenses = async (req, res, next) => {
       });
     }
 
-    const result = await expenseService.getExpenses(req.user.id, req.query);
+    const result = await expenseService.getExpenses(
+      req.user.id,
+      req.query
+    );
 
     return res.status(200).json({
       success: true,
@@ -22,6 +22,7 @@ const getExpenses = async (req, res, next) => {
     });
   } catch (error) {
     console.error("Error while fetching expenses:", error);
+
     return res.status(500).json({
       success: false,
       message: "Internal server error",
@@ -29,137 +30,123 @@ const getExpenses = async (req, res, next) => {
   }
 };
 
-const postExpense = async (req, res, next) => {
+/* ---------------- CREATE EXPENSE ---------------- */
+export const postExpense = async (req, res) => {
   try {
     const expense = await expenseService.postExpense(
       req.user.id,
       req.body,
-      req.file,
+      req.file
     );
-    // Respond with success message
-    res.status(200).json({
+
+    return res.status(200).json({
       success: true,
       message: "Expense created successfully",
       data: expense,
     });
-  } catch (err) {
-    console.error("Error while creating expense", err);
+  } catch (error) {
+    console.error("Error while creating expense:", error);
 
-    res.status(err.status || 500).json({
+    return res.status(error.status || 500).json({
       success: false,
-      message: err.message || "Internal server error",
+      message: error.message || "Internal server error",
     });
   }
 };
 
-const updateExpense = async (req, res, next) => {
+/* ---------------- UPDATE EXPENSE ---------------- */
+export const updateExpense = async (req, res) => {
   const { id } = req.params;
+
   try {
-    // update only
-    const updateExpense = await expenseService.updateExpense(
+    const updatedExpense = await expenseService.updateExpense(
       req.user.id,
       req.body,
       req.file,
-      id,
+      id
     );
-    res.status(200).json({
+
+    return res.status(200).json({
       success: true,
       message: "Expense updated successfully",
-      data: updateExpense,
+      data: updatedExpense,
     });
-  } catch (err) {
-    console.log("Error while updating expense", err);
+  } catch (error) {
+    console.error("Error while updating expense:", error);
+
     return res.status(500).json({
-      error: "Internal server error",
+      success: false,
+      message: "Internal server error",
     });
   }
 };
 
-// const archiveExpense = async (req, res, next) => {
-//   const { id } = req.params;
-//   try {
-//     const updateExpense = await expenseService.deleteExpense("expense", id);
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Expense archived successfully",
-//       data: updateExpense,
-//     });
-//   } catch (err) {
-//     console.log("Error while archiving expense", err);
-//     return res.status(500).json({
-//       error: "Internal server error",
-//     });
-//   }
-// };
-const payExpense = async (req, res, next) => {
+/* ---------------- PAY EXPENSE ---------------- */
+export const payExpense = async (req, res) => {
   const { id } = req.params;
+
   try {
     const response = await expenseService.postPayment(
       req.user.id,
       req.body,
       id,
-      req.file,
+      req.file
     );
-    res.status(200).json({
-      message: "Payment successful",
+
+    return res.status(200).json({
       success: true,
+      message: "Payment successful",
       data: response,
     });
-  } catch (err) {
-    console.log("Error while updating expense", err);
+  } catch (error) {
+    console.error("Error while processing payment:", error);
+
     return res.status(500).json({
-      error: "Internal server error",
+      success: false,
+      message: "Internal server error",
     });
   }
 };
 
-// Expense Graph
-const getGraph = async (req, res, next) => {
+/* ---------------- EXPENSE GRAPH ---------------- */
+export const getGraph = async (req, res) => {
   try {
-    const response = await expenseService.getExpenseGraph(
+    const response = await expenseService.getGraph(
       req.user.id,
-      req.query,
+      req.query
     );
-    console.log("response!: ", response);
 
     return res.status(200).json({
       success: true,
       message: "Detailed expenses fetched successfully",
       data: response,
     });
-  } catch (err) {
-    console.error("Error while fetching detailed expenses:", err);
+  } catch (error) {
+    console.error("Error while fetching expense graph:", error);
+
     return res.status(500).json({
       success: false,
-      error: "Internal server error",
+      message: "Internal server error",
     });
   }
 };
 
-const getBills = async (req, res) => {
+/* ---------------- GET BILLS ---------------- */
+export const getBills = async (req, res) => {
   try {
     const response = await expenseService.getBills(req.user.id);
+
     return res.status(200).json({
       success: true,
       message: "Bills fetched successfully",
       data: response,
     });
-  } catch (err) {
-    console.error("Error while fetching bills:", err);
+  } catch (error) {
+    console.error("Error while fetching bills:", error);
+
     return res.status(500).json({
       success: false,
-      error: "Internal server error",
+      message: "Internal server error",
     });
   }
-};
-
-module.exports = {
-  postExpense,
-  getExpenses,
-  updateExpense,
-  getGraph,
-  payExpense,
-  getBills
-  // archiveExpense,
 };

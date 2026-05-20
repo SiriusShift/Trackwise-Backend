@@ -1,28 +1,52 @@
-const { Router } = require("express");
-const { isLoggedIn } = require("../middleware/validate");
-const catchAsync = require("../utils/catchAsync");
-// const { postIncome, getIncome, getGraph, updateIncome, collectIncome } = require("../controllers/incomes.controller");
-const {postRecurring, getRecurring, transactRecurring} = require("../controllers/recurring.controller")
-const multer = require("multer");
-const { getTransfers, transfer, updateTransfer, postTransfer, getGraph, archiveTransfer } = require("../controllers/transfers.controller");
+import { Router } from "express";
+import multer from "multer";
+
+import { isLoggedIn } from "../middleware/validate.js";
+import catchAsync from "../utils/catchAsync.js";
+
+import {
+  getTransfers,
+  updateTransfer,
+  postTransfer,
+  getGraph,
+  transfer,
+} from "../controllers/transfers.controller.js";
+
+import {
+  postRecurring,
+  getRecurring,
+  transactRecurring,
+} from "../controllers/recurring.controller.js";
 
 const router = Router();
 const upload = multer();
 
-router.route("/").get(isLoggedIn, catchAsync(getTransfers));
+/* ---------------- TRANSFERS ---------------- */
 router
   .route("/")
+  .get(isLoggedIn, catchAsync(getTransfers))
   .post(isLoggedIn, upload.single("image"), catchAsync(postTransfer));
-// Update and delete transfer
-router.route("/:id").put(isLoggedIn, upload.single("image"), catchAsync(updateTransfer))
-// router.route("/:id").patch(isLoggedIn, catchAsync(archiveTransfer))
-router.route("/graph").get(isLoggedIn, catchAsync(getGraph))
+
+router
+  .route("/:id")
+  .put(isLoggedIn, upload.single("image"), catchAsync(updateTransfer));
+
+router
+  .route("/graph")
+  .get(isLoggedIn, catchAsync(getGraph));
+
 router
   .route("/transfer/:id")
   .patch(isLoggedIn, upload.single("image"), catchAsync(transfer));
-router.route("/receive/auto/:id").post(isLoggedIn, catchAsync(transactRecurring))
-//recurring
-router.route("/recurring").post(isLoggedIn, catchAsync(postRecurring))
-router.route("/recurring").get(isLoggedIn, catchAsync(getRecurring))
 
-module.exports = router;
+/* ---------------- RECURRING ---------------- */
+router
+  .route("/receive/auto/:id")
+  .post(isLoggedIn, catchAsync(transactRecurring));
+
+router
+  .route("/recurring")
+  .post(isLoggedIn, catchAsync(postRecurring))
+  .get(isLoggedIn, catchAsync(getRecurring));
+
+export default router;

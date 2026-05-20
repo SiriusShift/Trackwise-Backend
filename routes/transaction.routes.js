@@ -1,24 +1,59 @@
-const { Router } = require("express");
-const { getHistory, editHistory, deleteHistory, getStatistics, archiveTransaction } = require("../controllers/transactions.controller");
-const IncomeRouter = require("./incomes.routes");
-const ExpenseRouter = require("./expenses.routes");
-const TransferRouter = require("./transfers.routes");
+import { Router } from "express";
+import multer from "multer";
 
-const { isLoggedIn } = require("../middleware/validate");
-const catchAsync = require("../utils/catchAsync");
-const multer = require("multer");
+import catchAsync from "../utils/catchAsync.js";
+import {
+  getHistory,
+  editHistory,
+  deleteHistory,
+  getStatistics,
+  archiveTransaction,
+  dueTransactions,
+} from "../controllers/transactions.controller.js";
+
+import IncomeRouter from "./incomes.routes.js";
+import ExpenseRouter from "./expenses.routes.js";
+import TransferRouter from "./transfers.routes.js";
+
+import { isLoggedIn } from "../middleware/validate.js";
 
 const router = Router();
-const upload = multer(); // For text-only formData, or configure for file uploads
+
+/*
+|--------------------------------------------------------------------------
+| Multer Setup
+|--------------------------------------------------------------------------
+| Using memory storage for form-data (no files persisted to disk)
+*/
+const upload = multer();
+
+/*
+|--------------------------------------------------------------------------
+| Transaction Routes
+|--------------------------------------------------------------------------
+*/
 
 router.route("/history").get(isLoggedIn, catchAsync(getHistory));
-router.route("/edit/:id").patch(isLoggedIn, upload.single("image"), catchAsync(editHistory))
-router.route("/delete/:id").patch(isLoggedIn, catchAsync(deleteHistory))
-router.route("/statistics").get(isLoggedIn, catchAsync(getStatistics))
-router.route("/:id").patch(isLoggedIn, catchAsync(archiveTransaction))
-//Child routes
+
+router
+  .route("/edit/:id")
+  .patch(isLoggedIn, upload.single("image"), catchAsync(editHistory));
+
+router.route("/delete/:id").patch(isLoggedIn, catchAsync(deleteHistory));
+
+router.route("/statistics").get(isLoggedIn, catchAsync(getStatistics));
+
+router.route("/:id").patch(isLoggedIn, catchAsync(archiveTransaction));
+router.route("/due").get(isLoggedIn, catchAsync(dueTransactions))
+
+/*
+|--------------------------------------------------------------------------
+| Child Routes
+|--------------------------------------------------------------------------
+*/
+
 router.use("/income", IncomeRouter);
 router.use("/expense", ExpenseRouter);
-router.use("/transfer", TransferRouter)
+router.use("/transfer", TransferRouter);
 
-module.exports = router
+export default router;

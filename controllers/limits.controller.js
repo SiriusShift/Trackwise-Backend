@@ -1,7 +1,6 @@
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+const prisma = "../config/prisma.js"
 
-const addExpenseLimit = async (req, res, next) => {
+export const addExpenseLimit = async (req, res, next) => {
   try {
     const { amount, categoryId } = req.body;
     console.log(amount);
@@ -50,7 +49,7 @@ const addExpenseLimit = async (req, res, next) => {
   }
 };
 
-const getAllExpenseLimit = async (req, res, next) => {
+export const getAllExpenseLimit = async (req, res, next) => {
   const { startDate, endDate } = req.query;
   const start = new Date(startDate);
   const end = new Date(endDate);
@@ -188,7 +187,7 @@ const getAllExpenseLimit = async (req, res, next) => {
   }
 };
 
-const updateExpenseLimit = async (req, res, next) => {
+export const updateExpenseLimit = async (req, res, next) => {
   try {
     const { id } = req.params;
     const { amount } = req.body;
@@ -213,7 +212,7 @@ const updateExpenseLimit = async (req, res, next) => {
   }
 };
 
-const deleteExpenseLimit = async (req, res, next) => {
+export const deleteExpenseLimit = async (req, res, next) => {
   try {
     const { id } = req.params;
     if (!id) {
@@ -240,11 +239,4 @@ const deleteExpenseLimit = async (req, res, next) => {
       error: "Internal server error",
     });
   }
-};
-
-module.exports = {
-  addExpenseLimit,
-  getAllExpenseLimit,
-  updateExpenseLimit,
-  deleteExpenseLimit,
 };

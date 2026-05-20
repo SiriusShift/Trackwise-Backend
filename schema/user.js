@@ -1,14 +1,10 @@
-const Joi = require("joi");
-const {
-    // roles,
-    // defRole,
-    // phonePattern,
-    // phoneError,
+import Joi from "joi";
+import {
     passwordPattern,
     passwordError
-} = require("../constants/user");
+} from "../constants/user.js"
 
-const signupSchema = Joi.object({
+export const signupSchema = Joi.object({
     firstName: Joi.string().required(),
     lastName: Joi.string().required(),
     username: Joi.string().required(),
@@ -24,7 +20,7 @@ const signupSchema = Joi.object({
     // role: Joi.string().valid(...roles).optional().default(defRole),
 });
 
-const googleSignupSchema = Joi.object({
+export const googleSignupSchema = Joi.object({
     firstName: Joi.string().required(),
     google_id: Joi.string().required(),
     profileImageUrl: Joi.string(),
@@ -32,15 +28,9 @@ const googleSignupSchema = Joi.object({
     email: Joi.string().email().required(),
 });
 
-const resetPasswordSchema = Joi.object({
+export const resetPasswordSchema = Joi.object({
     password: Joi.string().required().pattern(passwordPattern).messages({
         "string.pattern.base": passwordError,
     }),
     token: Joi.string().required()
 });
-
-module.exports = {
-    signupSchema,
-    resetPasswordSchema,
-    googleSignupSchema
-}

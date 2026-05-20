@@ -1,5 +1,5 @@
-const incomeService = require("../services/incomes.service");
-const postIncome = async (req, res) => {
+import * as incomeService from "../services/incomes.service.js";
+export const postIncome = async (req, res) => {
   try {
     const response = await incomeService.postIncome(req.user.id, req.body, req.file);
     console.log("response", response);
@@ -15,7 +15,7 @@ const postIncome = async (req, res) => {
   }
 };
 
-const getIncome = async (req, res) => {
+export const getIncome = async (req, res) => {
   try {
     const response = await incomeService.getIncome(req.user.id, req.query);
     console.log(response);
@@ -32,7 +32,7 @@ const getIncome = async (req, res) => {
   }
 };
 
-const getGraph = async (req, res, next) => {
+export const getGraph = async (req, res, next) => {
   try {
     const response = await incomeService.getIncomeGraph(req.user.id, req.query)
     console.log("response!", response)
@@ -50,16 +50,16 @@ const getGraph = async (req, res, next) => {
   }
 };
 
-const updateIncome = async (req, res, next) => {
+export const updateIncome = async (req, res, next) => {
   const { id } = req.params;
   try {
 
-     const income = await incomeService.updateIncome(
-        req.user.id,
-        req.body,
-        req.file,
-        id
-      );
+    const income = await incomeService.updateIncome(
+      req.user.id,
+      req.body,
+      req.file,
+      id
+    );
 
     res.status(200).json({
       success: true,
@@ -93,7 +93,7 @@ const updateIncome = async (req, res, next) => {
 //   }
 // };
 
-const collectIncome = async (req, res, next) => {
+export const collectIncome = async (req, res, next) => {
   const { id } = req.params;
   try {
     const response = await incomeService.collectIncome(
@@ -113,14 +113,4 @@ const collectIncome = async (req, res, next) => {
       error: "Internal server error",
     });
   }
-};
-
-
-module.exports = {
-  postIncome,
-  updateIncome,
-  getIncome,
-  getGraph,
-  collectIncome,
-  // archiveIncome
 };

@@ -1,8 +1,8 @@
-const ExpressError = require("../utils/expressError");
-const { signupSchema, resetPasswordSchema, googleSignupSchema } = require("../schema/user");
-const { decryptString } = require("../utils/customFunction");
+import ExpressError from "../utils/expressError.js";
+import { signupSchema, resetPasswordSchema, googleSignupSchema } from "../schema/user.js";
+import { decryptString } from "../utils/customFunction.js";
 
-const validateCreateRequest = (requestType) => {
+export const validateCreateRequest = (requestType) => {
   return (req, res, next) => {
     let error;
 
@@ -32,7 +32,7 @@ const validateCreateRequest = (requestType) => {
   };
 };
 
-const validateUserUpdateRequest = (requestType) => {
+export const validateUserUpdateRequest = (requestType) => {
   return (req, res, next) => {
     let error;
     switch (requestType) {
@@ -52,7 +52,7 @@ const validateUserUpdateRequest = (requestType) => {
   };
 };
 
-const isLoggedIn = (req, res, next) => {
+export const isLoggedIn = (req, res, next) => {
   console.log(req.isAuthenticated());
   if (!req.isAuthenticated()) {
     return res.status(401).json({ message: "Unauthorized" });
@@ -60,4 +60,3 @@ const isLoggedIn = (req, res, next) => {
   next();
 };
 
-module.exports = { validateCreateRequest, isLoggedIn, validateUserUpdateRequest };

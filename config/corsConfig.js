@@ -1,25 +1,25 @@
-const cors = require("cors");
-const ExpressError = require("../utils/expressError");
+import cors from "cors";
+import ExpressError from "../utils/expressError.js";
+
 const allowedOrigins = [
-  `http://localhost:5011`, // front end
-  `http://192.168.1.3:5011`,
-  `http://192.168.1.15:5011`,
-  `http://10.10.13.15:5011`,
-  `http://192.168.68.53:5011`,
+  "http://localhost:5011",
+  "http://192.168.1.3:5011",
+  "http://192.168.1.15:5011",
+  "http://10.10.13.15:5011",
+  "http://192.168.68.53:5011",
   `http://localhost:${process.env.PORT}`,
 ];
 
-const corsConfig = {
+export const corsConfig = {
   origin: (origin, callback) => {
+    // allow server-to-server or curl (no origin)
     if (!origin || allowedOrigins.includes(origin)) {
-      // Remove the non-null assertion (!)
-      callback(null, true);
-    } else {
-      callback(new ExpressError("Not Allowed By CORS"));
+      return callback(null, true);
     }
+
+    return callback(new ExpressError("Not Allowed By CORS"));
   },
+
   credentials: true,
   optionsSuccessStatus: 200,
 };
-
-module.exports = { corsConfig };

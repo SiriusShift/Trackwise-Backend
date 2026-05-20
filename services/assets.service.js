@@ -1,84 +1,162 @@
-const { PrismaClient } = require("@prisma/client");
+import { PrismaClient } from "@prisma/client";
+import moment from "moment";
+
 const prisma = new PrismaClient();
-const moment = require("moment");
-const validateAsset = async (assetId, userId) => {
-  console.log("assetID", assetId);
 
-  const category = await prisma.asset.findFirst({
-    where: {
-      id: assetId,
-      userId: userId,
-    },
-  });
+/*
+|--------------------------------------------------------------------------
+| Validate Asset
+|--------------------------------------------------------------------------
+*/
+export const validateAsset = async (assetId, userId) => {
+  try {
+    const asset = await prisma.asset.findFirst({
+      where: {
+        id: Number(assetId),
+        userId: Number(userId),
+      },
+    });
 
-  if (!category) {
-    throw new Error("Asset not found"); // ❌ Throw error here
+    if (!asset) {
+      throw new Error("Asset not found");
+    }
+
+    return asset;
+  } catch (err) {
+    console.error("validateAsset error:", err);
+    throw err;
   }
-  return category;
 };
 
-const getAsset = async (userId, id) => {
-  const lastMonth = moment().subtract(1, "months").endOf("month").toDate()
-  const asset = await getAssetBalance(userId, id);
-  const lastMonthAsset = await  getAssetBalance(userId, id, lastMonth)
+/*
+|--------------------------------------------------------------------------
+| Create Asset
+|--------------------------------------------------------------------------
+*/
+  export const createAsset = async (
+    name,
+    balance,
+        currency,
+    type,
+    creditLimit,
+    color,
+    icon,
+    userId,
+  ) => {
+    try {
+      return await prisma.asset.create({
+        data: {
+          name,
+          balance: parseFloat(balance),
 
-  console.log(asset, lastMonthAsset, "asset!")
-  const trend = (
-    ((asset?.balance - lastMonthAsset?.balance) / lastMonthAsset?.balance) *
-    100
-  ).toFixed(2);
+          ...(type && { type: type }),
+          ...(currency && { currency }),
 
-  return {
-    data: asset?.data,
-    balance: asset?.balance,
-    trend,
+          ...(creditLimit && {
+            creditLimit: Number(creditLimit),
+          }),
+
+          ...(color && {
+            color,
+          }),
+
+          ...(icon && {
+            icon,
+          }),
+
+          user: {
+            connect: {
+              id: Number(userId),
+            },
+          },
+        },
+      });
+    } catch (err) {
+      console.error("createAsset error:", err);
+      throw new Error("Internal Server Error");
+    }
   };
+
+/*
+|--------------------------------------------------------------------------
+| Get Asset Summary (with trend)
+|--------------------------------------------------------------------------
+*/
+export const getAsset = async (userId, id) => {
+  try {
+    const lastMonth = moment()
+      .subtract(1, "months")
+      .endOf("month")
+      .toDate();
+
+    const current = await getAssetBalance(userId, id);
+    const previous = await getAssetBalance(userId, id, lastMonth);
+
+    const prevBalance = previous?.balance || 0;
+
+    const trend =
+      prevBalance === 0
+        ? 0
+        : (
+          ((current.balance - prevBalance) / prevBalance) *
+          100
+        ).toFixed(2);
+
+    return {
+      data: current.data,
+      balance: current.balance,
+      trend,
+    };
+  } catch (err) {
+    console.error("getAsset error:", err);
+    throw new Error("Internal Server Error");
+  }
 };
 
-const getAssetBalance = async (userId, id, date) => {
+/*
+|--------------------------------------------------------------------------
+| Get Asset Balance (Core Calculation)
+|--------------------------------------------------------------------------
+*/
+export const getAssetBalance = async (userId, id, date) => {
   try {
     const assets = await prisma.asset.findMany({
       where: {
-        userId,
-        ...(id && { id }),
+        userId: Number(userId),
+        ...(id ? { id: Number(id) } : {}),
       },
       select: {
         id: true,
         name: true,
         balance: true,
-        receivedTransactionHistory: {
+        incomes: {
           where: {
             isActive: true,
-            ...(date && {
-              date: {
-                lte: date
-              }
-            })
+            ...(date ? { date: { lte: date } } : {}),
           },
         },
-        sentTransactionHistory: {
+        expenses: {
           where: {
-            isActive: true, ...(date && {
-              date: {
-                lte: date
-              }
-            })
+            isActive: true,
+            ...(date ? { date: { lte: date } } : {}),
           },
         },
       },
     });
 
     const data = assets.map((asset) => {
-      const totalExpenses = asset.sentTransactionHistory.reduce(
-        (sum, expense) => sum + Number(expense.amount),
-        0,
+      const totalExpenses = asset.expenses.reduce(
+        (sum, tx) => sum + Number(tx.amount),
+        0
       );
-      const totalIncomes = asset.receivedTransactionHistory.reduce(
-        (sum, income) => sum + Number(income.amount),
-        0,
+
+      const totalIncomes = asset.incomes.reduce(
+        (sum, tx) => sum + Number(tx.amount),
+        0
       );
+
       const remainingBalance =
-        Number(asset.balance) + Number(totalIncomes) - Number(totalExpenses);
+        Number(asset.balance) + totalIncomes - totalExpenses;
 
       return {
         ...asset,
@@ -86,23 +164,19 @@ const getAssetBalance = async (userId, id, date) => {
         totalIncomes,
         remainingBalance,
       };
-
     });
+
     const totalRemainingBalance = data.reduce(
       (sum, asset) => sum + asset.remainingBalance,
-      0,
+      0
     );
+
     return {
       data,
-      balance: totalRemainingBalance
-    }
+      balance: totalRemainingBalance,
+    };
   } catch (err) {
+    console.error("getAssetBalance error:", err);
     throw new Error("Internal Server Error");
   }
-};
-
-module.exports = {
-  validateAsset,
-  getAsset,
-  getAssetBalance
 };

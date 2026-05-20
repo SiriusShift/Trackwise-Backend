@@ -1,9 +1,7 @@
-const { PrismaClient } = require("@prisma/client");
-// const { skip } = require("@prisma/client/runtime/library");
-const prisma = new PrismaClient();
-const transferService = require("../services/transfers.service");
+import * as transferService from "../services/transfers.service.js";
+const prisma = "../config/prisma.js";
 
-const getTransfers = async (req, res, next) => {
+export const getTransfers = async (req, res, next) => {
   try {
     if (!req.user?.id) {
       return res.status(400).json({
@@ -28,7 +26,7 @@ const getTransfers = async (req, res, next) => {
   }
 };
 
-const postTransfer = async (req, res, next) => {
+export const postTransfer = async (req, res, next) => {
   try {
     const expense = await transferService.postTransfer(
       req.user.id,
@@ -51,7 +49,7 @@ const postTransfer = async (req, res, next) => {
   }
 };
 
-const updateTransfer = async (req, res, next) => {
+export const updateTransfer = async (req, res, next) => {
   const { id } = req.params;
   try {
     const updateExpense = await expenseService.updateExpense(
@@ -91,7 +89,7 @@ const updateTransfer = async (req, res, next) => {
 //   }
 // };
 
-const transfer = async (req, res, next) => {
+export const transfer = async (req, res, next) => {
   const { id } = req.params;
   try {
     const response = await expenseService.postPayment(
@@ -114,7 +112,7 @@ const transfer = async (req, res, next) => {
 };
 
 // Expense Graph
-const getGraph = async (req, res, next) => {
+export const getGraph = async (req, res, next) => {
   try {
     const response = await transferService.getTransferGraph(
       req.user.id,
@@ -134,13 +132,4 @@ const getGraph = async (req, res, next) => {
       error: "Internal server error",
     });
   }
-};
-
-module.exports = {
-  getTransfers,
-  getGraph,
-  postTransfer,
-  updateTransfer,
-  transfer,
-  // archiveTransfer
 };

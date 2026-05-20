@@ -1,8 +1,8 @@
-const {
+import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
-} = require("@aws-sdk/client-s3");
+} from "@aws-sdk/client-s3";
 
 const s3 = new S3Client({
   credentials: {
@@ -12,100 +12,107 @@ const s3 = new S3Client({
   region: process.env.AWS_REGION,
 });
 
-const uploadBase64ToS3 = async (base64Image, fileName, folder) => {
+/*
+|--------------------------------------------------------------------------
+| Upload Base64 Image to S3
+|--------------------------------------------------------------------------
+*/
+export const uploadBase64ToS3 = async (base64Image, fileName, folder) => {
   try {
-    let correctedBase64 = base64Image;
-    const checkFormat = base64Image.startsWith("data:image/");
-    if (!checkFormat) {
-      correctedBase64 = `data:image/png;base64,${base64Image}`;
-    }
-    if (!correctedBase64 || typeof correctedBase64 !== "string") {
+    if (!base64Image || typeof base64Image !== "string") {
       throw new Error("Invalid base64 image string");
     }
 
-    // Extract MIME type
-    const match = correctedBase64.match(/^data:(image\/\w+);base64,/);
-    if (!match) {
-      throw new Error("Base64 format is incorrect");
+    let corrected = base64Image;
+
+    if (!base64Image.startsWith("data:image/")) {
+      corrected = `data:image/png;base64,${base64Image}`;
     }
+
+    const match = corrected.match(/^data:(image\/\w+);base64,/);
+
+    if (!match) {
+      throw new Error("Invalid base64 format");
+    }
+
     const fileType = match[1];
+    const base64Data = corrected.replace(/^data:image\/\w+;base64,/, "");
+    const buffer = Buffer.from(base64Data, "base64");
 
-    // Remove the base64 prefix
-    const base64Data = correctedBase64.replace(/^data:image\/\w+;base64,/, "");
+    const key = `${folder}/${fileName}`;
 
-    // Convert to Buffer
-    const imageBuffer = Buffer.from(base64Data, "base64");
-    console.log("34: ", imageBuffer);
-
-    // Upload parameters
-    const uploadParams = {
+    const command = new PutObjectCommand({
       Bucket: process.env.AWS_S3_BUCKET_NAME,
-      Key: `${folder}/${fileName}`,
-      Body: imageBuffer,
+      Key: key,
+      Body: buffer,
       ContentType: fileType,
-      ACL: "public-read", // Optional: makes the image public
-    };
+      ACL: "public-read",
+    });
 
-    // Upload to S3
-    const command = new PutObjectCommand(uploadParams);
-    const response = await s3.send(command);
-    console.log("S3 Upload Success:", response);
+    await s3.send(command);
 
-    // Return the S3 URL
-    return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${folder}/${fileName}`;
-  } catch (error) {
-    console.error("S3 Upload Error:", error.message);
+    return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+  } catch (err) {
+    console.error("uploadBase64ToS3 error:", err);
     throw new Error("Failed to upload image to S3");
   }
 };
 
-const uploadFileToS3 = async (file, folder, id) => {
-  const key = `users/${id}/${folder}/${file.originalname}`;
-
-  const params = {
-    Bucket: process.env.AWS_S3_BUCKET_NAME,
-    Key: key, // ✅ correct path
-    Body: file.buffer,
-    ContentType: file.mimetype, // Optional: helps S3 serve the file properly
-    ACL: "public-read", // Optional: make file publicly accessible
-  };
-
+/*
+|--------------------------------------------------------------------------
+| Upload File (multer buffer) to S3
+|--------------------------------------------------------------------------
+*/
+export const uploadFileToS3 = async (file, folder, userId) => {
   try {
-    const command = new PutObjectCommand(params);
-    const response = await s3.send(command);
-    console.log("S3 Upload Success:", response);
+    const key = `users/${userId}/${folder}/${file.originalname}`;
+
+    const command = new PutObjectCommand({
+      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Key: key,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+      ACL: "public-read",
+    });
+
+    await s3.send(command);
 
     return `https://${process.env.AWS_S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
-  } catch (error) {
-    console.error(error);
-    alert("Error uploading file: " + error.message);
-    throw new Error("Error uploading image in S3");
+  } catch (err) {
+    console.error("uploadFileToS3 error:", err);
+    throw new Error("Error uploading file to S3");
   }
 };
 
-const deleteFileFromS3 = async (url) => {
+/*
+|--------------------------------------------------------------------------
+| Delete File from S3
+|--------------------------------------------------------------------------
+*/
+export const deleteFileFromS3 = async (url) => {
   try {
+    if (!url) return;
+
+    const bucket = process.env.AWS_S3_BUCKET_NAME;
+
     const key = url.split(
-      "https://trackwise-bucket.s3.ap-southeast-1.amazonaws.com/"
+      `https://${bucket}.s3.${process.env.AWS_REGION}.amazonaws.com/`
     )[1];
 
+    if (!key) {
+      throw new Error("Invalid S3 URL");
+    }
+
     const command = new DeleteObjectCommand({
-      Bucket: process.env.AWS_S3_BUCKET_NAME,
+      Bucket: bucket,
       Key: key,
     });
 
-    const response = await s3.send(command);
-    console.log("Successfully deleted file", response);
-    return null;
-  } catch (err) {
-    console.error(err);
-    alert("Error deleting file: " + err.message);
-    throw new Error("Error deleting file");
-  }
-};
+    await s3.send(command);
 
-module.exports = {
-  uploadBase64ToS3,
-  uploadFileToS3,
-  deleteFileFromS3,
+    return true;
+  } catch (err) {
+    console.error("deleteFileFromS3 error:", err);
+    throw new Error("Error deleting file from S3");
+  }
 };

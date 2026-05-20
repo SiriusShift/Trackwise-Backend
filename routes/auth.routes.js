@@ -1,22 +1,22 @@
-const { Router } = require("express");
-const catchAsync = require("../utils/catchAsync");
-const passport = require("passport");
+import passport from "passport"
+import catchAsync from "../utils/catchAsync.js"
+import {Router} from "express"
 
-const { PrismaClient } = require("@prisma/client");
+import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
-const {
+import {
   validateCreateRequest,
   validateUserUpdateRequest,
-} = require("../middleware/validate");
+} from "../middleware/validate.js";
 
-const {
+import {
   register,
   resetPassword,
   login,
   isAuthenticated,
   logout,
-} = require("../controllers/user");
+} from "../controllers/auth.controller.js";
 
 const router = Router();
 // routes/user.js
@@ -170,7 +170,7 @@ router.get(
   (req, res, next) => {
     passport.authenticate("google-sign-in", (err, user, info) => {
 
-      console.log("test",err);
+      console.log("test", err);
       if (err) {
         // If there’s an error (for example, database issue, network issue, etc.)
         console.error("Authentication error:", err);
@@ -220,7 +220,7 @@ router.get(
         );
       }
 
-      console.log("hello",profile);
+      console.log("hello", profile);
 
       // Attach the profile to the request object for the next middleware
       req.profile = {
@@ -270,4 +270,4 @@ router.get(
 
 
 
-module.exports = router;
+export default router;

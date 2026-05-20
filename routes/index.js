@@ -1,24 +1,23 @@
-// routes
-const UserRouter = require("./users.routes");
-const EmailRouter = require("./emails.routes");
-const AssetRouter = require("./assets.routes");
-const CategoryRouter = require("./categories.routes");
-const InstallmentRouter = require("./installments.routes");
-const TransactionRouter = require("./transaction.routes")
-const { swaggerUi, swaggerDocs } = require("../config/swaggerConfig");
+// routes/index.js
+import UserRouter from "./auth.routes.js";
+import EmailRouter from "./emails.routes.js";
+import AssetRouter from "./assets.routes.js";
+import CategoryRouter from "./categories.routes.js";
+// import InstallmentRouter from "./installments.routes.js";
+import TransactionRouter from "./transaction.routes.js";
 
-const runRouters = (app) => {
+import { swaggerDocs } from "../config/swaggerConfig.js";
+import swaggerUi from "swagger-ui-express";
+import { app } from "../index.js";
+
+export const runRouters = () => {
   app.use("/", UserRouter);
   app.use("/aws-ses", EmailRouter);
-  app.use("/asset", AssetRouter);
-  app.use("/category", CategoryRouter);
-  app.use("/loan", InstallmentRouter);
-  app.use("/transaction", TransactionRouter);
+  app.use("/assets", AssetRouter);
+  app.use("/categories", CategoryRouter);
+  // app.use("/loans", InstallmentRouter);
+  app.use("/transactions", TransactionRouter);
 
-  // Serve Swagger UI at /api-docs
+  // Swagger Docs
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
-};
-
-module.exports = {
-  runRouters,
 };

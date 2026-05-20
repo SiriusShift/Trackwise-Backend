@@ -1,52 +1,98 @@
-const { Router } = require("express");
-const catchAsync = require("../utils/catchAsync");
-const {
+import { Router } from "express";
+import multer from "multer";
+
+import catchAsync from "../utils/catchAsync.js";
+
+import {
   postExpense,
   getExpenses,
   payExpense,
   updateExpense,
   getGraph,
-  archiveExpense,
+  // archiveExpense,
   getBills,
-} = require("../controllers/expenses.controller");
-const {
-  postInstallmentController,
-  getInstallmentController,
-} = require("../controllers/installments.controller");
-const { isLoggedIn } = require("../middleware/validate");
-const multer = require("multer");
-const {
+} from "../controllers/expenses.controller.js";
+
+// import {
+//   postInstallmentController,
+//   getInstallmentController,
+// } from "../controllers/installments.controller.js";
+
+import {
   postRecurring,
   getRecurring,
   transactRecurring,
   cancelRecurring,
-} = require("../controllers/recurring.controller");
-const upload = multer(); // For text-only formData, or configure for file uploads
+} from "../controllers/recurring.controller.js";
+
+import { isLoggedIn } from "../middleware/validate.js";
 
 const router = Router();
 
-// Expense
+/*
+|--------------------------------------------------------------------------
+| Multer Setup
+|--------------------------------------------------------------------------
+*/
+const upload = multer();
+
+/*
+|--------------------------------------------------------------------------
+| Expense Routes
+|--------------------------------------------------------------------------
+*/
+
+// Create expense
 router
   .route("/")
-  .post(isLoggedIn, upload.single("image"), catchAsync(postExpense));
-router.route("/").get(isLoggedIn, catchAsync(getExpenses));
+  .post(isLoggedIn, upload.single("image"), catchAsync(postExpense))
+  .get(isLoggedIn, catchAsync(getExpenses));
 
-//UPDATE AND DELETE
+// Update expense
 router
   .route("/:id")
   .put(isLoggedIn, upload.single("image"), catchAsync(updateExpense));
-// router
-//   .route("/:id")
-//   .patch(isLoggedIn, catchAsync(archiveExpense));
+
+// Graph data
 router.route("/graph").get(isLoggedIn, catchAsync(getGraph));
+
+// Pay expense
 router
   .route("/pay/:id")
   .patch(isLoggedIn, upload.single("image"), catchAsync(payExpense));
-router.route("/pay/auto/:id").post(isLoggedIn, catchAsync(transactRecurring));
-//Recurring
-router.route("/recurring").post(isLoggedIn, catchAsync(postRecurring));
-router.route("/recurring").get(isLoggedIn, catchAsync(getRecurring));
-router.route("/recurring/:id").patch(isLoggedIn, catchAsync(cancelRecurring));
 
-router.route("/bills").get(isLoggedIn, catchAsync(getBills))
-module.exports = router;
+// Auto recurring transaction
+router
+  .route("/pay/auto/:id")
+  .post(isLoggedIn, catchAsync(transactRecurring));
+
+/*
+|--------------------------------------------------------------------------
+| Recurring Routes
+|--------------------------------------------------------------------------
+*/
+
+router
+  .route("/recurring")
+  .post(isLoggedIn, catchAsync(postRecurring))
+  .get(isLoggedIn, catchAsync(getRecurring));
+
+router
+  .route("/recurring/:id")
+  .patch(isLoggedIn, catchAsync(cancelRecurring));
+
+/*
+|--------------------------------------------------------------------------
+| Installments (Imported but NOT used yet)
+|--------------------------------------------------------------------------
+| ⚠️ You imported these but didn't mount routes.
+| If needed, you should add endpoints below.
+*/
+
+/*
+router.route("/installments")
+  .post(isLoggedIn, catchAsync(postInstallmentController))
+  .get(isLoggedIn, catchAsync(getInstallmentController));
+*/
+
+export default router;

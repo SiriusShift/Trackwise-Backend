@@ -1,110 +1,144 @@
-const transactionService = require("../services/transactions.service");
-const getHistory = async (req, res) => {
+import * as transactionService from "../services/transactions.service.js";
+
+/* ---------------- GET HISTORY ---------------- */
+export const getHistory = async (req, res) => {
   try {
     const response = await transactionService.getHistory(
       req.user.id,
-      req.query,
+      req.query
     );
-    res.status(200).json({
-      message: "Transaction history successfully fetched",
+
+    return res.status(200).json({
       success: true,
+      message: "Transaction history successfully fetched",
       data: response,
     });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({
-      message: "Internal server error",
+  } catch (error) {
+    console.error("getHistory error:", error);
+
+    return res.status(500).json({
       success: false,
+      message: "Internal server error",
     });
   }
 };
 
-const editHistory = async (req, res) => {
+/* ---------------- EDIT HISTORY ---------------- */
+export const editHistory = async (req, res) => {
   const { id } = req.params;
+
   try {
     const response = await transactionService.editHistory(
       req.user.id,
       req.body,
       req.file,
-      id,
+      id
     );
-    res.status(200).json({
+
+    return res.status(200).json({
+      success: true,
       message: "Transaction history successfully edited",
-      success: true,
       data: response,
     });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({
+  } catch (error) {
+    console.error("editHistory error:", error);
+
+    return res.status(500).json({
+      success: false,
       message: "Internal server error",
     });
   }
 };
 
-const deleteHistory = async (req, res) => {
+/* ---------------- DELETE HISTORY ---------------- */
+export const deleteHistory = async (req, res) => {
   const { id } = req.params;
+
   try {
-    const response = await transactionService.deleteHistory(id);
-    res.status(200).json({
-      message: "Transaction history successfully deleted",
+    await transactionService.deleteHistory(id);
+
+    return res.status(200).json({
       success: true,
-      data: response,
+      message: "Transaction history successfully deleted",
     });
-  } catch (err) {
-    console.log(err);
-    res.status(500).json({
+  } catch (error) {
+    console.error("deleteHistory error:", error);
+
+    return res.status(500).json({
+      success: false,
       message: "Internal server error",
     });
   }
 };
 
-const getStatistics = async (req, res) => {
-  const { id } = req.params;
+/* ---------------- STATISTICS ---------------- */
+export const getStatistics = async (req, res) => {
   try {
     const response = await transactionService.getStatistics(
       req.user.id,
-      req.query,
+      req.query
     );
-    console.log(response, "response");
 
-    // Step 3: Return the response
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Statistics fetched successfully",
       ...response,
     });
   } catch (error) {
-    console.error("Error fetching statistics", error);
-    res.status(500).json({
+    console.error("getStatistics error:", error);
+
+    return res.status(500).json({
       success: false,
       message: "Failed to fetch statistics",
-      error: error.message,
     });
   }
 };
 
-const archiveTransaction = async (req, res, next) => {
+/* ---------------- ARCHIVE ---------------- */
+export const archiveTransaction = async (req, res) => {
   const { id } = req.params;
-  try {
-    const updateExpense = await transactionService.archiveTransaction(req.query.type, id);
 
-    res.status(200).json({
+  try {
+    await transactionService.archiveTransaction(
+      req.query.type,
+      id
+    );
+
+    return res.status(200).json({
       success: true,
-      message: "Expense archived successfully",
-      data: updateExpense,
+      message: "Transaction archived successfully",
     });
-  } catch (err) {
-    console.log("Error while archiving expense", err);
+  } catch (error) {
+    console.error("archiveTransaction error:", error);
+
     return res.status(500).json({
-      error: "Internal server error",
+      success: false,
+      message: "Internal server error",
     });
   }
 };
 
-module.exports = {
-  getHistory,
-  editHistory,
-  deleteHistory,
-  getStatistics,
-  archiveTransaction
+/* ---------------- DUE ---------------- */
+
+export const dueTransactions = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const response = await transactionService.getDueTransactions(
+      req.user.id
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Due transactions successfully fetched",
+      ...response
+    });
+  } catch (error) {
+    console.error("archiveTransaction error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
 };

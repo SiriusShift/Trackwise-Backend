@@ -1,16 +1,21 @@
-const express = require("express");
-const cors = require("cors");
-const session = require("express-session");
-const passport = require("passport");
-require("./config/cron.js");
-// Configs
-// const { runDb } = require("./config/runDb.js");
-const { corsConfig } = require("./config/corsConfig.js");
-const { runRouters } = require("./routes/index.js");
-const { sessionConfig } = require("./config/sessionConfig.js");
-const { runPassport } = require("./config/passport.js");
+// app.js / server.js
 
-const app = express();
+import express from "express";
+import cors from "cors";
+import session from "express-session";
+import passport from "passport";
+
+import "./config/cron.js";
+
+// Configs
+import { corsConfig } from "./config/corsConfig.js";
+import { sessionConfig } from "./config/sessionConfig.js";
+import { runPassport } from "./config/passport.js";
+
+// Routes
+import { runRouters } from "./routes/index.js";
+
+export const app = express();
 const port = process.env.PORT || 5000; // Fallback to 3000 if not set
 const host = process.env.URL;
 
@@ -21,8 +26,8 @@ app.use(session(sessionConfig));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(express.json({ limit: "50mb" }));
 
-runPassport(app);
-runRouters(app);
+runPassport();
+runRouters();
 
 // app.listen(port, () => {
 //   console.log(`Server started on port ${port}`);

@@ -1,6 +1,5 @@
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
-const createCategory = async (req, res, next) => {
+const prisma = "../prisma.js";
+export const createCategory = async (req, res, next) => {
   try {
     console.log(req.body);
     const categories = req.body; // Expect an array of objects: [{ name, type }, ...]
@@ -33,7 +32,7 @@ const createCategory = async (req, res, next) => {
   }
 };
 
-const getAllCategory = async (req, res, next) => {
+export const getAllCategory = async (req, res, next) => {
   const { type } = req.query;
 
   try {
@@ -54,9 +53,4 @@ const getAllCategory = async (req, res, next) => {
     // Handle any errors
     next(error);
   }
-};
-
-module.exports = {
-  createCategory,
-  getAllCategory,
 };

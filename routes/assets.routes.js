@@ -1,13 +1,35 @@
-const { Router } = require("express");
-const catchAsync = require("../utils/catchAsync");
-const {
+import { Router } from "express";
+
+import catchAsync from "../utils/catchAsync.js";
+
+import {
   createAsset,
   getAsset,
-} = require("../controllers/asset.controller");
-const { isLoggedIn, validateCreateRequest } = require("../middleware/validate");
+} from "../controllers/asset.controller.js";
+
+import {
+  isLoggedIn,
+  validateCreateRequest,
+} from "../middleware/validate.js";
+
 const router = Router();
 
-router.route("/create").post(isLoggedIn, catchAsync(createAsset));
-router.route("/get").get(isLoggedIn, catchAsync(getAsset));
+/*
+|--------------------------------------------------------------------------
+| Asset Routes
+|--------------------------------------------------------------------------
+*/
 
-module.exports = router;
+router
+  .route("/")
+  .post(
+    isLoggedIn,
+    // validateCreateRequest,
+    catchAsync(createAsset),
+  )
+  .get(
+    isLoggedIn,
+    catchAsync(getAsset),
+  );
+
+export default router;
