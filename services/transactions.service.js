@@ -300,17 +300,21 @@ export const getStatistics = async (userId, data) => {
         category: {
           select: {
             name: true,
+            color: true
           },
         },
+
       },
     });
 
     const grouped = records.reduce((acc, item) => {
       const categoryName = item.category?.name || "Unknown";
+      const categoryColor = item.category?.color || "Unknown";
 
       if (!acc[categoryName]) {
         acc[categoryName] = {
           name: categoryName,
+          color: categoryColor,
           amount: 0,
         };
       }

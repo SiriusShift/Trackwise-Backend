@@ -243,6 +243,7 @@ model Categories {
   name      String
   type      String
   icon      String   @default("default_icon")
+  color     String   @default("#6B7280") // neutral gray as fallback
   isActive  Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -1,11 +1,8 @@
 // services/auth.service.js
 
 import bcrypt from "bcrypt";
-import  { PrismaClient } from "@prisma/client";
 import { decryptString } from "../utils/customFunction.js";
-
-
-const prisma = new PrismaClient();
+import { prisma } from "../config/prisma.js";
 export const registerUserService = async ({
   email,
   password,

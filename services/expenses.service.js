@@ -66,19 +66,20 @@ export const getExpenses = async (userId, query) => {
     }),
   };
 
-  const totalCount = await prisma.expense.count({ where: filters });
 
-  const expenses = await prisma.expense.findMany({
-    where: filters,
-    orderBy: { date: "desc" },
-    include: {
-      category: true,
-      asset: true,
-      recurringTemplate: true,
-    },
-    skip,
-    take: size,
-  });
+  const [totalCount, expenses] = await Promise.all([
+    prisma.expense.count({ where: filters }),
+    prisma.expense.findMany({
+      where: filters,
+      orderBy: { date: "desc" },
+      include: {
+        category: true,
+        asset: true,
+        recurringTemplate: true,
+      }, skip,
+      take: size,
+    }),
+  ]);
 
   const data = expenses.map((expense) => ({
     ...expense,
@@ -102,14 +103,15 @@ export const getExpenses = async (userId, query) => {
 export const postExpense = async (userId, data, file) => {
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
-  const assetId = Number(data.from);
+  const assetId = Number(data.account);
+  const date = new Date(data.date)
 
   await validateCategory(categoryId);
 
   if (assetId) {
     const asset = await validateAsset(assetId, userId);
 
-    if (new Date(data.date) <= new Date() && asset.balance < amount) {
+    if (date <= new Date() && asset.balance < amount) {
       throw new Error("Insufficient balance");
     }
   }
@@ -122,11 +124,12 @@ export const postExpense = async (userId, data, file) => {
     data: {
       amount,
       description: data.description,
-      status: new Date(data.date) > new Date() ? "Pending" : "Paid",
+      status: date > new Date() ? "Pending" : "Completed",
       date: data.date,
       category: { connect: { id: categoryId } },
       ...(assetId && { asset: { connect: { id: assetId } } }),
       user: { connect: { id: userId } },
+      ...(image && { image })
     },
   });
 
@@ -265,8 +268,8 @@ export const getGraph = async (userId, query) => {
       FROM "Expense"
       WHERE
         "date" >= '${moment(startDate)
-          .subtract(1, "month")
-          .toISOString()}'::timestamp
+        .subtract(1, "month")
+        .toISOString()}'::timestamp
         AND "date" <= '${endDate}'::timestamp
         AND "isActive" = true
         AND "userId" = ${userIdNum}
@@ -277,11 +280,11 @@ export const getGraph = async (userId, query) => {
     const trend =
       trendData.length >= 2 && trendData[0]?.total
         ? (
-            ((Number(trendData[1].total) -
-              Number(trendData[0].total)) /
-              Number(trendData[0].total)) *
-            100
-          ).toFixed(2)
+          ((Number(trendData[1].total) -
+            Number(trendData[0].total)) /
+            Number(trendData[0].total)) *
+          100
+        ).toFixed(2)
         : "0.00";
 
     /* ---------------- CATEGORY TOTALS ---------------- */

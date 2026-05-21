@@ -1,4 +1,4 @@
-const prisma = "../config/prisma.js"
+import { prisma } from "../config/prisma.js"
 
 export const addExpenseLimit = async (req, res, next) => {
   try {
@@ -58,21 +58,6 @@ export const getAllExpenseLimit = async (req, res, next) => {
       where: {
         user: {
           id: parseInt(req.user.id),
-          isActive: true,
-        },
-        category: {
-          type: "Expense",
-          expenses: {
-            some: {
-              isActive: true,
-              userId: parseInt(req.user.id),
-              transactionHistory: {
-                some: {
-                  isActive: true,
-                },
-              },
-            },
-          },
         },
         isActive: true,
         limit: { not: null },
@@ -89,33 +74,13 @@ export const getAllExpenseLimit = async (req, res, next) => {
               where: {
                 isActive: true,
                 userId: parseInt(req.user.id),
-                transactionHistory: {
-                  some: {
-                    date: {
-                      gte: start,
-                      lte: end,
-                    },
-                    isActive: true,
-                  },
-                },
               },
               select: {
                 id: true,
                 description: true,
-                transactionHistory: {
-                  where: {
-                    date: {
-                      gte: start,
-                      lte: end,
-                    },
-                    isActive: true,
-                  },
-                  select: {
-                    amount: true,
-                    description: true,
-                    date: true
-                  },
-                },
+                amount: true,
+                description: true,
+                date: true
               },
             },
           },
@@ -123,45 +88,12 @@ export const getAllExpenseLimit = async (req, res, next) => {
       },
     });
 
-    // const categories = await prisma.categoryTracker.findMany({
-    //   where: {
-    //     user: {
-    //       id: parseInt(req.user.id),
-    //     },
-    //     limit: { not: null }, // Filter categories that have a limit
-    //   },
-    //   select: {
-    //     id: true,
-    //     name: true,
-    //     icon: true,
-    //     limit: true,
-    //     expenses: {
-    //       where: {
-    //         date: {
-    //           gte: new Date(startDate),
-    //           lte: new Date(endDate),
-    //         },
-    //         userId: parseInt(req.user.id),
-    //       },
-    //       select: {
-    //         amount: true,
-    //       },
-    //     },
-    //   },
-    // });
-
     // Calculate total expenses per category
     console.log(categoryTracker, "category!");
     const result = categoryTracker.map(({ id, category, limit }) => {
       const totalExpense =
         category?.expenses?.reduce((expenseAcc, expense) => {
-          const transactionTotal =
-            expense?.transactionHistory?.reduce(
-              (txAcc, tx) => txAcc + Number(tx?.amount || 0),
-              0
-            ) || 0;
-
-          return expenseAcc + transactionTotal;
+          return expenseAcc + expense.amount;
         }, 0) || 0;
 
       return {

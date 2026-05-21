@@ -1,9 +1,8 @@
 import { isAuthenticatedService, loginService, registerUserService } from "../services/auth.service.js";
 import bcrypt from "bcrypt"
-import  { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
 import passport from "passport";
 import { decryptString } from "../utils/customFunction.js";
+import { prisma } from "../config/prisma.js";
 
 export const register = async (req, res, next) => {
   try {

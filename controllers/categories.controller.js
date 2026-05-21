@@ -1,4 +1,5 @@
-const prisma = "../prisma.js";
+import { prisma } from "../config/prisma.js";
+
 export const createCategory = async (req, res, next) => {
   try {
     console.log(req.body);
@@ -34,14 +35,27 @@ export const createCategory = async (req, res, next) => {
 
 export const getAllCategory = async (req, res, next) => {
   const { type } = req.query;
-
+  const currentUserId = req.user.id
   try {
     // If type is not provided or is an empty string, don't apply the filter
     const categories = await prisma.categories.findMany({
       where: {
-        ...(type && type !== "" ? { type: type } : {}),
         isActive: true,
+
+        ...(type?.trim() && {
+          type,
+        }),
+
+        OR: [
+          { userId: null }, // system categories
+          { userId: currentUserId }, // user categories
+        ],
       },
+
+      orderBy: [
+        { userId: "asc" }, // system first
+        { name: "asc" },
+      ],
     });
 
     res.status(200).json({
