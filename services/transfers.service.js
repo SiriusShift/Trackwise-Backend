@@ -65,55 +65,27 @@ export const getTransfers = async (userId, query) => {
     }),
   };
 
-  const totalCount = await prisma.transfer.count({ where: filters });
-
-  const transfers = await prisma.transfer.findMany({
-    where: filters,
-    orderBy: { date: "desc" },
-    select: {
-      id: true,
-      date: true,
-      description: true,
-      amount: true,
-      image: true,
-      isActive: true,
-      status: true,
-
-      category: {
-        select: {
-          id: true,
-          name: true,
-          type: true,
-          icon: true,
-        },
+  const [totalCount, transfers] = await Promise.all([
+    prisma.transfer.count({ where: filters }),
+    prisma.transfer.findMany({
+      where: filters,
+      orderBy: { date: "desc" },
+      include: {
+        category: true, 
+        toAsset: true,
+        fromAsset: true,
+        recurringTemplate: true,
       },
+      skip,
+      take: size,
+    }),
+  ]);
 
-      fromAsset: {
-        select: { id: true, name: true, balance: true },
-      },
-
-      toAsset: {
-        select: { id: true, name: true, balance: true },
-      },
-
-      transactionHistory: {
-        where: { isActive: true },
-        select: {
-          id: true,
-          transactionType: true,
-          amount: true,
-          description: true,
-          date: true,
-          fromAsset: true,
-          toAsset: true,
-          image: true,
-        },
-      },
-    },
-    skip,
-    take: size,
-  });
-
+  const data = transfers.map((transfer) => ({
+    ...transfer,
+    type: "Transfer",
+    remainingBalance: Number(transfer.amount),
+  }));
   return {
     data: transfers,
     totalCount,
@@ -143,16 +115,13 @@ export const postTransfer = async (userId, data, file) => {
     }
   }
 
-  const image = file
-    ? await uploadFileToS3(file, "Transfer", userId)
-    : null;
+  const image = file ? await uploadFileToS3(file, "Transfer", userId) : null;
 
   const transfer = await prisma.transfer.create({
     data: {
       amount,
       description: data.description,
-      status:
-        new Date(data.date) > new Date() ? "Pending" : "Completed",
+      status: new Date(data.date) > new Date() ? "Pending" : "Completed",
 
       category: {
         connect: { id: categoryId },
@@ -218,9 +187,7 @@ export const postPayment = async (userId, data, id, file) => {
 
   const transfer = await validateTransfers(id);
 
-  const image = file
-    ? await uploadFileToS3(file, "Transfer", userId)
-    : null;
+  const image = file ? await uploadFileToS3(file, "Transfer", userId) : null;
 
   await prisma.transactionHistory.create({
     data: {
@@ -270,8 +237,7 @@ export const getTransferGraph = async (userId, query) => {
   const trend =
     trendData.length >= 2 && trendData[0].total
       ? (
-          ((Number(trendData[1].total) -
-            Number(trendData[0].total)) /
+          ((Number(trendData[1].total) - Number(trendData[0].total)) /
             Number(trendData[0].total)) *
           100
         ).toFixed(2)
@@ -283,9 +249,7 @@ export const getTransferGraph = async (userId, query) => {
     _sum: { amount: true },
   });
 
-  const transferIds = transferGroups
-    .map((e) => e.transferId)
-    .filter(Boolean);
+  const transferIds = transferGroups.map((e) => e.transferId).filter(Boolean);
 
   const transfers = await prisma.transfer.findMany({
     where: { id: { in: transferIds } },
@@ -299,7 +263,7 @@ export const getTransferGraph = async (userId, query) => {
         categoryId: t.categoryId,
         categoryName: t.category?.name ?? "Unknown",
       },
-    ])
+    ]),
   );
 
   const categoryTotals = transferGroups.reduce((acc, item) => {

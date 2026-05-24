@@ -93,7 +93,7 @@ export const getAllExpenseLimit = async (req, res, next) => {
     const result = categoryTracker.map(({ id, category, limit }) => {
       const totalExpense =
         category?.expenses?.reduce((expenseAcc, expense) => {
-          return expenseAcc + expense.amount;
+          return Number(expenseAcc) + Number(expense.amount);
         }, 0) || 0;
 
       return {

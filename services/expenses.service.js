@@ -47,11 +47,11 @@ export const getExpenses = async (userId, query) => {
     isActive: true,
     ...(startDate &&
       endDate && {
-      date: {
-        gte: new Date(startDate),
-        lte: new Date(endDate),
-      },
-    }),
+        date: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+      }),
     ...(search && {
       description: {
         startsWith: search,
@@ -66,7 +66,6 @@ export const getExpenses = async (userId, query) => {
     }),
   };
 
-
   const [totalCount, expenses] = await Promise.all([
     prisma.expense.count({ where: filters }),
     prisma.expense.findMany({
@@ -76,7 +75,8 @@ export const getExpenses = async (userId, query) => {
         category: true,
         asset: true,
         recurringTemplate: true,
-      }, skip,
+      },
+      skip,
       take: size,
     }),
   ]);
@@ -84,8 +84,7 @@ export const getExpenses = async (userId, query) => {
   const data = expenses.map((expense) => ({
     ...expense,
     type: "Expense",
-    remainingBalance:
-      Number(expense.amount)
+    remainingBalance: Number(expense.amount),
   }));
 
   return {
@@ -104,7 +103,7 @@ export const postExpense = async (userId, data, file) => {
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
   const assetId = Number(data.account);
-  const date = new Date(data.date)
+  const date = new Date(data.date);
 
   await validateCategory(categoryId);
 
@@ -116,9 +115,7 @@ export const postExpense = async (userId, data, file) => {
     }
   }
 
-  const image = file
-    ? await uploadFileToS3(file, "Expense", userId)
-    : null;
+  const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
 
   const expense = await prisma.expense.create({
     data: {
@@ -129,7 +126,7 @@ export const postExpense = async (userId, data, file) => {
       category: { connect: { id: categoryId } },
       ...(assetId && { asset: { connect: { id: assetId } } }),
       user: { connect: { id: userId } },
-      ...(image && { image })
+      ...(image && { image }),
     },
   });
 
@@ -205,9 +202,7 @@ export const postPayment = async (userId, data, id, file) => {
   const amount = Number(data.amount);
   const assetId = Number(data.from);
 
-  const image = file
-    ? await uploadFileToS3(file, "Expense", userId)
-    : null;
+  const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
 
   // const aggregate = await prisma.transactionHistory.aggregate({
   //   where: {
@@ -244,7 +239,6 @@ export const postPayment = async (userId, data, id, file) => {
   return true;
 };
 
-
 export const getGraph = async (userId, query) => {
   const { startDate, endDate, mode } = query;
 
@@ -268,8 +262,8 @@ export const getGraph = async (userId, query) => {
       FROM "Expense"
       WHERE
         "date" >= '${moment(startDate)
-        .subtract(1, "month")
-        .toISOString()}'::timestamp
+          .subtract(1, "month")
+          .toISOString()}'::timestamp
         AND "date" <= '${endDate}'::timestamp
         AND "isActive" = true
         AND "userId" = ${userIdNum}
@@ -280,11 +274,10 @@ export const getGraph = async (userId, query) => {
     const trend =
       trendData.length >= 2 && trendData[0]?.total
         ? (
-          ((Number(trendData[1].total) -
-            Number(trendData[0].total)) /
-            Number(trendData[0].total)) *
-          100
-        ).toFixed(2)
+            ((Number(trendData[1].total) - Number(trendData[0].total)) /
+              Number(trendData[0].total)) *
+            100
+          ).toFixed(2)
         : "0.00";
 
     /* ---------------- CATEGORY TOTALS ---------------- */
@@ -309,27 +302,32 @@ export const getGraph = async (userId, query) => {
       select: {
         id: true,
         name: true,
+        color: true,
       },
     });
 
     const categoryMap = new Map(
       categories.map((category) => [
         category.id,
-        category.name,
-      ])
+        {
+          name: category.name,
+          color: category.color,
+        },
+      ]),
     );
 
-    const data = expenseGroups.map((item) => ({
-      categoryId: item.categoryId,
-      categoryName:
-        categoryMap.get(item.categoryId) || "Unknown",
-      total: Number(item._sum.amount || 0),
-    }));
+    const data = expenseGroups.map((item) => {
+      const category = categoryMap.get(item.categoryId);
 
-    const totalExpense = data.reduce(
-      (sum, item) => sum + item.total,
-      0
-    );
+      return {
+        categoryId: item.categoryId,
+        categoryName: category?.name || "Unknown",
+        color: category?.color || "#ccc",
+        total: Number(item._sum.amount || 0),
+      };
+    });
+
+    const totalExpense = data.reduce((sum, item) => sum + item.total, 0);
 
     /* ---------------- RESPONSE ---------------- */
     return {

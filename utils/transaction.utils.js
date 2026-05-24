@@ -1,25 +1,28 @@
-import { validateAsset, getAssetBalance } from "../services/assets.service.js";
+import { getAssetBalance } from "../services/assets.service.js";
 
-export const determineTransactionStatus = async (type, auto, fromAssetId, amount, userId) => {
-  console.log("test!")
-  if (!auto) {
+export const determineTransactionStatus = async (
+  type,
+  behaviour,
+  fromAssetId,
+  amount,
+  userId
+) => {
+  // 1. Not executed yet
+  if (behaviour === "REMIND") {
     return "Pending";
   }
 
-  // Income always succeeds (adds money)
+  // 2. Income (no balance validation needed)
   if (type === "Income") {
-    return "Received";
+    return "Completed";
   }
 
-  // Check balance for Expense and Transfer
-  const asset = await getAssetBalance(userId,fromAssetId);
+  // 3. Expense + Transfer require balance check
+  const asset = await getAssetBalance(userId, fromAssetId);
 
-  console.log(asset.balance, amount);
-  if (asset.balance < amount) {
+  if (!asset || asset.balance < amount) {
     return "Failed";
   }
-  if (type === "Expense") {
-    return "Paid";
-  }
+
   return "Completed";
 };

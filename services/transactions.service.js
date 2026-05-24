@@ -226,7 +226,7 @@ export const getStatistics = async (userId, data) => {
     .startOf(mode)
     .toDate();
 
-  const prevEnd = moment(endDate)
+  const prevEnd = moment(endDate) 
     .clone()
     .subtract(1, mode)
     .endOf(mode)
@@ -247,35 +247,51 @@ export const getStatistics = async (userId, data) => {
   | Assets
   |--------------------------------------------------------------------------
   */
-  const [assetsResult, assets] = await Promise.all([
+  const [assetsResult, assets, assetIncomes, assetExpenses] = await Promise.all([
     prisma.asset.aggregate({
-      _sum: {
-        balance: true,
-      },
-      where: {
-        isActive: true,
-        userId,
-      },
+      _sum: { balance: true },
+      where: { isActive: true, userId },
     }),
 
     prisma.asset.findMany({
-      where: {
-        isActive: true,
-        userId,
-      },
-      select: {
-        name: true,
-        balance: true,
-        color: true
-      },
+      where: { isActive: true, userId },
+      select: { id: true, name: true, balance: true, color: true },
+    }),
+
+    // All-time income grouped by asset
+    prisma.income.groupBy({
+      by: ["assetId"],
+      _sum: { amount: true },
+      where: { userId, isActive: true },
+    }),
+
+    // All-time expense grouped by asset
+    prisma.expense.groupBy({
+      by: ["assetId"],
+      _sum: { amount: true },
+      where: { userId, isActive: true },
     }),
   ]);
 
-  const assetBreakdown = assets.map((item) => ({
-    name: item.name,
-    balance: Number(item.balance),
-    color: item.color
-  }));
+  // Build lookup maps for O(1) access
+  const incomeByAsset = Object.fromEntries(
+    assetIncomes.map((r) => [r.assetId, Number(r._sum.amount ?? 0)])
+  );
+  const expenseByAsset = Object.fromEntries(
+    assetExpenses.map((r) => [r.assetId, Number(r._sum.amount ?? 0)])
+  );
+
+  const assetBreakdown = assets.map((asset) => {
+    const initial = Number(asset.balance);
+    const income  = incomeByAsset[asset.id]  ?? 0;
+    const expense = expenseByAsset[asset.id] ?? 0;
+
+    return {
+      name:    asset.name,
+      color:   asset.color,
+      balance: initial + income - expense,   // dynamic total
+    };
+  });
 
   /*
   |--------------------------------------------------------------------------

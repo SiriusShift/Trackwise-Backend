@@ -12,6 +12,7 @@ enum Status {
   Completed
   Overdue
   Cancelled
+  Failed
 }
 
 enum Type {
