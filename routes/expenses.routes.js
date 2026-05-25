@@ -21,8 +21,8 @@ import {
 import {
   postRecurring,
   getRecurring,
-  transactRecurring,
   cancelRecurring,
+  confirmRecurring,
 } from "../controllers/recurring.controller.js";
 
 import { isLoggedIn } from "../middleware/validate.js";
@@ -59,27 +59,11 @@ router.route("/graph").get(isLoggedIn, catchAsync(getGraph));
 // Pay expense
 router
   .route("/pay/:id")
-  .patch(isLoggedIn, upload.single("image"), catchAsync(payExpense));
+  .patch(isLoggedIn, upload.single("image"), catchAsync(confirmRecurring));
 
-// Auto recurring transaction
-router
-  .route("/pay/auto/:id")
-  .post(isLoggedIn, catchAsync(transactRecurring));
 
-/*
-|--------------------------------------------------------------------------
-| Recurring Routes
-|--------------------------------------------------------------------------
-*/
 
-router
-  .route("/recurring")
-  .post(isLoggedIn, catchAsync(postRecurring))
-  .get(isLoggedIn, catchAsync(getRecurring));
 
-router
-  .route("/recurring/:id")
-  .patch(isLoggedIn, catchAsync(cancelRecurring));
 
 /*
 |--------------------------------------------------------------------------

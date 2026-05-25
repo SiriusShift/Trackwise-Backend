@@ -94,7 +94,7 @@ export const cancelRecurring = async (req, res) => {
 | Transact Recurring
 |--------------------------------------------------------------------------
 */
-export const transactRecurring = async (req, res) => {
+export const confirmRecurring = async (req, res) => {
   const { id } = req.params;
   const { type } = req.body;
 

@@ -15,7 +15,7 @@ import {
 import {
   postRecurring,
   getRecurring,
-  transactRecurring,
+  confirmRecurring,
 } from "../controllers/recurring.controller.js";
 
 const router = Router();
@@ -42,7 +42,7 @@ router
 /* ---------------- RECURRING ---------------- */
 router
   .route("/receive/auto/:id")
-  .post(isLoggedIn, catchAsync(transactRecurring));
+  .post(isLoggedIn, catchAsync(confirmRecurring));
 
 router
   .route("/recurring")

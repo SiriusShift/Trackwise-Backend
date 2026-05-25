@@ -16,6 +16,7 @@ import ExpenseRouter from "./expenses.routes.js";
 import TransferRouter from "./transfers.routes.js";
 
 import { isLoggedIn } from "../middleware/validate.js";
+import { cancelRecurring, confirmRecurring, editRecurring, getRecurring, postRecurring } from "../controllers/recurring.controller.js";
 
 const router = Router();
 
@@ -46,6 +47,25 @@ router.route("/statistics").get(isLoggedIn, catchAsync(getStatistics));
 router.route("/:id").patch(isLoggedIn, catchAsync(archiveTransaction));
 router.route("/due").get(isLoggedIn, catchAsync(dueTransactions))
 
+/*
+|--------------------------------------------------------------------------
+| Recurring Routes
+|--------------------------------------------------------------------------
+*/
+
+router
+  .route("/recurring")
+  .post(isLoggedIn, catchAsync(postRecurring))
+  .get(isLoggedIn, catchAsync(getRecurring));
+
+router
+  .route("/recurring/:id")
+  .patch(isLoggedIn, catchAsync(cancelRecurring))
+  .put(isLoggedIn, catchAsync(editRecurring));
+
+router
+  .route("/recurring/:id/confirm")
+  .post(isLoggedIn, catchAsync(confirmRecurring));
 /*
 |--------------------------------------------------------------------------
 | Child Routes

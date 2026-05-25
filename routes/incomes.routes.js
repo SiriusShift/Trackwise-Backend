@@ -15,7 +15,7 @@ import {
 import {
   postRecurring,
   getRecurring,
-  transactRecurring,
+  confirmRecurring,
 } from "../controllers/recurring.controller.js";
 
 const router = Router();
@@ -37,16 +37,6 @@ router
 
 router
   .route("/receive/:id")
-  .patch(isLoggedIn, upload.single("image"), catchAsync(collectIncome));
-
-router
-  .route("/receive/auto/:id")
-  .post(isLoggedIn, catchAsync(transactRecurring));
-
-/* ---------------- RECURRING ---------------- */
-router
-  .route("/recurring")
-  .post(isLoggedIn, catchAsync(postRecurring))
-  .get(isLoggedIn, catchAsync(getRecurring));
+  .patch(isLoggedIn, upload.single("image"), catchAsync(confirmRecurring));
 
 export default router;
