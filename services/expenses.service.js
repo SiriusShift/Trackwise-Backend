@@ -327,7 +327,7 @@ export const getGraph = async (userId, query) => {
       };
     });
 
-    const totalExpense = data.reduce((sum, item) => sum + item.total, 0);
+    const totalExpense = data.reduce((sum, item) => sum + item.total, 0).toFixed(2);
 
     /* ---------------- RESPONSE ---------------- */
     return {

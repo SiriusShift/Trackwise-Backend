@@ -322,7 +322,7 @@ export const getGraph = async (userId, query) => {
       };
     });
 
-    const totalIncome = data.reduce((sum, item) => sum + item.total, 0);
+    const totalIncome = data.reduce((sum, item) => sum + item.total, 0).toFixed(2);
 
     /* ---------------- RESPONSE ---------------- */
     return {

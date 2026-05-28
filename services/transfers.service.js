@@ -98,19 +98,15 @@ export const getTransfers = async (userId, query) => {
 export const postTransfer = async (userId, data, file) => {
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
-  const fromAssetId = Number(data.from);
+  const fromAssetId = Number(data.account);
   const toAssetId = Number(data.to);
 
   const category = await validateCategory(categoryId);
 
-  if (category.subType === "INTERNAL" && !toAssetId) {
-    throw new Error("Internal transfer requires destination asset");
-  }
-
   if (fromAssetId) {
     const asset = await validateAsset(fromAssetId, userId);
 
-    if (new Date(data.date) <= new Date() && asset.balance < amount) {
+    if ( asset.balance < amount) {
       throw new Error("Insufficient balance");
     }
   }
@@ -139,26 +135,6 @@ export const postTransfer = async (userId, data, file) => {
       user: { connect: { id: userId } },
     },
   });
-
-  if (new Date(data.date) <= new Date()) {
-    await prisma.transactionHistory.create({
-      data: {
-        transfer: { connect: { id: transfer.id } },
-        user: { connect: { id: userId } },
-        ...(fromAssetId && {
-          fromAsset: { connect: { id: fromAssetId } },
-        }),
-        ...(toAssetId && {
-          toAsset: { connect: { id: toAssetId } },
-        }),
-        transactionType: "Transfer",
-        amount,
-        description: data.description,
-        date: data.date,
-        image,
-      },
-    });
-  }
 
   return transfer;
 };
