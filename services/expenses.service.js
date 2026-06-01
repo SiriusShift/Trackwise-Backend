@@ -33,6 +33,7 @@ export const getExpenses = async (userId, query) => {
     pageIndex,
     pageSize,
     Categories,
+    Assets,
     startDate,
     endDate,
     status,
@@ -64,6 +65,11 @@ export const getExpenses = async (userId, query) => {
         in: JSON.parse(Categories),
       },
     }),
+    ...(Assets && {
+      assetId: {
+        in: JSON.parse(Assets)
+      }
+    })
   };
 
   const [totalCount, expenses] = await Promise.all([

@@ -33,49 +33,49 @@ export const validateAsset = async (assetId, userId) => {
 | Create Asset
 |--------------------------------------------------------------------------
 */
-  export const createAsset = async (
-    name,
-    balance,
-        currency,
-    type,
-    creditLimit,
-    color,
-    icon,
-    userId,
-  ) => {
-    try {
-      return await prisma.asset.create({
-        data: {
-          name,
-          balance: parseFloat(balance),
+export const createAsset = async (
+  name,
+  balance,
+  currency,
+  type,
+  creditLimit,
+  color,
+  icon,
+  userId,
+) => {
+  try {
+    return await prisma.asset.create({
+      data: {
+        name,
+        balance: parseFloat(balance),
 
-          ...(type && { type: type }),
-          ...(currency && { currency }),
+        ...(type && { type: type }),
+        ...(currency && { currency }),
 
-          ...(creditLimit && {
-            creditLimit: Number(creditLimit),
-          }),
+        ...(creditLimit && {
+          creditLimit: Number(creditLimit),
+        }),
 
-          ...(color && {
-            color,
-          }),
+        ...(color && {
+          color,
+        }),
 
-          ...(icon && {
-            icon,
-          }),
+        ...(icon && {
+          icon,
+        }),
 
-          user: {
-            connect: {
-              id: Number(userId),
-            },
+        user: {
+          connect: {
+            id: Number(userId),
           },
         },
-      });
-    } catch (err) {
-      console.error("createAsset error:", err);
-      throw new Error("Internal Server Error");
-    }
-  };
+      },
+    });
+  } catch (err) {
+    console.error("createAsset error:", err);
+    throw new Error("Internal Server Error");
+  }
+};
 
 /*
 |--------------------------------------------------------------------------
@@ -85,26 +85,29 @@ export const validateAsset = async (assetId, userId) => {
 export const getAsset = async (userId, id) => {
   try {
     const lastMonth = moment()
-      .subtract(1, "months")
+      .subtract(1, "month")
       .endOf("month")
       .toDate();
 
     const current = await getAssetBalance(userId, id);
     const previous = await getAssetBalance(userId, id, lastMonth);
 
-    const prevBalance = previous?.balance || 0;
+    const currentBalance = current?.remainingBalance ?? 0;
+    const prevBalance = previous?.remainingBalance ?? 0;
 
     const trend =
       prevBalance === 0
         ? 0
-        : (
-          ((current.balance - prevBalance) / prevBalance) *
-          100
-        ).toFixed(2);
+        : Number(
+            (
+              ((currentBalance - prevBalance) / prevBalance) *
+              100
+            ).toFixed(2)
+          );
 
     return {
       data: current.data,
-      balance: current.balance,
+      balance: currentBalance,
       trend,
     };
   } catch (err) {
@@ -141,6 +144,18 @@ export const getAssetBalance = async (userId, id, date) => {
             ...(date ? { date: { lte: date } } : {}),
           },
         },
+        sentTransfers: {
+          where: {
+            isActive: true,
+            ...(date ? { date: { lte: date } } : {}),
+          },
+        },
+        receivedTransfers: {
+          where: {
+            isActive: true,
+            ...(date ? { date: { lte: date } } : {}),
+          },
+        },
       },
     });
 
@@ -155,13 +170,29 @@ export const getAssetBalance = async (userId, id, date) => {
         0
       );
 
+      const totalTransferOut = asset.sentTransfers.reduce(
+        (sum, tx) => sum + Number(tx.amount),
+        0
+      );
+
+      const totalTransferIn = asset.receivedTransfers.reduce(
+        (sum, tx) => sum + Number(tx.amount),
+        0
+      );
+
       const remainingBalance =
-        Number(asset.balance) + totalIncomes - totalExpenses;
+        Number(asset.balance) +
+        totalIncomes -
+        totalExpenses -
+        totalTransferOut +
+        totalTransferIn;
 
       return {
         ...asset,
         totalExpenses,
         totalIncomes,
+        totalTransferOut,
+        totalTransferIn,
         remainingBalance,
       };
     });
@@ -173,7 +204,7 @@ export const getAssetBalance = async (userId, id, date) => {
 
     return {
       data,
-      balance: totalRemainingBalance,
+      remainingBalance: totalRemainingBalance,
     };
   } catch (err) {
     console.error("getAssetBalance error:", err);
