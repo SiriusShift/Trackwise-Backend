@@ -74,6 +74,10 @@ export const getAllExpenseLimit = async (req, res, next) => {
               where: {
                 isActive: true,
                 userId: parseInt(req.user.id),
+                date: {
+                  gte: start,
+                  lte: end,
+                }
               },
               select: {
                 id: true,
