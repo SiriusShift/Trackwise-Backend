@@ -211,7 +211,7 @@ export const getRecurring = async (userId, query) => {
       unit: true,
       isActive: true,
       endDate: true,
-      auto: true,
+      behaviour: true,
       generatedExpenses: true,
       generatedIncomes: true,
       generatedTransfers: true,
