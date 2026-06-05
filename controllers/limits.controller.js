@@ -89,12 +89,13 @@ export const getAllExpenseLimit = async (req, res, next) => {
             },
           },
         },
+        period: true
       },
     });
 
     // Calculate total expenses per category
     console.log(categoryTracker, "category!");
-    const result = categoryTracker.map(({ id, category, limit }) => {
+    const result = categoryTracker.map(({ id, category, limit, period }) => {
       const totalExpense =
         category?.expenses?.reduce((expenseAcc, expense) => {
           return Number(expenseAcc) + Number(expense.amount);
@@ -105,6 +106,7 @@ export const getAllExpenseLimit = async (req, res, next) => {
         category,
         value: Number(limit),
         total: totalExpense,
+        period: period
       };
     });
 
