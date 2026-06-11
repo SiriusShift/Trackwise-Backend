@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 import { validateCategory } from "./categories.service.js";
-import { validateAsset } from "./assets.service.js";
+import { getAssetBalance, validateAsset } from "./assets.service.js";
 import { uploadFileToS3, deleteFileFromS3 } from "./s3.service.js";
 
 const prisma = new PrismaClient();
@@ -42,11 +42,11 @@ export const getTransfers = async (userId, query) => {
     isActive: true,
     ...(startDate &&
       endDate && {
-        date: {
-          gte: new Date(startDate),
-          lte: new Date(endDate),
-        },
-      }),
+      date: {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      },
+    }),
     ...(search && {
       description: {
         startsWith: search,
@@ -71,7 +71,7 @@ export const getTransfers = async (userId, query) => {
       where: filters,
       orderBy: { date: "desc" },
       include: {
-        category: true, 
+        category: true,
         toAsset: true,
         fromAsset: true,
         recurringTemplate: true,
@@ -104,9 +104,9 @@ export const postTransfer = async (userId, data, file) => {
   const category = await validateCategory(categoryId);
 
   if (fromAssetId) {
-    const asset = await validateAsset(fromAssetId, userId);
+    const asset = await getAssetBalance(userId, fromAssetId);
 
-    if ( asset.balance < amount) {
+    if (asset.balance < amount) {
       throw new Error("Insufficient balance");
     }
   }
@@ -201,8 +201,8 @@ export const getTransferGraph = async (userId, query) => {
     FROM "TransactionHistory"
     WHERE
       "date" >= '${moment(startDate)
-        .subtract(1, "month")
-        .toISOString()}'::timestamp
+      .subtract(1, "month")
+      .toISOString()}'::timestamp
       AND "date" <= '${endDate}'::timestamp
       AND "isActive" = true
       AND "transactionType" = 'Transfer'
@@ -213,10 +213,10 @@ export const getTransferGraph = async (userId, query) => {
   const trend =
     trendData.length >= 2 && trendData[0].total
       ? (
-          ((Number(trendData[1].total) - Number(trendData[0].total)) /
-            Number(trendData[0].total)) *
-          100
-        ).toFixed(2)
+        ((Number(trendData[1].total) - Number(trendData[0].total)) /
+          Number(trendData[0].total)) *
+        100
+      ).toFixed(2)
       : "0.00";
 
   const transferGroups = await prisma.transactionHistory.groupBy({

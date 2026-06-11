@@ -2,7 +2,7 @@ import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 
 import { validateCategory } from "./categories.service.js";
-import { validateAsset } from "./assets.service.js";
+import { getAssetBalance, validateAsset } from "./assets.service.js";
 import { uploadFileToS3, deleteFileFromS3 } from "./s3.service.js";
 
 const prisma = new PrismaClient();
@@ -48,11 +48,11 @@ export const getExpenses = async (userId, query) => {
     isActive: true,
     ...(startDate &&
       endDate && {
-        date: {
-          gte: new Date(startDate),
-          lte: new Date(endDate),
-        },
-      }),
+      date: {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      },
+    }),
     ...(search && {
       description: {
         startsWith: search,
@@ -114,7 +114,7 @@ export const postExpense = async (userId, data, file) => {
   await validateCategory(categoryId);
 
   if (assetId) {
-    const asset = await validateAsset(assetId, userId);
+    const asset = await getAssetBalance(userId, assetId);
 
     if (date <= new Date() && asset.balance < amount) {
       throw new Error("Insufficient balance");
@@ -268,8 +268,8 @@ export const getGraph = async (userId, query) => {
       FROM "Expense"
       WHERE
         "date" >= '${moment(startDate)
-          .subtract(1, "month")
-          .toISOString()}'::timestamp
+        .subtract(1, "month")
+        .toISOString()}'::timestamp
         AND "date" <= '${endDate}'::timestamp
         AND "isActive" = true
         AND "userId" = ${userIdNum}
@@ -280,10 +280,10 @@ export const getGraph = async (userId, query) => {
     const trend =
       trendData.length >= 2 && trendData[0]?.total
         ? (
-            ((Number(trendData[1].total) - Number(trendData[0].total)) /
-              Number(trendData[0].total)) *
-            100
-          ).toFixed(2)
+          ((Number(trendData[1].total) - Number(trendData[0].total)) /
+            Number(trendData[0].total)) *
+          100
+        ).toFixed(2)
         : "0.00";
 
     /* ---------------- CATEGORY TOTALS ---------------- */
