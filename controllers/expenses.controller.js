@@ -134,8 +134,9 @@ export const getGraph = async (req, res) => {
 /* ---------------- GET BILLS ---------------- */
 export const getBills = async (req, res) => {
   try {
-    const response = await expenseService.getBills(req.user.id);
+    const response = await expenseService.getScheduledExpenses(req.user.id);
 
+    console.log('bills', response)
     return res.status(200).json({
       success: true,
       message: "Bills fetched successfully",

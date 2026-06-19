@@ -261,7 +261,11 @@ export const getStatistics = async (userId, data) => {
     }),
 
     prisma.asset.findMany({
-      where: { isActive: true, userId },
+      where: {
+        isActive: true, userId, balance: {
+          not: 0
+        }
+      },
       select: {
         id: true,
         name: true,
@@ -300,6 +304,7 @@ export const getStatistics = async (userId, data) => {
 
   console.log("Transfer out", transferOut)
   console.log("Transfer in", transferIn)
+  console.log("Assets", assets)
 
   // Build lookup maps for O(1) access
   const incomeByAsset = Object.fromEntries(
@@ -339,7 +344,7 @@ export const getStatistics = async (userId, data) => {
         transferOut +
         transferIn,
     };
-  });
+  }).filter((asset) => asset?.balance !== 0);
 
   /*
   |--------------------------------------------------------------------------

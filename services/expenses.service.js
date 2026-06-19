@@ -346,3 +346,43 @@ export const getGraph = async (userId, query) => {
     throw new Error("Internal server error");
   }
 };
+
+
+export const getScheduledExpenses = async (userId) => {
+  try {
+    const recurringExpenses = await prisma.recurringTransaction.findMany({
+      where: {
+        userId,
+        type: "Expense",
+        status: "ACTIVE",
+        isActive: true,
+      },
+      select: {
+        id: true,
+        description: true,
+        amount: true,
+        nextDueDate: true,
+        startDate: true,
+        interval: true,
+        unit: true,
+        behaviour: true,
+        category: {
+          select: {
+            id: true,
+            name: true,
+            icon: true,
+            color: true,
+          },
+        },
+      },
+      orderBy: {
+        nextDueDate: "asc",
+      },
+    });
+
+    return recurringExpenses;
+  } catch (err) {
+    console.error("getScheduledExpenses error:", err);
+    throw err;
+  }
+};

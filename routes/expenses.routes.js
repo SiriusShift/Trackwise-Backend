@@ -9,7 +9,6 @@ import {
   payExpense,
   updateExpense,
   getGraph,
-  // archiveExpense,
   getBills,
 } from "../controllers/expenses.controller.js";
 
@@ -60,6 +59,10 @@ router.route("/graph").get(isLoggedIn, catchAsync(getGraph));
 router
   .route("/pay/:id")
   .patch(isLoggedIn, upload.single("image"), catchAsync(confirmRecurring));
+
+router
+  .route("/bills")
+  .get(isLoggedIn, upload.single("image"), catchAsync(getBills));
 
 
 

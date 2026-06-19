@@ -41,27 +41,35 @@ export const getAllCategory = async (req, res, next) => {
     const categories = await prisma.categories.findMany({
       where: {
         isActive: true,
-
-        ...(type?.trim() && {
-          type,
-        }),
-
+        ...(type?.trim() && { type }),
         OR: [
-          { userId: null }, // system categories
-          { userId: currentUserId }, // user categories
+          { userId: null },
+          { userId: currentUserId },
         ],
       },
-
+      include: {
+        categoriesTracker: {
+          select: {
+            id: true,
+          },
+        },
+      },
       orderBy: [
-        { userId: "asc" }, // system first
+        { userId: "asc" },
         { name: "asc" },
       ],
     });
 
+    const formattedCategories = categories.map(
+      ({ categoriesTracker, ...category }) => ({
+        ...category,
+        hasTracker: categoriesTracker.length > 0,
+      })
+    );
     res.status(200).json({
       success: true,
       message: "Category fetched successfully",
-      data: categories,
+      data: formattedCategories,
     });
   } catch (error) {
     // Handle any errors

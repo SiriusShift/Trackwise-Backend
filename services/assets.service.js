@@ -99,11 +99,11 @@ export const getAsset = async (userId, id) => {
       prevBalance === 0
         ? 0
         : Number(
-            (
-              ((currentBalance - prevBalance) / prevBalance) *
-              100
-            ).toFixed(2)
-          );
+          (
+            ((currentBalance - prevBalance) / prevBalance) *
+            100
+          ).toFixed(2)
+        );
 
     return {
       data: current.data,
@@ -123,6 +123,14 @@ export const getAsset = async (userId, id) => {
 */
 export const getAssetBalance = async (userId, id, date) => {
   try {
+    const dateFilter = date
+      ? {
+        date: {
+          lte: new Date(date),
+        },
+      }
+      : {};
+
     const assets = await prisma.asset.findMany({
       where: {
         userId: Number(userId),
@@ -135,50 +143,35 @@ export const getAssetBalance = async (userId, id, date) => {
         incomes: {
           where: {
             isActive: true,
-            ...(date ? { date: { lte: date } } : {}),
+            ...dateFilter,
           },
         },
         expenses: {
           where: {
             isActive: true,
-            ...(date ? { date: { lte: date } } : {}),
+            ...dateFilter,
           },
         },
         sentTransfers: {
           where: {
             isActive: true,
-            ...(date ? { date: { lte: date } } : {}),
+            ...dateFilter,
           },
         },
         receivedTransfers: {
           where: {
             isActive: true,
-            ...(date ? { date: { lte: date } } : {}),
+            ...dateFilter,
           },
         },
       },
     });
 
-    const data = assets.map((asset) => {
-      const totalExpenses = asset.expenses.reduce(
-        (sum, tx) => sum + Number(tx.amount),
-        0
-      );
-
-      const totalIncomes = asset.incomes.reduce(
-        (sum, tx) => sum + Number(tx.amount),
-        0
-      );
-
-      const totalTransferOut = asset.sentTransfers.reduce(
-        (sum, tx) => sum + Number(tx.amount),
-        0
-      );
-
-      const totalTransferIn = asset.receivedTransfers.reduce(
-        (sum, tx) => sum + Number(tx.amount),
-        0
-      );
+    const data = assets.map(({ expenses, incomes, sentTransfers, receivedTransfers, ...asset }) => {
+      const totalExpenses = sumAmounts(expenses);
+      const totalIncomes = sumAmounts(incomes);
+      const totalTransferOut = sumAmounts(sentTransfers);
+      const totalTransferIn = sumAmounts(receivedTransfers);
 
       const remainingBalance =
         Number(asset.balance) +
@@ -211,3 +204,6 @@ export const getAssetBalance = async (userId, id, date) => {
     throw new Error("Internal Server Error");
   }
 };
+
+const sumAmounts = (transactions) =>
+  transactions.reduce((sum, tx) => sum + Number(tx.amount), 0);
