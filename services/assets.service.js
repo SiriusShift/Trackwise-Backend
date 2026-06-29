@@ -167,11 +167,26 @@ export const getAssetBalance = async (userId, id, date) => {
       },
     });
 
-    const data = assets.map(({ expenses, incomes, sentTransfers, receivedTransfers, ...asset }) => {
-      const totalExpenses = sumAmounts(expenses);
-      const totalIncomes = sumAmounts(incomes);
-      const totalTransferOut = sumAmounts(sentTransfers);
-      const totalTransferIn = sumAmounts(receivedTransfers);
+    const data = assets.map((asset) => {
+      const totalExpenses = asset.expenses.reduce(
+        (sum, tx) => sum + Number(tx.amount),
+        0
+      );
+
+      const totalIncomes = asset.incomes.reduce(
+        (sum, tx) => sum + Number(tx.amount),
+        0
+      );
+
+      const totalTransferOut = asset.sentTransfers.reduce(
+        (sum, tx) => sum + Number(tx.amount),
+        0
+      );
+
+      const totalTransferIn = asset.receivedTransfers.reduce(
+        (sum, tx) => sum + Number(tx.amount),
+        0
+      );
 
       const remainingBalance =
         Number(asset.balance) +

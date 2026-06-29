@@ -1,8 +1,8 @@
-import { prisma } from "../config/prisma.js"
+import { prisma } from "../config/prisma.js";
 
 export const addExpenseLimit = async (req, res, next) => {
   try {
-    const { amount, categoryId } = req.body;
+    const { amount, categoryId, period } = req.body;
     console.log(amount);
     const expenseLimit = await prisma.categoryTracker.findFirst({
       where: {
@@ -12,6 +12,7 @@ export const addExpenseLimit = async (req, res, next) => {
         user: {
           id: parseInt(req.user.id),
         },
+        period: period,
         isActive: true,
       },
     });
@@ -29,6 +30,7 @@ export const addExpenseLimit = async (req, res, next) => {
             id: categoryId,
           },
         },
+        period: period,
         user: {
           connect: {
             id: parseInt(req.user.id),
