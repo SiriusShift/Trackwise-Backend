@@ -120,6 +120,7 @@ model Expense {
   assetId       Int?
   recurringId   Int?
   installmentId Int?
+    recurringDueDate DateTime?
 
   user              User                  @relation(fields: [userId], references: [id])
   category          Categories            @relation(fields: [categoryId], references: [id])

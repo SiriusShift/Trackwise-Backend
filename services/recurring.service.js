@@ -18,9 +18,10 @@ const prisma = new PrismaClient();
 |--------------------------------------------------------------------------
 */
 export const postRecurring = async (userId, data) => {
+  console.log(data, "DATA!")
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
-  const assetFromId = Number(data?.account?.id);  
+  const assetFromId = Number(data?.account);
   const assetToId = Number(data?.to?.id);
   const isAuto = data.behaviour === "AUTO_LOG";
   const type = data?.type;
@@ -132,13 +133,15 @@ export const postRecurring = async (userId, data) => {
     if (!model) {
       throw new Error("Invalid transaction type");
     }
-let transaction = null;
+    let transaction = null;
 
-if (isAuto) {
-  transaction = await model.create({
-    data: transformedData,
-  });
-}
+    if (isAuto) {
+      if (isAuto && moment(data.date).isSame(moment(), "day")) {
+        transaction = await model.create({
+          data: transformedData,
+        });
+      }
+    }
 
     return transaction;
   } catch (err) {
@@ -166,11 +169,11 @@ export const getRecurring = async (userId, query) => {
     ...(type ? { type } : {}),
     ...(startDate && endDate
       ? {
-          nextDueDate: {
-            gte: new Date(startDate),
-            lte: new Date(endDate),
-          },
-        }
+        nextDueDate: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+      }
       : {}),
   };
 
@@ -324,4 +327,30 @@ export const transactRecurring = async (userId, id, type) => {
     success: true,
     transaction,
   };
+};
+
+
+export const transactBill = async (id) => {
+  try {
+    const recurring = await prisma.recurringTransaction.findFirst({
+      where: {
+        id: Number(id)
+      }
+    })
+    await prisma.recurringTransaction.update({
+      where: {
+        id: Number(id)
+      },
+      data: {
+        nextDueDate: moment(recurring?.nextDueDate).add(1, "month")
+      }
+    })
+    return {
+      success: true,
+    };
+  } catch (err) {
+    console.error("Transact bill error:", err);
+    throw new Error("Internal server error");
+  }
+
 };

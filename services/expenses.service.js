@@ -1,9 +1,9 @@
 import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 
+import { getAssetBalance } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
-import { getAssetBalance, validateAsset } from "./assets.service.js";
-import { uploadFileToS3, deleteFileFromS3 } from "./s3.service.js";
+import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
 const prisma = new PrismaClient();
 
@@ -105,11 +105,12 @@ export const getExpenses = async (userId, query) => {
 | Create Expense
 |--------------------------------------------------------------------------
 */
-export const postExpense = async (userId, data, file) => {
+export const postExpense = async (userId, data, file, id) => {
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
   const assetId = Number(data.account);
   const date = new Date(data.date);
+  const recurringId = Number(id);
 
   await validateCategory(categoryId);
 
@@ -127,12 +128,13 @@ export const postExpense = async (userId, data, file) => {
     data: {
       amount,
       description: data.description,
-      status: date > new Date() ? "Pending" : "Completed",
+      status: "Completed",
       date: data.date,
       category: { connect: { id: categoryId } },
       ...(assetId && { asset: { connect: { id: assetId } } }),
       user: { connect: { id: userId } },
       ...(image && { image }),
+      ...(recurringId && { recurringTemplate: { connect: { id: recurringId } } })
     },
   });
 
@@ -348,10 +350,52 @@ export const getGraph = async (userId, query) => {
 };
 
 
-export const getScheduledExpenses = async (userId) => {
+export const getScheduledExpenses = async (userId, data) => {
   try {
     const recurringExpenses = await prisma.recurringTransaction.findMany({
       where: {
+        userId,
+        type: "Expense",
+        status: "ACTIVE",
+        isActive: true,
+        ...(data.dateFrom || data.dateTo
+          ? {
+            nextDueDate: {
+              ...(data.dateFrom && { gte: data.dateFrom }),
+              ...(data.dateTo && { lte: data.dateTo }),
+            },
+          }
+          : {}),
+      },
+      select: {
+        id: true,
+        description: true,
+        amount: true,
+        nextDueDate: true,
+        category: {
+          select: {
+            name: true,
+            icon: true,
+          },
+        },
+      },
+      orderBy: {
+        nextDueDate: "asc",
+      },
+    });
+
+    return recurringExpenses;
+  } catch (error) {
+    console.error("getScheduledExpenses error:", error);
+    throw error;
+  }
+};
+
+export const getScheduledExpense = async (userId, id) => {
+  try {
+    const recurringExpenses = await prisma.recurringTransaction.findFirst({
+      where: {
+        id: Number(id),
         userId,
         type: "Expense",
         status: "ACTIVE",
@@ -366,6 +410,7 @@ export const getScheduledExpenses = async (userId) => {
         interval: true,
         unit: true,
         behaviour: true,
+        fromAsset: true,
         category: {
           select: {
             id: true,
@@ -380,9 +425,48 @@ export const getScheduledExpenses = async (userId) => {
       },
     });
 
-    return recurringExpenses;
-  } catch (err) {
-    console.error("getScheduledExpenses error:", err);
-    throw err;
+    const asset = await getAssetBalance(userId, recurringExpenses.fromAsset?.id);
+
+    return {
+      ...recurringExpenses,
+      fromAsset: {
+        ...recurringExpenses.fromAsset,
+        remainingBalance: asset?.remainingBalance,
+      },
+    };
+
+  } catch (error) {
+    console.error("getScheduledExpenses error:", error);
+    throw error;
   }
 };
+
+export const getBillPayments = async (id) => {
+  try {
+    const history = await prisma.expense.findMany({
+      where: {
+        recurringId: Number(id)
+      }
+    })
+
+    return history
+  } catch (error) {
+    console.error("Bill payment history error:", error);
+    throw new Error("Internal server error");
+  }
+}
+
+export const postBillPayment = async (id) => {
+  try {
+    const history = await prisma.expense.findMany({
+      where: {
+        recurringId: Number(id)
+      }
+    })
+
+    return history
+  } catch (error) {
+    console.error("Bill payment history error:", error);
+    throw new Error("Internal server error");
+  }
+}

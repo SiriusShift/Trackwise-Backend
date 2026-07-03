@@ -4,12 +4,14 @@ import multer from "multer";
 import catchAsync from "../utils/catchAsync.js";
 
 import {
-  postExpense,
-  getExpenses,
-  payExpense,
-  updateExpense,
-  getGraph,
+  getBill,
+  getBillPayments,
   getBills,
+  getExpenses,
+  getGraph,
+  postBillPayment,
+  postExpense,
+  updateExpense
 } from "../controllers/expenses.controller.js";
 
 // import {
@@ -17,12 +19,6 @@ import {
 //   getInstallmentController,
 // } from "../controllers/installments.controller.js";
 
-import {
-  postRecurring,
-  getRecurring,
-  cancelRecurring,
-  confirmRecurring,
-} from "../controllers/recurring.controller.js";
 
 import { isLoggedIn } from "../middleware/validate.js";
 
@@ -57,14 +53,20 @@ router.route("/graph").get(isLoggedIn, catchAsync(getGraph));
 
 // Pay expense
 router
-  .route("/pay/:id")
-  .patch(isLoggedIn, upload.single("image"), catchAsync(confirmRecurring));
+  .route("/bills/:id")
+  .post(isLoggedIn, catchAsync(postBillPayment));
 
 router
   .route("/bills")
-  .get(isLoggedIn, upload.single("image"), catchAsync(getBills));
+  .get(isLoggedIn, catchAsync(getBills));
 
+router
+  .route("/bills/:id")
+  .get(isLoggedIn, catchAsync(getBill));
 
+router
+  .route("/bills/:id/history")
+  .get(isLoggedIn, catchAsync(getBillPayments));
 
 
 
