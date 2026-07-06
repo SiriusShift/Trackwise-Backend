@@ -376,6 +376,7 @@ export const getScheduledExpenses = async (userId, data) => {
           select: {
             name: true,
             icon: true,
+            color: true
           },
         },
       },
