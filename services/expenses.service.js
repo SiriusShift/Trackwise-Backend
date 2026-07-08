@@ -171,11 +171,9 @@ export const updateExpense = async (userId, data, file, id) => {
     data: {
       amount,
       description: data.description,
-      status: new Date(data.date) > new Date() ? "Pending" : "Paid",
       date: data.date,
       category: { connect: { id: categoryId } },
       ...(assetId && { asset: { connect: { id: assetId } } }),
-      user: { connect: { id: userId } },
       updatedAt: new Date(),
     },
   });
@@ -259,6 +257,7 @@ export const getGraph = async (userId, query) => {
       gte: new Date(startDate),
       lte: new Date(endDate),
     },
+    status: "Completed"
   };
 
   try {
@@ -357,6 +356,7 @@ export const getScheduledExpenses = async (userId, data) => {
         userId,
         type: "Expense",
         status: "ACTIVE",
+        behaviour: "REMIND",
         isActive: true,
         ...(data.dateFrom || data.dateTo
           ? {
@@ -446,28 +446,55 @@ export const getBillPayments = async (id) => {
   try {
     const history = await prisma.expense.findMany({
       where: {
-        recurringId: Number(id)
-      }
-    })
+        recurringId: Number(id),
+        status: {
+          in: ["Completed", "Skipped"],
+        },
+      },
+      orderBy: {
+        recurringDueDate: "desc", // or date: "desc"
+      },
+    });
 
-    return history
+    return history;
   } catch (error) {
     console.error("Bill payment history error:", error);
     throw new Error("Internal server error");
   }
-}
+};
 
-export const postBillPayment = async (id) => {
+
+export const skipBillPayment = async (id) => {
   try {
-    const history = await prisma.expense.findMany({
+    const recurring = await prisma.recurringTransaction.findUnique({
       where: {
-        recurringId: Number(id)
-      }
-    })
+        id: Number(id),
+      },
+    });
 
-    return history
+    if (!recurring) {
+      throw new Error("Recurring transaction not found.");
+    }
+
+    const entry = await prisma.expense.create({
+      data: {
+        userId: recurring.userId,
+        categoryId: recurring.categoryId,
+
+        recurringId: recurring.id,
+
+        date: moment(),
+        recurringDueDate: recurring.nextDueDate,
+
+        description: recurring.description,
+        amount: recurring.amount,
+        status: "Skipped",
+      },
+    });
+
+    return entry;
   } catch (error) {
-    console.error("Bill payment history error:", error);
+    console.error("Skip bill error:", error);
     throw new Error("Internal server error");
   }
-}
+};

@@ -219,3 +219,26 @@ export const postBillPayment = async (req, res) => {
     });
   }
 };
+
+export const skipBillPayment = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const response = await expenseService.skipBillPayment(
+      id
+    );
+    await recurringService.transactBill(id)
+    return res.status(200).json({
+      success: true,
+      message: "Bill paid successfully",
+      data: response,
+    });
+  } catch (error) {
+    console.error("Error while fetching bills:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+    });
+  }
+};

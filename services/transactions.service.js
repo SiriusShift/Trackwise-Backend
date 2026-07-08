@@ -1,14 +1,13 @@
 import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 
-import { validateAsset } from "./assets.service.js";
-import { validateTransfers } from "./transfers.service.js";
 import { validateExpense } from "./expenses.service.js";
 import { validateIncome } from "./incomes.service.js";
+import { validateTransfers } from "./transfers.service.js";
 
 import {
-  uploadFileToS3,
   deleteFileFromS3,
+  uploadFileToS3,
 } from "../services/s3.service.js";
 
 const prisma = new PrismaClient();
@@ -43,6 +42,7 @@ export const getHistory = async (userId, request) => {
   const filters = {
     isActive: true,
     userId: Number(userId),
+    status: "Completed"
   };
 
   /*
@@ -283,7 +283,7 @@ export const getStatistics = async (userId, data) => {
     prisma.expense.groupBy({
       by: ["assetId"],
       _sum: { amount: true },
-      where: { userId, isActive: true },
+      where: { userId, isActive: true, status: "Completed" },
     }),
 
     prisma.transfer.groupBy({
@@ -432,6 +432,7 @@ export const getStatistics = async (userId, data) => {
         userId,
         isActive: true,
         date: dateFilter,
+        status: "Completed"
       },
     }),
 
@@ -454,6 +455,8 @@ export const getStatistics = async (userId, data) => {
         userId,
         isActive: true,
         date: prevDateFilter,
+        status: "Completed"
+
       },
     }),
 
@@ -473,7 +476,8 @@ export const getStatistics = async (userId, data) => {
       },
       where: {
         userId,
-        isActive: true,
+        isActive: true, status: "Completed"
+
       },
     }),
 
@@ -499,7 +503,8 @@ export const getStatistics = async (userId, data) => {
         isActive: true,
         date: {
           lte: prevEnd,
-        },
+        }, status: "Completed"
+
       },
     }),
 
@@ -663,40 +668,40 @@ export const archiveTransaction = async (type, id) => {
 };
 
 
-export const getDueTransactions = async (userId) => {
-  try {
-    const expenses = await prisma.expense.findMany({
-      where: {
-        userId,
-        isActive: true,
-        status: {
-          not: "Completed",
-        },
-      },
-      include: {
-        category: true,
-        asset: true,
-      },
-    });
+// export const getDueTransactions = async (userId) => {
+//   try {
+//     const expenses = await prisma.expense.findMany({
+//       where: {
+//         userId,
+//         isActive: true,
+//         status: {
+//           not: "Completed",
+//         },
+//       },
+//       include: {
+//         category: true,
+//         asset: true,
+//       },
+//     });
 
-    return expenses.sort((a, b) => {
-      const priority = {
-        overdue: 1,
-        partial: 2,
-        pending: 3,
-      };
+//     return expenses.sort((a, b) => {
+//       const priority = {
+//         overdue: 1,
+//         partial: 2,
+//         pending: 3,
+//       };
 
-      return (
-        (priority[a.status?.toLowerCase()] ?? 99) -
-        (priority[b.status?.toLowerCase()] ?? 99) ||
-        new Date(a.date) - new Date(b.date)
-      );
-    });
-  } catch (err) {
-    console.error("getDueTransactions error:", err);
-    throw new Error("Internal server error");
-  }
-};
+//       return (
+//         (priority[a.status?.toLowerCase()] ?? 99) -
+//         (priority[b.status?.toLowerCase()] ?? 99) ||
+//         new Date(a.date) - new Date(b.date)
+//       );
+//     });
+//   } catch (err) {
+//     console.error("getDueTransactions error:", err);
+//     throw new Error("Internal server error");
+//   }
+// };
 
 /*
 |--------------------------------------------------------------------------

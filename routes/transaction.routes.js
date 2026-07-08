@@ -1,22 +1,21 @@
 import { Router } from "express";
 import multer from "multer";
 
-import catchAsync from "../utils/catchAsync.js";
 import {
-  getHistory,
-  editHistory,
-  deleteHistory,
-  getStatistics,
   archiveTransaction,
-  dueTransactions,
+  deleteHistory,
+  editHistory,
+  getHistory,
+  getStatistics
 } from "../controllers/transactions.controller.js";
+import catchAsync from "../utils/catchAsync.js";
 
-import IncomeRouter from "./incomes.routes.js";
 import ExpenseRouter from "./expenses.routes.js";
+import IncomeRouter from "./incomes.routes.js";
 import TransferRouter from "./transfers.routes.js";
 
-import { isLoggedIn } from "../middleware/validate.js";
 import { cancelRecurring, confirmRecurring, editRecurring, getRecurring, postRecurring } from "../controllers/recurring.controller.js";
+import { isLoggedIn } from "../middleware/validate.js";
 
 const router = Router();
 
@@ -45,7 +44,7 @@ router.route("/delete/:id").patch(isLoggedIn, catchAsync(deleteHistory));
 router.route("/statistics").get(isLoggedIn, catchAsync(getStatistics));
 
 router.route("/:id").patch(isLoggedIn, catchAsync(archiveTransaction));
-router.route("/due").get(isLoggedIn, catchAsync(dueTransactions))
+// router.route("/due").get(isLoggedIn, catchAsync(dueTransactions))
 
 /*
 |--------------------------------------------------------------------------

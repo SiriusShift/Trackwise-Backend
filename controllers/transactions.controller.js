@@ -120,25 +120,25 @@ export const archiveTransaction = async (req, res) => {
 
 /* ---------------- DUE ---------------- */
 
-export const dueTransactions = async (req, res) => {
-  const { id } = req.params;
+// export const dueTransactions = async (req, res) => {
+//   const { id } = req.params;
 
-  try {
-    const response = await transactionService.getDueTransactions(
-      req.user.id
-    );
+//   try {
+//     const response = await transactionService.getDueTransactions(
+//       req.user.id
+//     );
 
-    return res.status(200).json({
-      success: true,
-      message: "Due transactions successfully fetched",
-      ...response
-    });
-  } catch (error) {
-    console.error("archiveTransaction error:", error);
+//     return res.status(200).json({
+//       success: true,
+//       message: "Due transactions successfully fetched",
+//       ...response
+//     });
+//   } catch (error) {
+//     console.error("archiveTransaction error:", error);
 
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
+//     return res.status(500).json({
+//       success: false,
+//       message: "Internal server error",
+//     });
+//   }
+// };

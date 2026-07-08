@@ -10,9 +10,7 @@ datasource db {
 enum Status {
   Pending
   Completed
-  Overdue
-  Cancelled
-  Failed
+  Skipped
 }
 
 enum Type {

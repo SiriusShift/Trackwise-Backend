@@ -11,6 +11,7 @@ import {
   getGraph,
   postBillPayment,
   postExpense,
+  skipBillPayment,
   updateExpense
 } from "../controllers/expenses.controller.js";
 
@@ -53,8 +54,12 @@ router.route("/graph").get(isLoggedIn, catchAsync(getGraph));
 
 // Pay expense
 router
-  .route("/bills/:id")
+  .route("/bills/:id/pay")
   .post(isLoggedIn, catchAsync(postBillPayment));
+
+router
+  .route("/bills/:id/skip")
+  .patch(isLoggedIn, catchAsync(skipBillPayment));
 
 router
   .route("/bills")
