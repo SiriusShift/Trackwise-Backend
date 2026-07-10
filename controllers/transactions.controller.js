@@ -98,6 +98,7 @@ export const getStatistics = async (req, res) => {
 export const archiveTransaction = async (req, res) => {
   const { id } = req.params;
 
+  console.log(req.query, "QUERY!")
   try {
     await transactionService.archiveTransaction(
       req.query.type,

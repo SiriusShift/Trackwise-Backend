@@ -1,181 +1,123 @@
 import { PrismaClient } from "@prisma/client";
 import moment from "moment";
-import momentTz from "moment-timezone";
 import cron from "node-cron";
+import { getAssetBalance } from "../services/assets.service.js";
 
 const prisma = new PrismaClient();
 
-/* -------------------------------
-   1️⃣ OVERDUE CHECK (DAILY 12AM)
--------------------------------- */
-cron.schedule("0 0 * * *", async () => {
-  const today = moment().startOf("day");
 
-  console.log("🔍 Running overdue check...");
-
-  const models = [
-    { name: "expense", model: prisma.expense },
-    { name: "income", model: prisma.income },
-    { name: "transfer", model: prisma.transfer },
-  ];
-
-  try {
-    for (const { name, model } of models) {
-      const pendingItems = await model.findMany({
-        where: {
-          recurringId: { not: null },
-          isActive: true,
-          status: "Pending",
-        },
-      });
-
-      for (const item of pendingItems) {
-        const dueDate = moment(item.date).startOf("day");
-
-        if (dueDate.isBefore(today)) {
-          await model.update({
-            where: { id: item.id },
-            data: { status: "Overdue" },
-          });
-
-          console.log(`✅ ${name} ${item.id} marked Overdue`);
-        }
-      }
-    }
-
-    console.log("✅ Overdue check completed");
-  } catch (err) {
-    console.error("❌ Overdue cron error:", err);
-  }
-});
-
-/* ----------------------------------------
-   2️⃣ RECURRING TRANSACTIONS (HOURLY)
------------------------------------------ */
-cron.schedule("0 * * * *", async () => {
+cron.schedule("0 * * * *", async () => { // hourly — see reasoning below
   console.log("⏰ Running recurring transactions...");
 
-  try {
-    const users = await prisma.settings.findMany({
-      select: { userId: true, timezone: true },
+  const users = await prisma.settings.findMany({
+    select: { userId: true, timezone: true },
+  });
+
+  for (const { userId, timezone = "UTC" } of users) {
+    const todayLocal = moment().tz(timezone).startOf("day");
+
+    const recurringList = await prisma.recurringTransaction.findMany({
+      where: { isActive: true, userId, status: "ACTIVE" },
     });
 
-    const modelMap = {
-      Expense: prisma.expense,
-      Income: prisma.income,
-      Transfer: prisma.transfer,
-    };
+    for (const item of recurringList) {
+      try {
+        const nextDueLocal = moment(item.nextDueDate).tz(timezone).startOf("day");
+        if (!todayLocal.isSameOrAfter(nextDueLocal)) continue;
 
-    for (const { userId, timezone = "UTC" } of users) {
-      const todayLocal = moment().tz(timezone).startOf("day");
+        // Dedup guard: has this cycle already been logged?
+        const alreadyFired = await prisma.recurringLog.findUnique({
+          where: {
+            recurringId_firedAt: {
+              recurringId: item.id,
+              firedAt: nextDueLocal.toDate(),
+            },
+          },
+        }).catch(() => null);
+        if (alreadyFired) continue;
 
-      const recurringList = await prisma.recurringTransaction.findMany({
-        where: { isActive: true, userId },
-      });
-
-      for (const item of recurringList) {
-        const model = modelMap[item.type];
-
-        if (!model) continue;
-
-        const nextDueLocal = moment(item.nextDueDate)
-          .tz(timezone)
-          .startOf("day");
-
-        if (todayLocal.isSameOrAfter(nextDueLocal)) {
-          const newTransaction = await model.create({
+        if (item.behaviour === "REMIND") {
+          // Just notify — do NOT create an Expense, do NOT advance nextDueDate.
+          await prisma.notification.create({
             data: {
-              amount: item.amount,
-              date: todayLocal.toDate(),
-              description: item.description,
-              status: "Pending",
-              isActive: true,
-
-              recurringTransaction: {
-                connect: { id: item.id },
-              },
-
-              category: {
-                connect: { id: item.categoryId },
-              },
-
-              user: {
-                connect: { id: userId },
-              },
+              userId,
+              recurringId: item.id,
+              title: "Bill due",
+              message: `${item.description} is due today.`,
+              type: "Reminder",
             },
           });
-
-          console.log(
-            `✅ Created ${item.type} ID ${newTransaction.id} for user ${userId}`
-          );
-
-          const newNextDue = moment(nextDueLocal)
-            .add(item.interval, item.unit)
-            .startOf("day")
-            .utc()
-            .toDate();
-
-          await prisma.recurringTransaction.update({
-            where: { id: item.id },
-            data: { nextDueDate: newNextDue },
+          await prisma.recurringLog.create({
+            data: {
+              recurringId: item.id,
+              result: "REMINDED",
+              firedAt: nextDueLocal.toDate(),
+            },
           });
+          continue;
         }
+
+        // AUTO_LOG: check balance before creating
+        const model = { Expense: prisma.expense, Income: prisma.income, Transfer: prisma.transfer }[item.type];
+        if (!model) continue;
+
+        if (item.type === "Expense" && item.fromAssetId) {
+          const result = await getAssetBalance(userId, item.fromAssetId);
+          const asset = result?.data?.[0];
+          if (!asset || Number(result.remainingBalance) < Number(item.amount)) {
+            await prisma.recurringLog.create({
+              data: {
+                recurringId: item.id,
+                result: "FAILED",
+                firedAt: nextDueLocal.toDate(),
+                errorMessage: `Insufficient balance in ${asset?.name ?? "linked account"}`,
+              },
+            });
+            continue; // nextDueDate NOT advanced — stays "due" until resolved
+          }
+        }
+
+        const newTransaction = await model.create({
+          data: {
+            amount: item.amount,
+            date: todayLocal.toDate(),
+            description: item.description,
+            status: "Completed",
+            isActive: true,
+            recurringId: item.id,
+            categoryId: item.categoryId,
+            assetId: item.fromAssetId,
+            recurringDueDate: nextDueLocal.toDate(),
+            userId,
+          },
+        });
+
+        const newNextDue = moment(nextDueLocal).add(item.interval, item.unit).startOf("day").utc().toDate();
+
+        await prisma.$transaction([
+          prisma.recurringTransaction.update({
+            where: { id: item.id },
+            data: { nextDueDate: newNextDue, lastTriggeredAt: new Date() },
+          }),
+          prisma.recurringLog.create({
+            data: {
+              recurringId: item.id,
+              result: "CREATED",
+              firedAt: nextDueLocal.toDate(),
+              generatedExpenseId: item.type === "Expense" ? newTransaction.id : undefined,
+            },
+          }),
+        ]);
+
+        console.log(`✅ Created ${item.type} ID ${newTransaction.id} for user ${userId}`);
+      } catch (err) {
+        console.error(`❌ Failed processing recurring item ${item.id} for user ${userId}:`, err);
+        // continue to next item — one failure shouldn't kill the whole run
       }
     }
-
-    console.log("✅ Recurring transactions completed");
-  } catch (err) {
-    console.error("❌ Recurring cron error:", err);
   }
-});
 
-/* ----------------------------------------
-   3️⃣ PAYMENT REMINDERS (DAILY 12AM)
------------------------------------------ */
-cron.schedule("0 0 * * *", async () => {
-  console.log("📧 Running payment reminders...");
-
-  const twoDaysFromNow = moment().add(2, "days").startOf("day");
-
-  const models = [
-    { name: "expense", model: prisma.expense },
-    { name: "income", model: prisma.income },
-    { name: "transfer", model: prisma.transfer },
-  ];
-
-  try {
-    for (const { name, model } of models) {
-      const upcomingItems = await model.findMany({
-        where: {
-          isActive: true,
-          status: "Pending",
-          date: {
-            gte: twoDaysFromNow.toDate(),
-            lt: moment(twoDaysFromNow).add(1, "day").toDate(),
-          },
-        },
-        include: {
-          user: {
-            select: { id: true, email: true, name: true },
-          },
-          category: {
-            select: { name: true },
-          },
-        },
-      });
-
-      for (const item of upcomingItems) {
-        console.log(`📬 Reminder (${name}) ID ${item.id}`);
-        console.log(`   Email: ${item.user.email}`);
-        console.log(`   Amount: ${item.amount}`);
-        console.log(`   Category: ${item.category?.name ?? "N/A"}`);
-      }
-    }
-
-    console.log("✅ Reminders completed");
-  } catch (err) {
-    console.error("❌ Reminder cron error:", err);
-  }
+  console.log("✅ Recurring transactions completed");
 });
 
 /* ----------------------------------------

@@ -116,7 +116,6 @@ export const postExpense = async (userId, data, file, id) => {
 
   if (assetId) {
     const asset = await getAssetBalance(userId, assetId);
-
     if (date <= new Date() && asset.balance < amount) {
       throw new Error("Insufficient balance");
     }
@@ -151,7 +150,7 @@ export const updateExpense = async (userId, data, file, id) => {
 
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
-  const assetId = Number(data.from);
+  const assetId = Number(data.account);
 
   let image = expense.image;
 
@@ -172,8 +171,8 @@ export const updateExpense = async (userId, data, file, id) => {
       amount,
       description: data.description,
       date: data.date,
-      category: { connect: { id: categoryId } },
-      ...(assetId && { asset: { connect: { id: assetId } } }),
+      categoryId: categoryId,
+      assetId: assetId,
       updatedAt: new Date(),
     },
   });
@@ -351,41 +350,100 @@ export const getGraph = async (userId, query) => {
 
 export const getScheduledExpenses = async (userId, data) => {
   try {
-    const recurringExpenses = await prisma.recurringTransaction.findMany({
-      where: {
-        userId,
-        type: "Expense",
-        status: "ACTIVE",
-        behaviour: "REMIND",
-        isActive: true,
-        ...(data.dateFrom || data.dateTo
-          ? {
-            nextDueDate: {
-              ...(data.dateFrom && { gte: data.dateFrom }),
-              ...(data.dateTo && { lte: data.dateTo }),
-            },
-          }
-          : {}),
-      },
-      select: {
-        id: true,
-        description: true,
-        amount: true,
-        nextDueDate: true,
-        category: {
-          select: {
-            name: true,
-            icon: true,
-            color: true
+    const dateFilter =
+      data.dateFrom || data.dateTo
+        ? {
+          nextDueDate: {
+            ...(data.dateFrom && { gte: data.dateFrom }),
+            ...(data.dateTo && { lte: data.dateTo }),
           },
+        }
+        : {};
+
+    const baseSelect = {
+      id: true,
+      description: true,
+      amount: true,
+      nextDueDate: true,
+      behaviour: true,
+      category: {
+        select: {
+          name: true,
+          icon: true,
+          color: true,
         },
       },
-      orderBy: {
-        nextDueDate: "asc",
-      },
-    });
+    };
 
-    return recurringExpenses;
+    const [remindBills, autoLogBills] = await Promise.all([
+      // Existing behaviour: bills that always need manual confirmation
+      prisma.recurringTransaction.findMany({
+        where: {
+          userId,
+          type: "Expense",
+          status: "ACTIVE",
+          behaviour: "REMIND",
+          isActive: true,
+          ...dateFilter,
+        },
+        select: baseSelect,
+        orderBy: { nextDueDate: "asc" },
+      }),
+
+      // AUTO_LOG bills whose cron failed on the current cycle
+      prisma.recurringTransaction.findMany({
+        where: {
+          userId,
+          type: "Expense",
+          status: "ACTIVE",
+          behaviour: "AUTO_LOG",
+          isActive: true,
+          ...dateFilter,
+          logs: {
+            some: {
+              result: "FAILED",
+              firedAt: { equals: data.dateFrom ? undefined : undefined }, // placeholder, see note below
+            },
+          },
+        },
+        select: {
+          ...baseSelect,
+          logs: {
+            where: { result: "FAILED" },
+            orderBy: { firedAt: "desc" },
+            take: 1,
+            select: { errorMessage: true, firedAt: true },
+          },
+        },
+        orderBy: { nextDueDate: "asc" },
+      }),
+    ]);
+
+    const normalizedRemind = remindBills.map((b) => ({
+      ...b,
+      needsAttention: false,
+      failureReason: null,
+    }));
+
+    const normalizedFailed = autoLogBills.map((b) => ({
+      ...b,
+      needsAttention: true,
+      failureReason: b.logs[0]?.errorMessage ?? "Auto-pay failed",
+      logs: undefined,
+    }));
+
+    const priorityRank = (bill) => {
+      if (bill.needsAttention) return 0; // failed auto-pay
+      const isOverdue = new Date(bill.nextDueDate) < new Date();
+      if (isOverdue) return 1;
+      return 2; // due today / upcoming
+    };
+
+    return [...normalizedRemind, ...normalizedFailed].sort((a, b) => {
+      const rankDiff = priorityRank(a) - priorityRank(b);
+      if (rankDiff !== 0) return rankDiff;
+      return new Date(a.nextDueDate) - new Date(b.nextDueDate);
+    });
   } catch (error) {
     console.error("getScheduledExpenses error:", error);
     throw error;

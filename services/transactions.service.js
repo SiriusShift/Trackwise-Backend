@@ -657,14 +657,7 @@ export const archiveTransaction = async (type, id) => {
     data: { isActive: false },
   });
 
-  await prisma.transactionHistory.updateMany({
-    where: {
-      ...(type === "expense" && { expenseId: Number(id) }),
-      ...(type === "income" && { incomeId: Number(id) }),
-      ...(type === "transfer" && { transferId: Number(id) }),
-    },
-    data: { isActive: false },
-  });
+  return
 };
 
 
