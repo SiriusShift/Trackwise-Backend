@@ -21,7 +21,7 @@ import {
 // } from "../controllers/installments.controller.js";
 
 
-import { isLoggedIn } from "../middleware/validate.js";
+import { requireAuth } from "../middleware/requireAuth.js";
 
 const router = Router();
 
@@ -41,37 +41,37 @@ const upload = multer();
 // Create expense
 router
   .route("/")
-  .post(isLoggedIn, upload.single("image"), catchAsync(postExpense))
-  .get(isLoggedIn, catchAsync(getExpenses));
+  .post(requireAuth, upload.single("image"), catchAsync(postExpense))
+  .get(requireAuth, catchAsync(getExpenses));
 
 // Update expense
 router
   .route("/:id")
-  .put(isLoggedIn, upload.single("image"), catchAsync(updateExpense));
+  .put(requireAuth, upload.single("image"), catchAsync(updateExpense));
 
 // Graph data
-router.route("/graph").get(isLoggedIn, catchAsync(getGraph));
+router.route("/graph").get(requireAuth, catchAsync(getGraph));
 
 // Pay expense
 router
   .route("/bills/:id/pay")
-  .post(isLoggedIn, catchAsync(postBillPayment));
+  .post(requireAuth, catchAsync(postBillPayment));
 
 router
   .route("/bills/:id/skip")
-  .patch(isLoggedIn, catchAsync(skipBillPayment));
+  .patch(requireAuth, catchAsync(skipBillPayment));
 
 router
   .route("/bills")
-  .get(isLoggedIn, catchAsync(getBills));
+  .get(requireAuth, catchAsync(getBills));
 
 router
   .route("/bills/:id")
-  .get(isLoggedIn, catchAsync(getBill));
+  .get(requireAuth, catchAsync(getBill));
 
 router
   .route("/bills/:id/history")
-  .get(isLoggedIn, catchAsync(getBillPayments));
+  .get(requireAuth, catchAsync(getBillPayments));
 
 
 
@@ -85,8 +85,8 @@ router
 
 /*
 router.route("/installments")
-  .post(isLoggedIn, catchAsync(postInstallmentController))
-  .get(isLoggedIn, catchAsync(getInstallmentController));
+  .post(requireAuth, catchAsync(postInstallmentController))
+  .get(requireAuth, catchAsync(getInstallmentController));
 */
 
 export default router;

@@ -1,8 +1,9 @@
 import { PrismaClient } from "@prisma/client";
 import moment from "moment";
+import { AppError } from "../utils/AppError.js";
+import { getAssetBalance } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
-import { getAssetBalance, validateAsset } from "./assets.service.js";
-import { uploadFileToS3, deleteFileFromS3 } from "./s3.service.js";
+import { uploadFileToS3 } from "./s3.service.js";
 
 const prisma = new PrismaClient();
 
@@ -14,7 +15,7 @@ export const validateTransfers = async (id) => {
   });
 
   if (!transfer) {
-    throw new Error("Transfer not found");
+    throw new AppError("Transfer not found", 404);
   }
 
   return transfer;
@@ -107,7 +108,7 @@ export const postTransfer = async (userId, data, file) => {
     const asset = await getAssetBalance(userId, fromAssetId);
 
     if (asset.balance < amount) {
-      throw new Error("Insufficient balance");
+      throw new AppError("Insufficient balance", 400);
     }
   }
 

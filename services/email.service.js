@@ -1,97 +1,172 @@
-import nodemailer from "nodemailer";
-import "dotenv/config";
+import { PrismaClient } from "@prisma/client";
+import crypto from "crypto";
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST, // Maileroo SMTP host
-  port: process.env.SMTP_PORT, // 587 (TLS)
-  secure: false, // use TLS, not SSL
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-  tls: {
-    rejectUnauthorized: process.env.NODE_ENV !== "development",
-  },
-});
+import { AppError } from "../utils/AppError.js";
+import {
+  sendEmail,
+  verifyEmailAddress,
+} from "./ses.service.js";
 
-export const sendEmail = async (email, otp, subject) => {
-  console.log("Email passed:", email);
+const prisma = new PrismaClient();
 
-  if (!email || !email.includes("@")) {
-    console.error("Invalid email format detected!");
-    throw new Error("Invalid email address provided.");
+const year = new Date().getFullYear();
+
+export const sendEmailCode = async ({ email, username }) => {
+  if (!email || !Array.isArray(email)) {
+    throw new AppError("Invalid email format.", 400);
   }
 
-  const mailOptions = {
-    from: `${process.env.EMAIL_USER}`,
-    to: email,
-    subject: subject,
-    html: compileTemplate(otp),
+  const emailAddress = email[0];
+
+  const existingEmail = await prisma.user.findFirst({
+    where: {
+      email: emailAddress,
+    },
+  });
+
+  if (existingEmail) {
+    throw new AppError(
+      "Email already exists in our database.",
+      409
+    );
+  }
+
+  const existingUsername = await prisma.user.findFirst({
+    where: {
+      username,
+    },
+  });
+
+  if (existingUsername) {
+    throw new AppError(
+      "Username already exists in our database.",
+      409
+    );
+  }
+
+  const code = crypto
+    .randomInt(0, 1000000)
+    .toString()
+    .padStart(6, "0");
+
+  await sendEmail(
+    emailAddress,
+    { code, year },
+    "Verification_Code"
+  );
+
+  await prisma.emailVerification.create({
+    data: {
+      email: emailAddress,
+      verificationCode: code,
+      expirationTime: new Date(Date.now() + 5 * 60 * 1000),
+      isVerified: false,
+    },
+  });
+
+  return {
+    success: true,
+    message: "Email sent.",
   };
+};
 
-  try {
-    const result = await transporter.sendMail(mailOptions);
-    console.log("✅ Email sent successfully:", result.response);
-  } catch (err) {
-    console.error("❌ Failed to send email:", err.message);
+export const forgotPassword = async ({ email }) => {
+  if (!email || !Array.isArray(email)) {
+    throw new AppError("Invalid email format.", 400);
   }
+
+  const emailAddress = email[0];
+
+  const user = await prisma.user.findFirst({
+    where: {
+      email: emailAddress,
+    },
+  });
+
+  if (!user) {
+    throw new AppError("Email doesn't exist.", 404);
+  }
+
+  const existingRequest = await prisma.resetToken.findFirst({
+    where: {
+      userId: user.id,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  if (
+    existingRequest &&
+    Date.now() - new Date(existingRequest.createdAt).getTime() <
+    5 * 60 * 1000
+  ) {
+    throw new AppError(
+      "A reset link was already sent. Please wait 5 minutes before requesting again.",
+      429
+    );
+  }
+
+  let token;
+
+  while (true) {
+    token = crypto
+      .randomInt(0, 1000000)
+      .toString()
+      .padStart(6, "0");
+
+    const exists = await prisma.resetToken.findUnique({
+      where: {
+        token,
+      },
+    });
+
+    if (!exists) break;
+  }
+
+  await prisma.resetToken.create({
+    data: {
+      token,
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000),
+      user: {
+        connect: {
+          id: user.id,
+        },
+      },
+    },
+  });
+
+  await sendEmail(
+    emailAddress,
+    {
+      code: token,
+      year,
+    },
+    "Reset_Password"
+  );
+
+  return {
+    success: true,
+    message: "Email sent. Check your inbox and spam folder.",
+  };
 };
 
-// Dummy template compiler (replace with your logic)
-const compileTemplate = (otp) => {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 10px;">
-      <h2 style="color: #333;">Your OTP Code</h2>
-      <p style="font-size: 16px; color: #555;">Use the following OTP code to proceed:</p>
-      <p style="font-size: 28px; font-weight: bold; color: #000; letter-spacing: 4px; text-align: center;">${otp}</p>
-      <p style="font-size: 14px; color: #777;">This code is valid for the next 5 minutes. If you didn’t request this code, please ignore this email.</p>
-      <hr style="border: none; border-top: 1px solid #ddd; margin: 20px 0;" />
-      <p style="font-size: 12px; color: #888;">Thanks,<br/>PathAlert Team</p>
-    </div>
-  `;
+export const verifyEmail = async ({ email }) => {
+  if (!email || !Array.isArray(email)) {
+    throw new AppError("Invalid email format.", 400);
+  }
+
+  const result = await verifyEmailAddress(email);
+
+  if (!result) {
+    throw new AppError(
+      "Failed to verify email address.",
+      400
+    );
+  }
+
+  return {
+    success: true,
+    message: "Email verified.",
+  };
 };
-
-
-
-// const {
-//     SES
-// } = require("@aws-sdk/client-ses");
-// require('dotenv').config();
-
-// const ses = new SES({
-//     credentials: {
-//         accessKeyId: process.env.AWS_ACCESS_KEY,
-//         secretAccessKey: process.env.AWS_SECRET_KEY
-//     },
-
-//     region: process.env.AWS_REGION
-// });
-
-// const sendEmail = async (email, data, template) => {
-//     console.log("Email passed:", email);
-//     console.log("Data passed:", data);
-//     console.log("Template name:", template);
-
-//     if (!email || !email.includes("@")) {
-//         console.error("Invalid email format detected!");
-//         throw new Error("Invalid email address provided.");
-//     }
-
-//     const params = {
-//         Source: "pathalertdev@gmail.com", // Ensure this is verified in SES
-//         Template: template,
-//         Destination: {
-//             ToAddresses: [email],
-//         },
-//         TemplateData: JSON.stringify(data),
-//     };
-
-//     try {
-//         const result = await ses.sendTemplatedEmail(params);
-//         console.log("Email sent successfully:", result);
-//     } catch (err) {
-//         console.error("Failed to send email:", err);
-//     }
-// };
-
-// module.exports = { sendEmail };

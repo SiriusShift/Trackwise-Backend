@@ -1,5 +1,4 @@
-import cors from "cors";
-import ExpressError from "../utils/expressError.js";
+import { AppError } from "../utils/AppError.js";
 
 const allowedOrigins = [
   "http://localhost:5011",
@@ -17,7 +16,7 @@ export const corsConfig = {
       return callback(null, true);
     }
 
-    return callback(new ExpressError("Not Allowed By CORS"));
+    return callback(new AppError(`Origin ${origin} not allowed by CORS`, 403));
   },
 
   credentials: true,

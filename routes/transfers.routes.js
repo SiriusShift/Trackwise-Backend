@@ -1,21 +1,21 @@
 import { Router } from "express";
 import multer from "multer";
 
-import { isLoggedIn } from "../middleware/validate.js";
+import { requireAuth } from "../middleware/requireAuth.js";
 import catchAsync from "../utils/catchAsync.js";
 
 import {
-  getTransfers,
-  updateTransfer,
-  postTransfer,
   getGraph,
+  getTransfers,
+  postTransfer,
   transfer,
+  updateTransfer,
 } from "../controllers/transfers.controller.js";
 
 import {
-  postRecurring,
-  getRecurring,
   confirmRecurring,
+  getRecurring,
+  postRecurring,
 } from "../controllers/recurring.controller.js";
 
 const router = Router();
@@ -24,29 +24,29 @@ const upload = multer();
 /* ---------------- TRANSFERS ---------------- */
 router
   .route("/")
-  .get(isLoggedIn, catchAsync(getTransfers))
-  .post(isLoggedIn, upload.single("image"), catchAsync(postTransfer));
+  .get(requireAuth, catchAsync(getTransfers))
+  .post(requireAuth, upload.single("image"), catchAsync(postTransfer));
 
 router
   .route("/:id")
-  .put(isLoggedIn, upload.single("image"), catchAsync(updateTransfer));
+  .put(requireAuth, upload.single("image"), catchAsync(updateTransfer));
 
 router
   .route("/graph")
-  .get(isLoggedIn, catchAsync(getGraph));
+  .get(requireAuth, catchAsync(getGraph));
 
 router
   .route("/transfer/:id")
-  .patch(isLoggedIn, upload.single("image"), catchAsync(transfer));
+  .patch(requireAuth, upload.single("image"), catchAsync(transfer));
 
 /* ---------------- RECURRING ---------------- */
 router
   .route("/receive/auto/:id")
-  .post(isLoggedIn, catchAsync(confirmRecurring));
+  .post(requireAuth, catchAsync(confirmRecurring));
 
 router
   .route("/recurring")
-  .post(isLoggedIn, catchAsync(postRecurring))
-  .get(isLoggedIn, catchAsync(getRecurring));
+  .post(requireAuth, catchAsync(postRecurring))
+  .get(requireAuth, catchAsync(getRecurring));
 
 export default router;

@@ -9,12 +9,12 @@ import {
 
 import {
   addExpenseLimit,
+  deleteExpenseLimit,
   getAllExpenseLimit,
   updateExpenseLimit,
-  deleteExpenseLimit,
 } from "../controllers/limits.controller.js";
 
-import { isLoggedIn } from "../middleware/validate.js";
+import { requireAuth } from "../middleware/requireAuth.js";
 
 const router = Router();
 
@@ -26,8 +26,8 @@ const router = Router();
 
 router
   .route("/")
-  .post(isLoggedIn, catchAsync(createCategory))
-  .get(isLoggedIn, catchAsync(getAllCategory));
+  .post(requireAuth, catchAsync(createCategory))
+  .get(requireAuth, catchAsync(getAllCategory));
 
 /*
 |--------------------------------------------------------------------------
@@ -37,12 +37,12 @@ router
 
 router
   .route("/limits")
-  .post(isLoggedIn, catchAsync(addExpenseLimit))
-  .get(isLoggedIn, catchAsync(getAllExpenseLimit));
+  .post(requireAuth, catchAsync(addExpenseLimit))
+  .get(requireAuth, catchAsync(getAllExpenseLimit));
 
 router
   .route("/limits/:id")
-  .patch(isLoggedIn, catchAsync(updateExpenseLimit))
-  .delete(isLoggedIn, catchAsync(deleteExpenseLimit));
+  .patch(requireAuth, catchAsync(updateExpenseLimit))
+  .delete(requireAuth, catchAsync(deleteExpenseLimit));
 
 export default router;

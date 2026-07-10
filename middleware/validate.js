@@ -1,5 +1,5 @@
-import ExpressError from "../utils/expressError.js";
-import { signupSchema, resetPasswordSchema, googleSignupSchema } from "../schema/user.js";
+import { googleSignupSchema, resetPasswordSchema, signupSchema } from "../schema/user.js";
+import { AppError } from "../utils/AppError.js";
 import { decryptString } from "../utils/customFunction.js";
 
 export const validateCreateRequest = (requestType) => {
@@ -13,7 +13,7 @@ export const validateCreateRequest = (requestType) => {
           password: decryptString(req.body.password),
         }).error;
         break;
-      case "user-google": 
+      case "user-google":
         error = googleSignupSchema.validate({
           ...req.profile,
         }).error;
@@ -25,7 +25,7 @@ export const validateCreateRequest = (requestType) => {
     if (error) {
       const msg = error.details.map((el) => el.message).join(",");
       // Instead of throwing an error directly, call next with the error
-      throw new ExpressError(msg, 400);
+      throw new AppError(msg, 400);
     } else {
       next(); // If no error, call next
     }
@@ -51,12 +51,3 @@ export const validateUserUpdateRequest = (requestType) => {
     }
   };
 };
-
-export const isLoggedIn = (req, res, next) => {
-  console.log(req.isAuthenticated());
-  if (!req.isAuthenticated()) {
-    return res.status(401).json({ message: "Unauthorized" });
-  }
-  next();
-};
-

@@ -8,9 +8,8 @@ import {
 } from "../controllers/asset.controller.js";
 
 import {
-  isLoggedIn,
-  validateCreateRequest,
-} from "../middleware/validate.js";
+  requireAuth
+} from "../middleware/requireAuth.js";
 
 const router = Router();
 
@@ -23,12 +22,12 @@ const router = Router();
 router
   .route("/")
   .post(
-    isLoggedIn,
+    requireAuth,
     // validateCreateRequest,
     catchAsync(createAsset),
   )
   .get(
-    isLoggedIn,
+    requireAuth,
     catchAsync(getAsset),
   );
 

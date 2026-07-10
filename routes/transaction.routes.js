@@ -15,7 +15,7 @@ import IncomeRouter from "./incomes.routes.js";
 import TransferRouter from "./transfers.routes.js";
 
 import { cancelRecurring, confirmRecurring, editRecurring, getRecurring, postRecurring } from "../controllers/recurring.controller.js";
-import { isLoggedIn } from "../middleware/validate.js";
+import { requireAuth } from "../middleware/requireAuth.js";
 
 const router = Router();
 
@@ -33,18 +33,18 @@ const upload = multer();
 |--------------------------------------------------------------------------
 */
 
-router.route("/history").get(isLoggedIn, catchAsync(getHistory));
+router.route("/history").get(requireAuth, catchAsync(getHistory));
 
 router
   .route("/edit/:id")
-  .patch(isLoggedIn, upload.single("image"), catchAsync(editHistory));
+  .patch(requireAuth, upload.single("image"), catchAsync(editHistory));
 
-router.route("/delete/:id").patch(isLoggedIn, catchAsync(deleteHistory));
+router.route("/delete/:id").patch(requireAuth, catchAsync(deleteHistory));
 
-router.route("/statistics").get(isLoggedIn, catchAsync(getStatistics));
+router.route("/statistics").get(requireAuth, catchAsync(getStatistics));
 
-router.route("/:id").patch(isLoggedIn, catchAsync(archiveTransaction));
-// router.route("/due").get(isLoggedIn, catchAsync(dueTransactions))
+router.route("/:id").patch(requireAuth, catchAsync(archiveTransaction));
+// router.route("/due").get(requireAuth, catchAsync(dueTransactions))
 
 /*
 |--------------------------------------------------------------------------
@@ -54,17 +54,17 @@ router.route("/:id").patch(isLoggedIn, catchAsync(archiveTransaction));
 
 router
   .route("/recurring")
-  .post(isLoggedIn, catchAsync(postRecurring))
-  .get(isLoggedIn, catchAsync(getRecurring));
+  .post(requireAuth, catchAsync(postRecurring))
+  .get(requireAuth, catchAsync(getRecurring));
 
 router
   .route("/recurring/:id")
-  .patch(isLoggedIn, catchAsync(cancelRecurring))
-  .put(isLoggedIn, catchAsync(editRecurring));
+  .patch(requireAuth, catchAsync(cancelRecurring))
+  .put(requireAuth, catchAsync(editRecurring));
 
 router
   .route("/recurring/:id/confirm")
-  .post(isLoggedIn, catchAsync(confirmRecurring));
+  .post(requireAuth, catchAsync(confirmRecurring));
 /*
 |--------------------------------------------------------------------------
 | Child Routes

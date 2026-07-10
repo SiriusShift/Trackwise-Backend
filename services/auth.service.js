@@ -1,8 +1,9 @@
 // services/auth.service.js
 
 import bcrypt from "bcrypt";
-import { decryptString } from "../utils/customFunction.js";
 import { prisma } from "../config/prisma.js";
+import { AppError } from "../utils/AppError.js";
+import { decryptString } from "../utils/customFunction.js";
 export const registerUserService = async ({
   email,
   password,
@@ -21,24 +22,23 @@ export const registerUserService = async ({
   });
 
   if (!code) {
-    throw new Error("No OTP found for this email");
+    throw new AppError("No OTP found for this email", 404);
   }
 
   if (code.verificationCode !== otp) {
-    throw new Error("Invalid OTP");
+    throw new AppError("Invalid OTP", 400);
   }
 
   if (new Date() > code.expirationTime) {
-    throw new Error("OTP has expired");
+    throw new AppError("OTP has expired", 400);
   }
-
   // Check duplicate email
   const existingUserByEmail = await prisma.user.findUnique({
     where: { email },
   });
 
   if (existingUserByEmail) {
-    throw new Error("Email is already in use");
+    throw new AppError("Email is already in use", 409);
   }
 
   // Check duplicate username
@@ -47,7 +47,7 @@ export const registerUserService = async ({
   });
 
   if (existingUserByUsername) {
-    throw new Error("Username is already taken");
+    throw new AppError("Username is already taken", 409);
   }
 
   const decryptedPassword = decryptString(password);
@@ -118,11 +118,11 @@ export const resetPasswordService = async ({ password, token }) => {
   });
 
   if (!findToken) {
-    throw new Error("Invalid token");
+    throw new AppError("Invalid token", 400);
   }
 
   if (new Date() > findToken.expiresAt) {
-    throw new Error("Token has expired");
+    throw new AppError("Token has expired", 400);
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);

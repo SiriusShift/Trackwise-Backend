@@ -1,5 +1,6 @@
-import "dotenv/config";
 import { SES } from "@aws-sdk/client-ses";
+import "dotenv/config";
+import { AppError } from "../utils/AppError.js";
 
 const ses = new SES({
   credentials: {
@@ -17,7 +18,7 @@ const ses = new SES({
 export const verifyEmailAddress = async (emails) => {
   try {
     if (!Array.isArray(emails)) {
-      throw new Error("Emails must be an array");
+      throw new AppError("Emails must be an array", 400);
     }
 
     const promises = emails.map((email) => {

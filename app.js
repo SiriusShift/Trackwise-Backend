@@ -7,6 +7,9 @@ import { runPassport } from "./config/passport.js";
 import { sessionConfig } from "./config/sessionConfig.js";
 import { runRouters } from "./routes/index.js";
 
+import compression from "compression";
+import helmet from "helmet";
+import morgan from "morgan";
 import { errorHandler } from "./middleware/errorHandler.js";
 import { notFound } from "./middleware/notFound.js";
 

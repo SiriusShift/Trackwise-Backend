@@ -1,9 +1,10 @@
 import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 
-import { validateCategory } from "./categories.service.js";
+import { AppError } from "../utils/AppError.js";
 import { validateAsset } from "./assets.service.js";
-import { uploadFileToS3, deleteFileFromS3 } from "./s3.service.js";
+import { validateCategory } from "./categories.service.js";
+import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
 const prisma = new PrismaClient();
 
@@ -17,7 +18,7 @@ export const validateIncome = async (id) => {
   });
 
   if (!income) {
-    throw new Error("Income not found");
+    throw new AppError("Income not found", 404);
   }
 
   return income;
@@ -79,11 +80,11 @@ export const getIncome = async (userId, query) => {
     isActive: true,
     ...(startDate &&
       endDate && {
-        date: {
-          gte: new Date(startDate),
-          lte: new Date(endDate),
-        },
-      }),
+      date: {
+        gte: new Date(startDate),
+        lte: new Date(endDate),
+      },
+    }),
     ...(search && {
       description: {
         startsWith: search,
@@ -247,17 +248,17 @@ export const getGraph = async (userId, query) => {
     },
   };
 
-  try {
-    /* ------------------ TREND DATA ------------------ */
-    const trendData = await prisma.$queryRawUnsafe(`
+
+  /* ------------------ TREND DATA ------------------ */
+  const trendData = await prisma.$queryRawUnsafe(`
       SELECT
         date_trunc('${mode}', "date") AS period,
         SUM(amount) AS total
       FROM "Income"
       WHERE
         "date" >= '${moment(startDate)
-          .subtract(1, "month")
-          .toISOString()}'::timestamp
+      .subtract(1, "month")
+      .toISOString()}'::timestamp
         AND "date" <= '${endDate}'::timestamp
         AND "isActive" = true
         AND "userId" = ${userIdNum}
@@ -265,73 +266,70 @@ export const getGraph = async (userId, query) => {
       ORDER BY period
     `);
 
-    const trend =
-      trendData.length >= 2 && trendData[0]?.total
-        ? (
-            ((Number(trendData[1].total) - Number(trendData[0].total)) /
-              Number(trendData[0].total)) *
-            100
-          ).toFixed(2)
-        : "0.00";
+  const trend =
+    trendData.length >= 2 && trendData[0]?.total
+      ? (
+        ((Number(trendData[1].total) - Number(trendData[0].total)) /
+          Number(trendData[0].total)) *
+        100
+      ).toFixed(2)
+      : "0.00";
 
-    /* ---------------- CATEGORY TOTALS ---------------- */
-    const incomeGroups = await prisma.income.groupBy({
-      by: ["categoryId"],
-      where: filters,
-      _sum: {
-        amount: true,
+  /* ---------------- CATEGORY TOTALS ---------------- */
+  const incomeGroups = await prisma.income.groupBy({
+    by: ["categoryId"],
+    where: filters,
+    _sum: {
+      amount: true,
+    },
+  });
+
+  const categoryIds = incomeGroups
+    .map((item) => item.categoryId)
+    .filter(Boolean);
+
+  const categories = await prisma.categories.findMany({
+    where: {
+      id: {
+        in: categoryIds,
       },
-    });
+    },
+    select: {
+      id: true,
+      name: true,
+      color: true,
+    },
+  });
 
-    const categoryIds = incomeGroups
-      .map((item) => item.categoryId)
-      .filter(Boolean);
-
-    const categories = await prisma.categories.findMany({
-      where: {
-        id: {
-          in: categoryIds,
-        },
+  const categoryMap = new Map(
+    categories.map((category) => [
+      category.id,
+      {
+        name: category.name,
+        color: category.color,
       },
-      select: {
-        id: true,
-        name: true,
-        color: true,
-      },
-    });
+    ]),
+  );
 
-    const categoryMap = new Map(
-      categories.map((category) => [
-        category.id,
-        {
-          name: category.name,
-          color: category.color,
-        },
-      ]),
-    );
+  const data = incomeGroups.map((item) => {
+    const category = categoryMap.get(item.categoryId);
 
-    const data = incomeGroups.map((item) => {
-            const category = categoryMap.get(item.categoryId);
-
-      return {
-        categoryId: item.categoryId,
-        categoryName: category?.name || "Unknown",
-        color: category?.color || "#ccc",
-
-        total: Number(item._sum.amount || 0),
-      };
-    });
-
-    const totalIncome = data.reduce((sum, item) => sum + item.total, 0).toFixed(2);
-
-    /* ---------------- RESPONSE ---------------- */
     return {
-      trend,
-      data,
-      total: totalIncome,
+      categoryId: item.categoryId,
+      categoryName: category?.name || "Unknown",
+      color: category?.color || "#ccc",
+
+      total: Number(item._sum.amount || 0),
     };
-  } catch (error) {
-    console.error("getIncomeGraph error:", error);
-    throw new Error("Internal server error");
-  }
+  });
+
+  const totalIncome = data.reduce((sum, item) => sum + item.total, 0).toFixed(2);
+
+  /* ---------------- RESPONSE ---------------- */
+  return {
+    trend,
+    data,
+    total: totalIncome,
+  };
+
 };

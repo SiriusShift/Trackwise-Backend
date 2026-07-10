@@ -9,6 +9,7 @@ import {
   deleteFileFromS3,
   uploadFileToS3,
 } from "../services/s3.service.js";
+import { AppError } from "../utils/AppError.js";
 
 const prisma = new PrismaClient();
 
@@ -22,7 +23,7 @@ export const validateTransactionHistory = async (id) => {
     where: { id: Number(id) },
   });
 
-  if (!history) throw new Error("History not found");
+  if (!history) throw new AppError("History not found", 404);
 
   return history;
 };
@@ -301,10 +302,6 @@ export const getStatistics = async (userId, data) => {
       },
     }),
   ]);
-
-  console.log("Transfer out", transferOut)
-  console.log("Transfer in", transferIn)
-  console.log("Assets", assets)
 
   // Build lookup maps for O(1) access
   const incomeByAsset = Object.fromEntries(
@@ -616,7 +613,7 @@ export const deleteHistory = async (id) => {
     where: { id: Number(id) },
   });
 
-  if (!transaction) throw new Error("Transaction not found");
+  if (!transaction) throw new AppError("Transaction not found", 404);
 
   await prisma.transactionHistory.update({
     where: { id: Number(id) },

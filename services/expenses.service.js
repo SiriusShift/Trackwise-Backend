@@ -1,6 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 
+import { AppError } from "../utils/AppError.js";
 import { getAssetBalance } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
@@ -17,7 +18,7 @@ export const validateExpense = async (id) => {
     where: { id: Number(id) },
   });
 
-  if (!expense) throw new Error("Expense not found");
+  if (!expense) throw new AppError("Expense not found", 404);
 
   return expense;
 };
@@ -117,7 +118,7 @@ export const postExpense = async (userId, data, file, id) => {
   if (assetId) {
     const asset = await getAssetBalance(userId, assetId);
     if (date <= new Date() && asset.balance < amount) {
-      throw new Error("Insufficient balance");
+      throw new AppError("Insufficient balance", 400);
     }
   }
 
@@ -196,54 +197,6 @@ export const deleteExpense = async (id) => {
   return true;
 };
 
-/*
-|--------------------------------------------------------------------------
-| Post Payment
-|--------------------------------------------------------------------------
-*/
-export const postPayment = async (userId, data, id, file) => {
-  const expense = await validateExpense(id);
-
-  const amount = Number(data.amount);
-  const assetId = Number(data.from);
-
-  const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
-
-  // const aggregate = await prisma.transactionHistory.aggregate({
-  //   where: {
-  //     expenseId: expense.id,
-  //     isActive: true,
-  //   },
-  //   _sum: { amount: true },
-  // });
-
-  // const totalPaid = Number(aggregate._sum.amount || 0) + amount;
-
-  let status = "Pending";
-  if (totalPaid >= expense.amount) status = "Paid";
-  else if (totalPaid > 0) status = "Partial";
-
-  await prisma.expense.update({
-    where: { id: Number(id) },
-    data: { status },
-  });
-
-  await prisma.transactionHistory.create({
-    data: {
-      expense: { connect: { id: expense.id } },
-      user: { connect: { id: userId } },
-      fromAsset: { connect: { id: assetId } },
-      transactionType: "Expense",
-      amount,
-      description: data.description,
-      date: data.date,
-      image,
-    },
-  });
-
-  return true;
-};
-
 export const getGraph = async (userId, query) => {
   const { startDate, endDate, mode } = query;
 
@@ -259,17 +212,17 @@ export const getGraph = async (userId, query) => {
     status: "Completed"
   };
 
-  try {
-    /* ------------------ TREND DATA ------------------ */
-    const trendData = await prisma.$queryRawUnsafe(`
+
+  /* ------------------ TREND DATA ------------------ */
+  const trendData = await prisma.$queryRawUnsafe(`
       SELECT
         date_trunc('${mode}', "date") AS period,
         SUM(amount) AS total
       FROM "Expense"
       WHERE
         "date" >= '${moment(startDate)
-        .subtract(1, "month")
-        .toISOString()}'::timestamp
+      .subtract(1, "month")
+      .toISOString()}'::timestamp
         AND "date" <= '${endDate}'::timestamp
         AND "isActive" = true
         AND "userId" = ${userIdNum}
@@ -277,282 +230,263 @@ export const getGraph = async (userId, query) => {
       ORDER BY period
     `);
 
-    const trend =
-      trendData.length >= 2 && trendData[0]?.total
-        ? (
-          ((Number(trendData[1].total) - Number(trendData[0].total)) /
-            Number(trendData[0].total)) *
-          100
-        ).toFixed(2)
-        : "0.00";
+  const trend =
+    trendData.length >= 2 && trendData[0]?.total
+      ? (
+        ((Number(trendData[1].total) - Number(trendData[0].total)) /
+          Number(trendData[0].total)) *
+        100
+      ).toFixed(2)
+      : "0.00";
 
-    /* ---------------- CATEGORY TOTALS ---------------- */
-    const expenseGroups = await prisma.expense.groupBy({
-      by: ["categoryId"],
-      where: filters,
-      _sum: {
-        amount: true,
+  /* ---------------- CATEGORY TOTALS ---------------- */
+  const expenseGroups = await prisma.expense.groupBy({
+    by: ["categoryId"],
+    where: filters,
+    _sum: {
+      amount: true,
+    },
+  });
+
+  const categoryIds = expenseGroups
+    .map((item) => item.categoryId)
+    .filter(Boolean);
+
+  const categories = await prisma.categories.findMany({
+    where: {
+      id: {
+        in: categoryIds,
       },
-    });
+    },
+    select: {
+      id: true,
+      name: true,
+      color: true,
+    },
+  });
 
-    const categoryIds = expenseGroups
-      .map((item) => item.categoryId)
-      .filter(Boolean);
-
-    const categories = await prisma.categories.findMany({
-      where: {
-        id: {
-          in: categoryIds,
-        },
+  const categoryMap = new Map(
+    categories.map((category) => [
+      category.id,
+      {
+        name: category.name,
+        color: category.color,
       },
-      select: {
-        id: true,
-        name: true,
-        color: true,
-      },
-    });
+    ]),
+  );
 
-    const categoryMap = new Map(
-      categories.map((category) => [
-        category.id,
-        {
-          name: category.name,
-          color: category.color,
-        },
-      ]),
-    );
+  const data = expenseGroups.map((item) => {
+    const category = categoryMap.get(item.categoryId);
 
-    const data = expenseGroups.map((item) => {
-      const category = categoryMap.get(item.categoryId);
-
-      return {
-        categoryId: item.categoryId,
-        categoryName: category?.name || "Unknown",
-        color: category?.color || "#ccc",
-        total: Number(item._sum.amount || 0),
-      };
-    });
-
-    const totalExpense = data.reduce((sum, item) => sum + item.total, 0).toFixed(2);
-
-    /* ---------------- RESPONSE ---------------- */
     return {
-      trend,
-      data,
-      total: totalExpense,
+      categoryId: item.categoryId,
+      categoryName: category?.name || "Unknown",
+      color: category?.color || "#ccc",
+      total: Number(item._sum.amount || 0),
     };
-  } catch (error) {
-    console.error("getExpenseGraph error:", error);
-    throw new Error("Internal server error");
-  }
+  });
+
+  const totalExpense = data.reduce((sum, item) => sum + item.total, 0).toFixed(2);
+
+  /* ---------------- RESPONSE ---------------- */
+  return {
+    trend,
+    data,
+    total: totalExpense,
+  };
 };
 
 
 export const getScheduledExpenses = async (userId, data) => {
-  try {
-    const dateFilter =
-      data.dateFrom || data.dateTo
-        ? {
-          nextDueDate: {
-            ...(data.dateFrom && { gte: data.dateFrom }),
-            ...(data.dateTo && { lte: data.dateTo }),
-          },
-        }
-        : {};
 
-    const baseSelect = {
+  const dateFilter =
+    data.dateFrom || data.dateTo
+      ? {
+        nextDueDate: {
+          ...(data.dateFrom && { gte: data.dateFrom }),
+          ...(data.dateTo && { lte: data.dateTo }),
+        },
+      }
+      : {};
+
+  const baseSelect = {
+    id: true,
+    description: true,
+    amount: true,
+    nextDueDate: true,
+    behaviour: true,
+    category: {
+      select: {
+        name: true,
+        icon: true,
+        color: true,
+      },
+    },
+  };
+
+  const [remindBills, autoLogBills] = await Promise.all([
+    // Existing behaviour: bills that always need manual confirmation
+    prisma.recurringTransaction.findMany({
+      where: {
+        userId,
+        type: "Expense",
+        status: "ACTIVE",
+        behaviour: "REMIND",
+        isActive: true,
+        ...dateFilter,
+      },
+      select: baseSelect,
+      orderBy: { nextDueDate: "asc" },
+    }),
+
+    // AUTO_LOG bills whose cron failed on the current cycle
+    prisma.recurringTransaction.findMany({
+      where: {
+        userId,
+        type: "Expense",
+        status: "ACTIVE",
+        behaviour: "AUTO_LOG",
+        isActive: true,
+        ...dateFilter,
+        logs: {
+          some: {
+            result: "FAILED",
+            firedAt: { equals: data.dateFrom ? undefined : undefined }, // placeholder, see note below
+          },
+        },
+      },
+      select: {
+        ...baseSelect,
+        logs: {
+          where: { result: "FAILED" },
+          orderBy: { firedAt: "desc" },
+          take: 1,
+          select: { errorMessage: true, firedAt: true },
+        },
+      },
+      orderBy: { nextDueDate: "asc" },
+    }),
+  ]);
+
+  const normalizedRemind = remindBills.map((b) => ({
+    ...b,
+    needsAttention: false,
+    failureReason: null,
+  }));
+
+  const normalizedFailed = autoLogBills.map((b) => ({
+    ...b,
+    needsAttention: true,
+    failureReason: b.logs[0]?.errorMessage ?? "Auto-pay failed",
+    logs: undefined,
+  }));
+
+  const priorityRank = (bill) => {
+    if (bill.needsAttention) return 0; // failed auto-pay
+    const isOverdue = new Date(bill.nextDueDate) < new Date();
+    if (isOverdue) return 1;
+    return 2; // due today / upcoming
+  };
+
+  return [...normalizedRemind, ...normalizedFailed].sort((a, b) => {
+    const rankDiff = priorityRank(a) - priorityRank(b);
+    if (rankDiff !== 0) return rankDiff;
+    return new Date(a.nextDueDate) - new Date(b.nextDueDate);
+  });
+};
+
+export const getScheduledExpense = async (userId, id) => {
+  const recurringExpenses = await prisma.recurringTransaction.findFirst({
+    where: {
+      id: Number(id),
+      userId,
+      type: "Expense",
+      status: "ACTIVE",
+      isActive: true,
+    },
+    select: {
       id: true,
       description: true,
       amount: true,
       nextDueDate: true,
+      startDate: true,
+      interval: true,
+      unit: true,
       behaviour: true,
+      fromAsset: true,
       category: {
         select: {
+          id: true,
           name: true,
           icon: true,
           color: true,
         },
       },
-    };
+    },
+    orderBy: {
+      nextDueDate: "asc",
+    },
+  });
 
-    const [remindBills, autoLogBills] = await Promise.all([
-      // Existing behaviour: bills that always need manual confirmation
-      prisma.recurringTransaction.findMany({
-        where: {
-          userId,
-          type: "Expense",
-          status: "ACTIVE",
-          behaviour: "REMIND",
-          isActive: true,
-          ...dateFilter,
-        },
-        select: baseSelect,
-        orderBy: { nextDueDate: "asc" },
-      }),
+  const asset = await getAssetBalance(userId, recurringExpenses.fromAsset?.id);
 
-      // AUTO_LOG bills whose cron failed on the current cycle
-      prisma.recurringTransaction.findMany({
-        where: {
-          userId,
-          type: "Expense",
-          status: "ACTIVE",
-          behaviour: "AUTO_LOG",
-          isActive: true,
-          ...dateFilter,
-          logs: {
-            some: {
-              result: "FAILED",
-              firedAt: { equals: data.dateFrom ? undefined : undefined }, // placeholder, see note below
-            },
-          },
-        },
-        select: {
-          ...baseSelect,
-          logs: {
-            where: { result: "FAILED" },
-            orderBy: { firedAt: "desc" },
-            take: 1,
-            select: { errorMessage: true, firedAt: true },
-          },
-        },
-        orderBy: { nextDueDate: "asc" },
-      }),
-    ]);
+  return {
+    ...recurringExpenses,
+    fromAsset: {
+      ...recurringExpenses.fromAsset,
+      remainingBalance: asset?.remainingBalance,
+    },
+  };
 
-    const normalizedRemind = remindBills.map((b) => ({
-      ...b,
-      needsAttention: false,
-      failureReason: null,
-    }));
 
-    const normalizedFailed = autoLogBills.map((b) => ({
-      ...b,
-      needsAttention: true,
-      failureReason: b.logs[0]?.errorMessage ?? "Auto-pay failed",
-      logs: undefined,
-    }));
-
-    const priorityRank = (bill) => {
-      if (bill.needsAttention) return 0; // failed auto-pay
-      const isOverdue = new Date(bill.nextDueDate) < new Date();
-      if (isOverdue) return 1;
-      return 2; // due today / upcoming
-    };
-
-    return [...normalizedRemind, ...normalizedFailed].sort((a, b) => {
-      const rankDiff = priorityRank(a) - priorityRank(b);
-      if (rankDiff !== 0) return rankDiff;
-      return new Date(a.nextDueDate) - new Date(b.nextDueDate);
-    });
-  } catch (error) {
-    console.error("getScheduledExpenses error:", error);
-    throw error;
-  }
-};
-
-export const getScheduledExpense = async (userId, id) => {
-  try {
-    const recurringExpenses = await prisma.recurringTransaction.findFirst({
-      where: {
-        id: Number(id),
-        userId,
-        type: "Expense",
-        status: "ACTIVE",
-        isActive: true,
-      },
-      select: {
-        id: true,
-        description: true,
-        amount: true,
-        nextDueDate: true,
-        startDate: true,
-        interval: true,
-        unit: true,
-        behaviour: true,
-        fromAsset: true,
-        category: {
-          select: {
-            id: true,
-            name: true,
-            icon: true,
-            color: true,
-          },
-        },
-      },
-      orderBy: {
-        nextDueDate: "asc",
-      },
-    });
-
-    const asset = await getAssetBalance(userId, recurringExpenses.fromAsset?.id);
-
-    return {
-      ...recurringExpenses,
-      fromAsset: {
-        ...recurringExpenses.fromAsset,
-        remainingBalance: asset?.remainingBalance,
-      },
-    };
-
-  } catch (error) {
-    console.error("getScheduledExpenses error:", error);
-    throw error;
-  }
 };
 
 export const getBillPayments = async (id) => {
-  try {
-    const history = await prisma.expense.findMany({
-      where: {
-        recurringId: Number(id),
-        status: {
-          in: ["Completed", "Skipped"],
-        },
-      },
-      orderBy: {
-        recurringDueDate: "desc", // or date: "desc"
-      },
-    });
 
-    return history;
-  } catch (error) {
-    console.error("Bill payment history error:", error);
-    throw new Error("Internal server error");
-  }
+  const history = await prisma.expense.findMany({
+    where: {
+      recurringId: Number(id),
+      status: {
+        in: ["Completed", "Skipped"],
+      },
+    },
+    orderBy: {
+      recurringDueDate: "desc", // or date: "desc"
+    },
+  });
+
+  return history;
+
 };
 
 
 export const skipBillPayment = async (id) => {
-  try {
-    const recurring = await prisma.recurringTransaction.findUnique({
-      where: {
-        id: Number(id),
-      },
-    });
+  const recurring = await prisma.recurringTransaction.findUnique({
+    where: {
+      id: Number(id),
+    },
+  });
 
-    if (!recurring) {
-      throw new Error("Recurring transaction not found.");
-    }
-
-    const entry = await prisma.expense.create({
-      data: {
-        userId: recurring.userId,
-        categoryId: recurring.categoryId,
-
-        recurringId: recurring.id,
-
-        date: moment(),
-        recurringDueDate: recurring.nextDueDate,
-
-        description: recurring.description,
-        amount: recurring.amount,
-        status: "Skipped",
-      },
-    });
-
-    return entry;
-  } catch (error) {
-    console.error("Skip bill error:", error);
-    throw new Error("Internal server error");
+  if (!recurring) {
+    throw new AppError("Recurring transaction not found.", 400);
   }
+
+  const entry = await prisma.expense.create({
+    data: {
+      userId: recurring.userId,
+      categoryId: recurring.categoryId,
+
+      recurringId: recurring.id,
+
+      date: moment(),
+      recurringDueDate: recurring.nextDueDate,
+
+      description: recurring.description,
+      amount: recurring.amount,
+      status: "Skipped",
+    },
+  });
+
+  return entry;
+
 };
