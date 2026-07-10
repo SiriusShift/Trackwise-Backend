@@ -1,11 +1,11 @@
 // config/passport.js
 
-import passport from "passport";
-import { Strategy as LocalStrategy } from "passport-local";
-import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import bcrypt from "bcrypt";
-import {prisma} from "./prisma.js";
-import { app } from "../index.js";
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import { Strategy as LocalStrategy } from "passport-local";
+import { app } from "../app.js";
+import { prisma } from "./prisma.js";
 
 export const runPassport = () => {
   app.use(passport.initialize());
