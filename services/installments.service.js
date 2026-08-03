@@ -1,5 +1,4 @@
-const { PrismaClient } = require("@prisma/client");
-const prisma = new PrismaClient();
+import { prisma } from "../config/prisma.js";
 const { validateCategory } = require("./categories.service");
 const { validateAsset } = require("./assets.service");
 const { uploadFileToS3 } = require("./s3.service");
@@ -54,11 +53,11 @@ const getInstallment = async (userId, query) => {
     userId: parseInt(userId),
     ...(startDate && endDate
       ? {
-          startDate: {
-            gte: new Date(startDate),
-            lte: new Date(endDate),
-          },
-        }
+        startDate: {
+          gte: new Date(startDate),
+          lte: new Date(endDate),
+        },
+      }
       : {}),
     isActive: true,
   };
@@ -92,7 +91,7 @@ const getInstallment = async (userId, query) => {
   });
 
   const totalPages = Math.ceil(totalCount / size);
-  
+
   return {
     data: installment,
     totalCount,

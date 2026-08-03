@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 
 import { validateCategory } from "./categories.service.js";
@@ -11,7 +10,7 @@ import { validateCategory } from "./categories.service.js";
 import { AppError } from "../utils/AppError.js";
 import { determineTransactionStatus } from "../utils/transaction.utils.js";
 
-const prisma = new PrismaClient();
+import { prisma } from "../config/prisma.js";
 
 /*
 |--------------------------------------------------------------------------

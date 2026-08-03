@@ -1,11 +1,10 @@
-import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 import { AppError } from "../utils/AppError.js";
 import { getAssetBalance } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { uploadFileToS3 } from "./s3.service.js";
 
-const prisma = new PrismaClient();
+import { prisma } from "../config/prisma.js";
 
 /* ---------------- VALIDATION ---------------- */
 
@@ -32,6 +31,7 @@ export const getTransfers = async (userId, query) => {
     startDate,
     endDate,
     status,
+    Assets
   } = query;
 
   const page = parseInt(pageIndex) >= 0 ? parseInt(pageIndex) + 1 : 1;
@@ -64,6 +64,11 @@ export const getTransfers = async (userId, query) => {
         in: JSON.parse(Categories),
       },
     }),
+    ...(Assets && {
+      assetId: {
+        in: JSON.parse(Assets)
+      }
+    })
   };
 
   const [totalCount, transfers] = await Promise.all([

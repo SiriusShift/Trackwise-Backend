@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 
 import { validateExpense } from "./expenses.service.js";
@@ -11,8 +10,7 @@ import {
 } from "../services/s3.service.js";
 import { AppError } from "../utils/AppError.js";
 
-const prisma = new PrismaClient();
-
+import { prisma } from "../config/prisma.js";
 /*
 |--------------------------------------------------------------------------
 | Validate Transaction History
@@ -258,12 +256,12 @@ export const getStatistics = async (userId, data) => {
   ] = await Promise.all([
     prisma.asset.aggregate({
       _sum: { balance: true },
-      where: { isActive: true, userId },
+      where: { userId },
     }),
 
     prisma.asset.findMany({
       where: {
-        isActive: true, userId, balance: {
+        userId, balance: {
           not: 0
         }
       },

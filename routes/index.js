@@ -3,6 +3,7 @@ import AssetRouter from "./assets.routes.js";
 import UserRouter from "./auth.routes.js";
 import CategoryRouter from "./categories.routes.js";
 // import InstallmentRouter from "./installments.routes.js";
+import ReportsRouter from "./reports.routes.js";
 import TransactionRouter from "./transaction.routes.js";
 
 import { app } from "../app.js";
@@ -12,5 +13,5 @@ export const runRouters = () => {
   app.use("/assets", AssetRouter);
   app.use("/categories", CategoryRouter);
   app.use("/transactions", TransactionRouter);
-
+  app.use("/reports", ReportsRouter)
 };

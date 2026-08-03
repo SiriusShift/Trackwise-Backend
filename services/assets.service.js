@@ -1,9 +1,7 @@
-import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 import { AppError } from "../utils/AppError.js";
 
-const prisma = new PrismaClient();
-
+import { prisma } from "../config/prisma.js";
 /*
 |--------------------------------------------------------------------------
 | Validate Asset
@@ -130,24 +128,28 @@ export const getAssetBalance = async (userId, id, date) => {
       incomes: {
         where: {
           isActive: true,
+          status: "Completed",
           ...dateFilter,
         },
       },
       expenses: {
         where: {
           isActive: true,
+          status: "Completed",
           ...dateFilter,
         },
       },
       sentTransfers: {
         where: {
-          isActive: true,
+          isActive: true, status: "Completed",
+          status: "Completed",
           ...dateFilter,
         },
       },
       receivedTransfers: {
         where: {
           isActive: true,
+          status: "Completed",
           ...dateFilter,
         },
       },

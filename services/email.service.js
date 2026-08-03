@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import crypto from "crypto";
 
 import { AppError } from "../utils/AppError.js";
@@ -7,7 +6,7 @@ import {
   verifyEmailAddress,
 } from "./ses.service.js";
 
-const prisma = new PrismaClient();
+import { prisma } from "../config/prisma.js";
 
 const year = new Date().getFullYear();
 

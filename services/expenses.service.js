@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 
 import { AppError } from "../utils/AppError.js";
@@ -6,7 +5,7 @@ import { getAssetBalance } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
-const prisma = new PrismaClient();
+import { prisma } from "../config/prisma.js";
 
 /*
 |--------------------------------------------------------------------------
@@ -56,7 +55,7 @@ export const getExpenses = async (userId, query) => {
     }),
     ...(search && {
       description: {
-        startsWith: search,
+        contains: search,
         mode: "insensitive",
       },
     }),

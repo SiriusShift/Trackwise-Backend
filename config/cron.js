@@ -1,9 +1,8 @@
-import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 import cron from "node-cron";
 import { getAssetBalance } from "../services/assets.service.js";
 
-const prisma = new PrismaClient();
+import { prisma } from "../config/prisma.js";
 
 
 cron.schedule("0 * * * *", async () => { // hourly — see reasoning below

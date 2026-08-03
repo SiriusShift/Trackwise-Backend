@@ -2,8 +2,7 @@ import { Router } from "express";
 import passport from "passport";
 import catchAsync from "../utils/catchAsync.js";
 
-import { PrismaClient } from "@prisma/client";
-const prisma = new PrismaClient();
+import { prisma } from "../config/prisma.js";
 
 import {
   validateCreateRequest,

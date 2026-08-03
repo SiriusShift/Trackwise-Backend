@@ -1,4 +1,3 @@
-import { PrismaClient } from "@prisma/client";
 import moment from "moment";
 
 import { AppError } from "../utils/AppError.js";
@@ -6,7 +5,7 @@ import { validateAsset } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
-const prisma = new PrismaClient();
+import { prisma } from "../config/prisma.js";
 
 /* =========================
    VALIDATION
@@ -66,6 +65,7 @@ export const getIncome = async (userId, query) => {
     pageIndex,
     pageSize,
     Categories,
+    Assets,
     startDate,
     endDate,
     status,
@@ -97,6 +97,11 @@ export const getIncome = async (userId, query) => {
         in: JSON.parse(Categories),
       },
     }),
+    ...(Assets && {
+      assetId: {
+        in: JSON.parse(Assets)
+      }
+    })
   };
 
   const [totalCount, incomes] = await Promise.all([
@@ -136,8 +141,7 @@ export const updateIncome = async (userId, data, file, id) => {
 
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
-  const assetId = Number(data.to);
-  const isFuture = new Date(data.date) > new Date();
+  const assetId = Number(data.account);
 
   let image = income.image;
 
@@ -154,7 +158,7 @@ export const updateIncome = async (userId, data, file, id) => {
     data: {
       amount,
       description: data.description,
-      status: isFuture ? "Pending" : "Received",
+      status: "Completed",
 
       category: { connect: { id: categoryId } },
       asset: { connect: { id: assetId } },

@@ -1,8 +1,6 @@
-import { PrismaClient } from "@prisma/client";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import * as assetService from "../services/assets.service.js";
 
-const prisma = new PrismaClient();
 
 /* ---------------- CREATE ASSET ---------------- */
 export const createAsset = asyncHandler(async (req, res) => {
