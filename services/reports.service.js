@@ -1,14 +1,14 @@
 import moment from "moment";
+import Papa from "papaparse";
 import { prisma } from "../config/prisma.js";
 import { getAssetBalance } from "./assets.service.js";
+import { generateExcelBuffer } from "./excel.service.js";
 
-export const getTransactionStatement = async ({ userId, assetId, from, to }) => {
-    // subtract 1ms so transactions exactly on `from` aren't double-counted
+export const getTransactionStatement = async ({ userId, assetId, from, to, format }) => {
     const openingDate = moment(from).startOf("day");
 
     const openingResult = await getAssetBalance(userId, assetId, openingDate);
     const openingBalance = openingResult.remainingBalance;
-
 
     const filters = {
         isActive: true,
@@ -47,7 +47,7 @@ export const getTransactionStatement = async ({ userId, assetId, from, to }) => 
     ]);
 
     const formattedExpenses = expenses.map((item) => ({
-        id: item.id,
+        id: `expense-${item.id}`,
         type: "Expense",
         credit: 0,
         debit: Number(item.amount),
@@ -57,7 +57,7 @@ export const getTransactionStatement = async ({ userId, assetId, from, to }) => 
     }));
 
     const formattedIncomes = incomes.map((item) => ({
-        id: item.id,
+        id: `income-${item.id}`,
         type: "Income",
         credit: Number(item.amount),
         debit: 0,
@@ -69,7 +69,7 @@ export const getTransactionStatement = async ({ userId, assetId, from, to }) => 
     const formattedTransfers = transfers.map((item) => {
         const isOutgoing = item.fromAssetId === Number(assetId);
         return {
-            id: item.id,
+            id: `transfer-${item.id}`,
             type: "Transfer",
             credit: isOutgoing ? 0 : Number(item.amount),
             debit: isOutgoing ? Number(item.amount) : 0,
@@ -89,19 +89,47 @@ export const getTransactionStatement = async ({ userId, assetId, from, to }) => 
     let totalCredit = 0;
     let totalDebit = 0;
 
-    console.log(openingBalance)
-
     const withBalance = mergedTransactions.map((tx) => {
-        console.log("Before:", runningBalance);
-
         totalCredit += tx.credit;
         totalDebit += tx.debit;
-        runningBalance += tx.credit - tx.debit;
-
-        console.log("After:", runningBalance);
-
+        runningBalance = Math.round((runningBalance + tx.credit - tx.debit) * 100) / 100;
         return { ...tx, balance: runningBalance };
     });
+
+    if (format === "excel" || format === "csv") {
+        const columns = [
+            { header: "Date", key: "date", width: 20 },
+            { header: "Type", key: "type", width: 12 },
+            { header: "Category", key: "category", width: 20 },
+            { header: "Description", key: "description", width: 30 },
+            { header: "Credit", key: "credit", width: 14, numFmt: "#,##0.00" },
+            { header: "Debit", key: "debit", width: 14, numFmt: "#,##0.00" },
+            { header: "Balance", key: "balance", width: 14, numFmt: "#,##0.00" },
+        ];
+
+        const rows = withBalance.map((tx) => ({
+            date: moment(tx.date).format("YYYY-MM-DD hh:mm A"),
+            type: tx.type,
+            category: tx.category?.name ?? "",
+            description: tx.description,
+            credit: tx.credit || null,
+            debit: tx.debit || null,
+            balance: tx.balance,
+        }));
+
+        const summary = [
+            { label: "Opening Balance", value: openingBalance },
+            { label: "Closing Balance", value: runningBalance },
+            { label: "Total Credit", value: totalCredit },
+            { label: "Total Debit", value: totalDebit },
+        ];
+
+        if (format === "excel") {
+            return generateExcelBuffer({ sheetName: "Statement", columns, rows, summary });
+        }
+
+        return Papa.unparse(rows);
+    }
 
     return {
         openingBalance,

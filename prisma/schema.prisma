@@ -55,6 +55,24 @@ enum AssetCategory {
     INVESTMENT
 }
 
+enum LoanInstallmentStatus {
+  PENDING
+  PARTIAL
+  PAID
+  OVERDUE
+  CANCELLED
+  SKIPPED
+}
+
+
+// NOTE: Prisma cannot enforce which AssetSubtype values are valid for a given
+// AssetCategory at the DB level (no discriminated unions). Enforce this
+// mapping in application-layer validation (e.g. a zod schema keyed by category):
+//   BANK       -> SAVINGS | CHECKING | E_WALLET
+//   CREDIT     -> CREDIT_CARD | LINE_OF_CREDIT
+//   LOAN       -> PERSONAL | HOME | AUTO
+//   INVESTMENT -> STOCK | ETF | CRYPTO | MUTUAL_FUND | BOND
+//   CASH       -> null (no subtype)
 enum AssetSubtype {
 
     // BANK
@@ -77,6 +95,22 @@ enum AssetSubtype {
     CRYPTO
     MUTUAL_FUND
     BOND
+}
+
+enum InterestMethod {
+  ADD_ON
+  REDUCING_BALANCE
+}
+enum InterestPeriod {
+  MONTHLY
+  ANNUAL
+}
+
+enum CreditStatementStatus {
+  PENDING  // cycle closed, not yet due
+  PARTIAL  // some payment received, less than statementBalance
+  PAID     // fully paid
+  OVERDUE  // past dueDate, still not fully paid
 }
 
 model User {
@@ -117,6 +151,14 @@ model Asset {
 
   currency    String   @default("PHP")
 
+  // Meaning of `balance` is category-dependent — document it so net-worth /
+  // aggregation code doesn't have to guess:
+  //   CASH / BANK        -> current available balance
+  //   CREDIT             -> current amount owed (positive = liability)
+  //   LOAN               -> remaining principal owed (positive = liability)
+  //   INVESTMENT         -> current market value, i.e. a denormalized cache of
+  //                         (InvestmentPosition.quantity * InvestmentPosition.lastPrice),
+  //                         kept in sync by app logic whenever lastPrice/quantity change
   balance     Decimal  @db.Decimal(20, 8)
 
   institution String?
@@ -124,11 +166,19 @@ model Asset {
   color       String?
 
   includeInNetWorth Boolean @default(true)
+  isActive          Boolean @default(true) // soft-close: paid-off loans, closed cards/accounts
+
+  openedAt    DateTime? // when the real-world account/loan/position was opened
+  closedAt    DateTime? // when it was closed/paid off; null while active
 
   metadata    Json?
 
   userId      Int
   user        User @relation(fields: [userId], references: [id])
+
+  // Optional relations: default is SetNull, made explicit so deleting an
+  // asset never fails or silently changes behavior on a Prisma upgrade —
+  // it just detaches the historical record from the account.
   expenses Expense[]
   incomes  Income[]
 
@@ -137,12 +187,17 @@ model Asset {
 
   recurringTransactionFrom RecurringTransaction[] @relation("RecurringTransferFrom")
   recurringTransactionTo   RecurringTransaction[] @relation("RecurringTransferTo")
-  loanDetail       LoanDetail?
+
+  loanDetail         LoanDetail?
   investmentPosition InvestmentPosition?
-  creditDetail     CreditDetail?
+  creditDetail       CreditDetail?
 
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, category])
+  @@index([userId, isActive])
 }
 
 model LoanDetail {
@@ -152,14 +207,62 @@ model LoanDetail {
   asset             Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   originalPrincipal Decimal  @db.Decimal(20, 2)
+
+  // interestRate is always expressed per `interestPeriod` (e.g. 6.2500 + MONTHLY = 6.25%/month).
+  // For ADD_ON loans, interest is computed once on originalPrincipal over the full term,
+  // not recomputed against a shrinking balance each period — do not reuse REDUCING_BALANCE
+  // amortization logic for ADD_ON schedules.
   interestRate      Decimal  @db.Decimal(6, 4)   // e.g. 5.2500 = 5.25%
+  interestPeriod    InterestPeriod
+  interestMethod    InterestMethod
+
   termMonths        Int
   minimumPayment    Decimal  @db.Decimal(20, 2)
-  nextDueDate       DateTime?
+
+  startDate         DateTime // loan origination date — required to compute amortization schedule / maturity
+  nextDueDate       DateTime? // cached copy of the earliest unpaid installment's dueDate — keep in sync
+                              // whenever LoanInstallment rows change, or better, derive it at query time
+                              // from installments to avoid two sources of truth drifting apart
+
+  installments      LoanInstallment[]
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 }
+
+
+model LoanInstallment {
+  id                Int      @id @default(autoincrement())
+
+  loanId            Int
+  loan              LoanDetail @relation(fields: [loanId], references: [id], onDelete: Cascade)
+
+  installmentNo     Int
+
+  dueDate           DateTime
+
+  principal         Decimal @db.Decimal(20, 2)
+  interest          Decimal @db.Decimal(20, 2)
+
+  amountDue         Decimal @db.Decimal(20, 2) // original scheduled amount — don't edit after the fact
+  amountPaid        Decimal @default(0) @db.Decimal(20, 2)
+  lateFeeCharged    Decimal @default(0) @db.Decimal(20, 2) // filled in at payment confirmation from the actual statement, not computed
+
+  status            LoanInstallmentStatus @default(PENDING)
+
+  expenseId         Int?    @unique // one-to-one: at most one expense records the payment of this installment
+  expense           Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  paidAt            DateTime?
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([loanId, installmentNo]) // prevents duplicate installment numbers on the same loan
+  @@index([loanId])
+  @@index([dueDate])
+}
+
 
 model CreditDetail {
   id             Int      @id @default(autoincrement())
@@ -168,12 +271,46 @@ model CreditDetail {
   asset          Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
   creditLimit    Decimal  @db.Decimal(20, 2)
-  statementDate  Int?     // day of month
-  dueDate        Int?     // day of month
+  statementDate  Int?     // day of month (1-31), validate in app layer
+  dueDate        Int?     // day of month (1-31), validate in app layer
   minimumPayment Decimal? @db.Decimal(20, 2)
+
+  statements     CreditStatement[]
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// One row per billing cycle. CreditDetail.statementDate/dueDate are just the
+// recurring day-of-month config; this is the concrete per-cycle instance,
+// same relationship as LoanDetail -> LoanInstallment.
+model CreditStatement {
+  id                Int      @id @default(autoincrement())
+
+  creditDetailId    Int
+  creditDetail      CreditDetail @relation(fields: [creditDetailId], references: [id], onDelete: Cascade)
+
+  statementDate     DateTime // date this cycle closed
+  dueDate           DateTime // payment due date for this cycle
+
+  statementBalance  Decimal  @db.Decimal(20, 2) // original balance as of statementDate — don't edit after the fact
+  minimumPaymentDue Decimal  @db.Decimal(20, 2)
+
+  amountPaid        Decimal  @default(0) @db.Decimal(20, 2) // sum of linked payments; keep in sync in app logic
+  interestCharged   Decimal  @default(0) @db.Decimal(20, 2) // filled in at confirmation from the real statement, not computed
+  lateFeeCharged    Decimal  @default(0) @db.Decimal(20, 2) // filled in at confirmation from the real statement, not computed
+  status            CreditStatementStatus @default(PENDING)
+
+  // 1:many, unlike LoanInstallment <-> Expense — a statement can be paid off
+  // across several partial payments.
+  payments          Transfer[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([creditDetailId, statementDate]) // one statement per cycle
+  @@index([creditDetailId])
+  @@index([dueDate])
 }
 
 model InvestmentPosition {
@@ -191,6 +328,8 @@ model InvestmentPosition {
 
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@index([symbol]) // for batch price-refresh jobs querying by symbol across users
 }
 
 model Expense {
@@ -208,16 +347,18 @@ model Expense {
   categoryId    Int
   assetId       Int?
   recurringId   Int?
-  installmentId Int?
-    recurringDueDate DateTime?
+  recurringDueDate DateTime?
+
+  loanInstallment LoanInstallment? // back-relation only — FK lives on LoanInstallment.expenseId
 
   user              User                  @relation(fields: [userId], references: [id])
   category          Categories            @relation(fields: [categoryId], references: [id])
-  asset             Asset?                @relation(fields: [assetId], references: [id])
+  asset             Asset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
   recurringTemplate RecurringTransaction? @relation("RecurringExpenses", fields: [recurringId], references: [id])
 
   @@index([userId])
   @@index([recurringId])
+  @@index([creditStatementId])
 }
 
 model Income {
@@ -238,7 +379,7 @@ model Income {
 
   user              User                  @relation(fields: [userId], references: [id])
   category          Categories            @relation(fields: [categoryId], references: [id])
-  asset             Asset?                @relation(fields: [assetId], references: [id])
+  asset             Asset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
   recurringTemplate RecurringTransaction? @relation("RecurringIncomes", fields: [recurringId], references: [id])
 
   @@index([userId])
@@ -261,12 +402,14 @@ model Transfer {
   fromAssetId Int
   toAssetId   Int?
   recurringId Int?
+  creditStatementId Int? // set when this expense is a payment toward a credit statement
 
   user              User                  @relation(fields: [userId], references: [id])
   category          Categories            @relation(fields: [categoryId], references: [id])
-  fromAsset         Asset                 @relation("FromAsset", fields: [fromAssetId], references: [id])
-  toAsset           Asset?                @relation("ToAsset", fields: [toAssetId], references: [id])
+  fromAsset         Asset                 @relation("FromAsset", fields: [fromAssetId], references: [id], onDelete: Restrict)
+  toAsset           Asset?                @relation("ToAsset", fields: [toAssetId], references: [id], onDelete: SetNull)
   recurringTemplate RecurringTransaction? @relation("RecurringTransfers", fields: [recurringId], references: [id])
+  creditStatement   CreditStatement?      @relation(fields: [creditStatementId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([recurringId])
@@ -296,8 +439,8 @@ model RecurringTransaction {
 
   user      User       @relation(fields: [userId], references: [id])
   category  Categories @relation(fields: [categoryId], references: [id])
-  fromAsset Asset?     @relation("RecurringTransferFrom", fields: [fromAssetId], references: [id])
-  toAsset   Asset?     @relation("RecurringTransferTo", fields: [toAssetId], references: [id])
+  fromAsset Asset?     @relation("RecurringTransferFrom", fields: [fromAssetId], references: [id], onDelete: SetNull)
+  toAsset   Asset?     @relation("RecurringTransferTo", fields: [toAssetId], references: [id], onDelete: SetNull)
 
   generatedExpenses  Expense[]      @relation("RecurringExpenses")
   generatedIncomes   Income[]       @relation("RecurringIncomes")

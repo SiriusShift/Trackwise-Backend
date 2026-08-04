@@ -2,6 +2,7 @@ import { Prisma } from "@prisma/client";
 import { AppError } from "../utils/AppError.js";
 
 export const errorHandler = (err, req, res, next) => {
+    console.log(err, "ERROR")
     if (err instanceof AppError) {
         return res.status(err.statusCode).json({
             success: false,

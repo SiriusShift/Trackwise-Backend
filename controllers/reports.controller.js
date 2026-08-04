@@ -1,14 +1,24 @@
+import moment from "moment";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import * as reportsService from "../services/reports.service.js";
 import { AppError } from "../utils/AppError.js";
 
+const VALID_FORMATS = ["json", "csv", "excel"];
+
 export const getTransactionStatement = asyncHandler(
     async (req, res) => {
-        const { assetId, from, to } = req.query;
+        const { assetId, from, to, format = "json" } = req.query;
 
         if (!assetId || !from || !to) {
             throw new AppError(
                 "assetId, from, and to are required query parameters",
+                400
+            );
+        }
+
+        if (!VALID_FORMATS.includes(format)) {
+            throw new AppError(
+                `format must be one of: ${VALID_FORMATS.join(", ")}`,
                 400
             );
         }
@@ -31,16 +41,37 @@ export const getTransactionStatement = asyncHandler(
 
         const userId = req.user.id; // adjust to however you attach the authed user
 
-        console.log(userId, parsedAssetId, "user id")
-
         const statement = await reportsService.getTransactionStatement({
             userId,
             assetId: parsedAssetId,
             from: fromDate,
             to: toDate,
+            format,
         });
 
-        res.status(200).json({
+        const filenameBase = `Transaction-Statement_${parsedAssetId}_${moment(fromDate).format("YYYY-MM-DD")}_to_${moment(toDate).format("YYYY-MM-DD")}`;
+        if (format === "excel") {
+            res.setHeader(
+                "Content-Type",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${filenameBase}.xlsx"`
+            );
+            return res.send(statement);
+        }
+
+        if (format === "csv") {
+            res.setHeader("Content-Type", "text/csv");
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${filenameBase}.csv"`
+            );
+            return res.send(statement);
+        }
+
+        return res.status(200).json({
             success: true,
             data: statement,
         });
