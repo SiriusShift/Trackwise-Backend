@@ -32,7 +32,7 @@ cron.schedule("0 * * * *", async () => { // hourly — see reasoning below
               firedAt: nextDueLocal.toDate(),
             },
           },
-        }).catch(() => null);
+        });
         if (alreadyFired) continue;
 
         if (item.behaviour === "REMIND") {
@@ -60,10 +60,10 @@ cron.schedule("0 * * * *", async () => { // hourly — see reasoning below
         const model = { Expense: prisma.expense, Income: prisma.income, Transfer: prisma.transfer }[item.type];
         if (!model) continue;
 
-        if (item.type === "Expense" && item.fromAssetId) {
+        if ((item.type === "Expense" || item.type === "Transfer") && item.fromAssetId) {
           const result = await getAssetBalance(userId, item.fromAssetId);
           const asset = result?.data?.[0];
-          if (!asset || Number(result.remainingBalance) < Number(item.amount)) {
+          if (!asset || Number(asset.remainingBalance) < Number(item.amount)) {
             await prisma.recurringLog.create({
               data: {
                 recurringId: item.id,
@@ -72,28 +72,29 @@ cron.schedule("0 * * * *", async () => { // hourly — see reasoning below
                 errorMessage: `Insufficient balance in ${asset?.name ?? "linked account"}`,
               },
             });
-            continue; // nextDueDate NOT advanced — stays "due" until resolved
+            continue;
           }
         }
 
-        const newTransaction = await model.create({
-          data: {
-            amount: item.amount,
-            date: todayLocal.toDate(),
-            description: item.description,
-            status: "Completed",
-            isActive: true,
-            recurringId: item.id,
-            categoryId: item.categoryId,
-            assetId: item.fromAssetId,
-            recurringDueDate: nextDueLocal.toDate(),
-            userId,
-          },
-        });
+        const transactionData = {
+          amount: item.amount,
+          date: todayLocal.toDate(),
+          description: item.description,
+          status: "Completed",
+          isActive: true,
+          recurringId: item.id,
+          categoryId: item.categoryId,
+          recurringDueDate: nextDueLocal.toDate(),
+          userId,
+          ...(item.type === "Expense" && { assetId: item.fromAssetId }),
+          ...(item.type === "Income" && { assetId: item.toAssetId }),
+          ...(item.type === "Transfer" && { fromAssetId: item.fromAssetId, toAssetId: item.toAssetId }),
+        };
 
         const newNextDue = moment(nextDueLocal).add(item.interval, item.unit).startOf("day").utc().toDate();
 
-        await prisma.$transaction([
+        const [newTransaction] = await prisma.$transaction([
+          model.create({ data: transactionData }),
           prisma.recurringTransaction.update({
             where: { id: item.id },
             data: { nextDueDate: newNextDue, lastTriggeredAt: new Date() },
@@ -103,7 +104,6 @@ cron.schedule("0 * * * *", async () => { // hourly — see reasoning below
               recurringId: item.id,
               result: "CREATED",
               firedAt: nextDueLocal.toDate(),
-              generatedExpenseId: item.type === "Expense" ? newTransaction.id : undefined,
             },
           }),
         ]);

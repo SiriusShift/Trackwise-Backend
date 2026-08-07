@@ -4,13 +4,13 @@ import * as assetService from "../services/assets.service.js";
 
 /* ---------------- CREATE ASSET ---------------- */
 export const createAsset = asyncHandler(async (req, res) => {
-  const { name, balance, type, currency, creditLimit, color, icon } = req.body;
+  const { name, balance, type, sub_type, currency, creditLimit, color, icon, includeNetWorth } = req.body;
 
   const response = await assetService.createAsset(
     name,
     balance, currency,
-    type, creditLimit, color, icon,
-    req.user.id
+    type, sub_type, creditLimit, color, icon,
+    req.user.id, includeNetWorth
   );
 
   return res.status(200).json({
@@ -25,15 +25,11 @@ export const createAsset = asyncHandler(async (req, res) => {
 export const getAsset = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const response = await assetService.getAsset(
-    req.user.id,
-    id
-  );
+  const response = await assetService.getAsset(req.user.id, id);
 
   return res.status(200).json({
     success: true,
-    message: "Assets fetched successfully with total expenses and incomes",
+    message: "Asset fetched successfully with total expenses and incomes",
     ...response,
   });
-
 });

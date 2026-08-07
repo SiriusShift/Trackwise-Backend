@@ -5,11 +5,10 @@ import { getAssetBalance } from "./assets.service.js";
 import { generateExcelBuffer } from "./excel.service.js";
 
 export const getTransactionStatement = async ({ userId, assetId, from, to, format }) => {
-    const openingDate = moment(from).startOf("day");
-
-    const openingResult = await getAssetBalance(userId, assetId, openingDate);
-    const openingBalance = openingResult.remainingBalance;
-
+    const fromDate = moment(from).startOf("day").toDate();
+    const toDate = moment(to).endOf("day").toDate();
+    const openingResult = await getAssetBalance(userId, assetId, fromDate);
+    const openingBalance = openingResult?.data?.[0]?.remainingBalance ?? 0;
     const filters = {
         isActive: true,
         userId: Number(userId),
@@ -18,15 +17,13 @@ export const getTransactionStatement = async ({ userId, assetId, from, to, forma
 
     const [expenses, incomes, transfers] = await Promise.all([
         prisma.expense.findMany({
-            where: { ...filters, assetId: Number(assetId), date: { gte: from, lte: to } },
-            select: {
+            where: { ...filters, assetId: Number(assetId), date: { gte: fromDate, lte: toDate } }, select: {
                 id: true, date: true, amount: true, description: true, status: true,
                 category: { select: { name: true } },
             },
         }),
         prisma.income.findMany({
-            where: { ...filters, assetId: Number(assetId), date: { gte: from, lte: to } },
-            select: {
+            where: { ...filters, assetId: Number(assetId), date: { gte: fromDate, lte: toDate } }, select: {
                 id: true, date: true, amount: true, description: true, status: true,
                 category: { select: { name: true } },
             },
@@ -35,7 +32,7 @@ export const getTransactionStatement = async ({ userId, assetId, from, to, forma
             where: {
                 ...filters,
                 OR: [{ fromAssetId: Number(assetId) }, { toAssetId: Number(assetId) }],
-                date: { gte: from, lte: to },
+                date: { gte: fromDate, lte: toDate },
             },
             select: {
                 id: true, date: true, amount: true, description: true, status: true,

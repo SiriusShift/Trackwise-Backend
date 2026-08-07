@@ -219,89 +219,61 @@ export const getStatistics = async (userId, data) => {
   const start = moment(startDate).startOf(mode).toDate();
   const end = moment(endDate).endOf(mode).toDate();
 
-  const prevStart = moment(startDate)
-    .clone()
-    .subtract(1, mode)
-    .startOf(mode)
-    .toDate();
+  const prevStart = moment(startDate).clone().subtract(1, mode).startOf(mode).toDate();
+  const prevEnd = moment(endDate).clone().subtract(1, mode).endOf(mode).toDate();
 
-  const prevEnd = moment(endDate)
-    .clone()
-    .subtract(1, mode)
-    .endOf(mode)
-    .toDate();
+  const dateFilter = { gte: start, lte: end };
+  const prevDateFilter = { gte: prevStart, lte: prevEnd };
 
-  const dateFilter = {
-    gte: start,
-    lte: end,
-  };
-
-  const prevDateFilter = {
-    gte: prevStart,
-    lte: prevEnd,
-  };
+  // Fetch once, reuse everywhere
+  const netWorthAssets = await prisma.asset.findMany({
+    where: { userId, includeInNetWorth: true },
+    select: { id: true },
+  });
+  const netWorthAssetIds = netWorthAssets.map((a) => a.id);
 
   /*
   |--------------------------------------------------------------------------
   | Assets
   |--------------------------------------------------------------------------
   */
-  const [
-    assetsResult,
-    assets,
-    assetIncomes,
-    assetExpenses,
-    transferOut,
-    transferIn,
-  ] = await Promise.all([
-    prisma.asset.aggregate({
-      _sum: { balance: true },
-      where: { userId },
-    }),
+  const [assetsResult, assets, assetIncomes, assetExpenses, transferOut, transferIn] =
+    await Promise.all([
+      prisma.asset.aggregate({
+        _sum: { balance: true },
+        where: { userId, id: { in: netWorthAssetIds } },
+      }),
 
-    prisma.asset.findMany({
-      where: {
-        userId, balance: {
-          not: 0
-        }
-      },
-      select: {
-        id: true,
-        name: true,
-        balance: true,
-        color: true,
-      },
-    }),
+      prisma.asset.findMany({
+        where: { userId, id: { in: netWorthAssetIds }, balance: { not: 0 } },
+        select: { id: true, name: true, balance: true, color: true },
+      }),
 
-    prisma.income.groupBy({
-      by: ["assetId"],
-      _sum: { amount: true },
-      where: { userId, isActive: true },
-    }),
+      prisma.income.groupBy({
+        by: ["assetId"],
+        _sum: { amount: true },
+        where: { userId, isActive: true, assetId: { in: netWorthAssetIds } },
+      }),
 
-    prisma.expense.groupBy({
-      by: ["assetId"],
-      _sum: { amount: true },
-      where: { userId, isActive: true, status: "Completed" },
-    }),
+      prisma.expense.groupBy({
+        by: ["assetId"],
+        _sum: { amount: true },
+        where: { userId, isActive: true, status: "Completed", assetId: { in: netWorthAssetIds } },
+      }),
 
-    prisma.transfer.groupBy({
-      by: ["fromAssetId"],
-      _sum: { amount: true },
-      where: { userId, isActive: true },
-    }),
+      prisma.transfer.groupBy({
+        by: ["fromAssetId"],
+        _sum: { amount: true },
+        where: { userId, isActive: true, fromAssetId: { in: netWorthAssetIds } },
+      }),
 
-    prisma.transfer.groupBy({
-      by: ["toAssetId"],
-      _sum: { amount: true },
-      where: {
-        userId,
-        isActive: true,
-      },
-    }),
-  ]);
+      prisma.transfer.groupBy({
+        by: ["toAssetId"],
+        _sum: { amount: true },
+        where: { userId, isActive: true, toAssetId: { in: netWorthAssetIds } },
+      }),
+    ]);
 
-  // Build lookup maps for O(1) access
   const incomeByAsset = Object.fromEntries(
     assetIncomes.map((r) => [r.assetId, Number(r._sum.amount ?? 0)])
   );
@@ -309,66 +281,39 @@ export const getStatistics = async (userId, data) => {
     assetExpenses.map((r) => [r.assetId, Number(r._sum.amount ?? 0)])
   );
   const transferOutByAsset = Object.fromEntries(
-    transferOut.map((r) => [
-      r.fromAssetId,
-      Number(r._sum.amount ?? 0),
-    ])
+    transferOut.map((r) => [r.fromAssetId, Number(r._sum.amount ?? 0)])
   );
-
   const transferInByAsset = Object.fromEntries(
-    transferIn.map((r) => [
-      r.toAssetId,
-      Number(r._sum.amount ?? 0),
-    ])
+    transferIn.map((r) => [r.toAssetId, Number(r._sum.amount ?? 0)])
   );
 
-  const assetBreakdown = assets.map((asset) => {
-    const initial = Number(asset.balance);
-    const income = incomeByAsset[asset.id] ?? 0;
-    const expense = expenseByAsset[asset.id] ?? 0;
-    const transferOut = transferOutByAsset[asset.id] ?? 0;
-    const transferIn = transferInByAsset[asset.id] ?? 0;
+  const assetBreakdown = assets
+    .map((asset) => {
+      const initial = Number(asset.balance);
+      const income = incomeByAsset[asset.id] ?? 0;
+      const expense = expenseByAsset[asset.id] ?? 0;
+      const transferOut = transferOutByAsset[asset.id] ?? 0;
+      const transferIn = transferInByAsset[asset.id] ?? 0;
 
-    return {
-      name: asset.name,
-      color: asset.color,
-      balance:
-        initial +
-        income -
-        expense -
-        transferOut +
-        transferIn,
-    };
-  }).filter((asset) => asset?.balance !== 0);
+      return {
+        name: asset.name,
+        color: asset.color,
+        balance: initial + income - expense - transferOut + transferIn,
+      };
+    })
+    .filter((asset) => asset?.balance !== 0);
 
   /*
   |--------------------------------------------------------------------------
   | Category Breakdown
   |--------------------------------------------------------------------------
   */
-  const getCategoryBreakdown = async (type, dateFilter) => {
-    const model =
-      type === "Income"
-        ? prisma.income
-        : prisma.expense;
+  const getCategoryBreakdown = async (type, filter) => {
+    const model = type === "Income" ? prisma.income : prisma.expense;
 
     const records = await model.findMany({
-      where: {
-        userId,
-        isActive: true,
-        date: dateFilter,
-      },
-      select: {
-        amount: true,
-
-        category: {
-          select: {
-            name: true,
-            color: true
-          },
-        },
-
-      },
+      where: { userId, isActive: true, date: filter, assetId: { in: netWorthAssetIds } },
+      select: { amount: true, category: { select: { name: true, color: true } } },
     });
 
     const grouped = records.reduce((acc, item) => {
@@ -376,15 +321,9 @@ export const getStatistics = async (userId, data) => {
       const categoryColor = item.category?.color || "Unknown";
 
       if (!acc[categoryName]) {
-        acc[categoryName] = {
-          name: categoryName,
-          color: categoryColor,
-          amount: 0,
-        };
+        acc[categoryName] = { name: categoryName, color: categoryColor, amount: 0 };
       }
-
       acc[categoryName].amount += Number(item.amount);
-
       return acc;
     }, {});
 
@@ -409,102 +348,46 @@ export const getStatistics = async (userId, data) => {
     expenseBreakdown,
   ] = await Promise.all([
     prisma.income.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        userId,
-        isActive: true,
-        date: dateFilter,
-      },
+      _sum: { amount: true },
+      where: { userId, isActive: true, date: dateFilter, assetId: { in: netWorthAssetIds } },
     }),
 
     prisma.expense.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        userId,
-        isActive: true,
-        date: dateFilter,
-        status: "Completed"
-      },
+      _sum: { amount: true },
+      where: { userId, isActive: true, date: dateFilter, status: "Completed", assetId: { in: netWorthAssetIds } },
     }),
 
     prisma.income.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        userId,
-        isActive: true,
-        date: prevDateFilter,
-      },
+      _sum: { amount: true },
+      where: { userId, isActive: true, date: prevDateFilter, assetId: { in: netWorthAssetIds } },
     }),
 
     prisma.expense.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        userId,
-        isActive: true,
-        date: prevDateFilter,
-        status: "Completed"
-
-      },
+      _sum: { amount: true },
+      where: { userId, isActive: true, date: prevDateFilter, status: "Completed", assetId: { in: netWorthAssetIds } },
     }),
 
     prisma.income.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        userId,
-        isActive: true,
-      },
+      _sum: { amount: true },
+      where: { userId, isActive: true, assetId: { in: netWorthAssetIds } },
     }),
 
     prisma.expense.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        userId,
-        isActive: true, status: "Completed"
-
-      },
+      _sum: { amount: true },
+      where: { userId, isActive: true, status: "Completed", assetId: { in: netWorthAssetIds } },
     }),
 
     prisma.income.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        userId,
-        isActive: true,
-        date: {
-          lte: prevEnd,
-        },
-      },
+      _sum: { amount: true },
+      where: { userId, isActive: true, date: { lte: prevEnd }, assetId: { in: netWorthAssetIds } },
     }),
 
     prisma.expense.aggregate({
-      _sum: {
-        amount: true,
-      },
-      where: {
-        userId,
-        isActive: true,
-        date: {
-          lte: prevEnd,
-        }, status: "Completed"
-
-      },
+      _sum: { amount: true },
+      where: { userId, isActive: true, date: { lte: prevEnd }, status: "Completed", assetId: { in: netWorthAssetIds } },
     }),
 
     getCategoryBreakdown("Income", dateFilter),
-
     getCategoryBreakdown("Expense", dateFilter),
   ]);
 
@@ -515,15 +398,8 @@ export const getStatistics = async (userId, data) => {
   */
   const baseBalance = Number(assetsResult._sum.balance ?? 0);
 
-  const balance =
-    baseBalance +
-    Number(allIncome._sum.amount ?? 0) -
-    Number(allExpense._sum.amount ?? 0);
-
-  const prevBalance =
-    baseBalance +
-    Number(prevAllIncome._sum.amount ?? 0) -
-    Number(prevAllExpense._sum.amount ?? 0);
+  const balance = baseBalance + Number(allIncome._sum.amount ?? 0) - Number(allExpense._sum.amount ?? 0);
+  const prevBalance = baseBalance + Number(prevAllIncome._sum.amount ?? 0) - Number(prevAllExpense._sum.amount ?? 0);
 
   /*
   |--------------------------------------------------------------------------
@@ -533,37 +409,19 @@ export const getStatistics = async (userId, data) => {
   const trend = (curr, prev) => {
     const current = Number(curr ?? 0);
     const previous = Number(prev ?? 0);
-
     if (!previous) return 0;
-
-    return Number(
-      (((current - previous) / previous) * 100).toFixed(2),
-    );
+    return Number((((current - previous) / previous) * 100).toFixed(2));
   };
 
   return {
     balance,
-
     income: Number(income._sum.amount ?? 0),
-
     expense: Number(expense._sum.amount ?? 0),
-
-    incomeTrend: trend(
-      income._sum.amount,
-      prevIncome._sum.amount,
-    ),
-
-    expenseTrend: trend(
-      expense._sum.amount,
-      prevExpense._sum.amount,
-    ),
-
+    incomeTrend: trend(income._sum.amount, prevIncome._sum.amount),
+    expenseTrend: trend(expense._sum.amount, prevExpense._sum.amount),
     balanceTrend: trend(balance, prevBalance),
-
     assetBreakdown,
-
     incomeBreakdown,
-
     expenseBreakdown,
   };
 };

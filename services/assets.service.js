@@ -1,4 +1,3 @@
-import moment from "moment";
 import { AppError } from "../utils/AppError.js";
 
 import { prisma } from "../config/prisma.js";
@@ -32,36 +31,50 @@ export const createAsset = async (
   balance,
   currency,
   type,
+  subtype,
   creditLimit,
   color,
   icon,
   userId,
+  includeNetWorth
 ) => {
   const asset = await prisma.asset.create({
     data: {
       name,
       balance: parseFloat(balance),
+      includeInNetWorth: includeNetWorth,
 
-      ...(type && { type: type }),
-      ...(currency && { currency }),
+      category: type,
+      currency,
 
-      ...(creditLimit && {
-        creditLimit: Number(creditLimit),
+      ...(subtype && {
+        subtype,
       }),
 
-      ...(color && {
-        color,
+      ...(type === "CREDIT" && {
+        creditDetail: {
+          create: {
+            creditLimit: parseFloat(creditLimit),
+            statementDate: statementDate ? Number(statementDate) : null,
+            dueDate: dueDate ? Number(dueDate) : null,
+            minimumPayment: minimumPayment
+              ? parseFloat(minimumPayment)
+              : null,
+          },
+        },
       }),
 
-      ...(icon && {
-        icon,
-      }),
+      color,
+      icon,
 
       user: {
         connect: {
           id: Number(userId),
         },
       },
+    },
+    include: {
+      creditDetail: true,
     },
   });
 
@@ -74,31 +87,12 @@ export const createAsset = async (
 |--------------------------------------------------------------------------
 */
 export const getAsset = async (userId, id) => {
-  const lastMonth = moment()
-    .subtract(1, "month")
-    .endOf("month")
-    .toDate();
-
-  const current = await getAssetBalance(userId, id);
-  const previous = await getAssetBalance(userId, id, lastMonth);
-
-  const currentBalance = current?.remainingBalance ?? 0;
-  const prevBalance = previous?.remainingBalance ?? 0;
-
-  const trend =
-    prevBalance === 0
-      ? 0
-      : Number(
-        (
-          ((currentBalance - prevBalance) / prevBalance) *
-          100
-        ).toFixed(2)
-      );
+  const { data, total, netWorth } = await getAssetBalance(userId, id);
 
   return {
-    data: current.data,
-    balance: currentBalance,
-    trend,
+    data,
+    total,
+    netWorth,
   };
 };
 
@@ -107,101 +101,59 @@ export const getAsset = async (userId, id) => {
 | Get Asset Balance (Core Calculation)
 |--------------------------------------------------------------------------
 */
-export const getAssetBalance = async (userId, id, date) => {
-  const dateFilter = date
-    ? {
-      date: {
-        lte: new Date(date),
-      },
-    }
-    : {};
+export const getAssetBalance = async (userId, id, date, { netWorthOnly = false } = {}) => {
+  const dateFilter = date ? { date: { lte: new Date(date) } } : {};
+
+  const whereFor = (relationField) => ({
+    isActive: true,
+    status: "Completed",
+    ...dateFilter,
+    [relationField]: { userId: Number(userId), ...(id ? { id: Number(id) } : {}) },
+  });
 
   const assets = await prisma.asset.findMany({
     where: {
       userId: Number(userId),
       ...(id ? { id: Number(id) } : {}),
+      ...(netWorthOnly && { includeInNetWorth: true }),
     },
     select: {
       id: true,
       name: true,
       balance: true,
-      incomes: {
-        where: {
-          isActive: true,
-          status: "Completed",
-          ...dateFilter,
-        },
-      },
-      expenses: {
-        where: {
-          isActive: true,
-          status: "Completed",
-          ...dateFilter,
-        },
-      },
-      sentTransfers: {
-        where: {
-          isActive: true, status: "Completed",
-          status: "Completed",
-          ...dateFilter,
-        },
-      },
-      receivedTransfers: {
-        where: {
-          isActive: true,
-          status: "Completed",
-          ...dateFilter,
-        },
-      },
+      currency: true,
+      category: true,
+      includeInNetWorth: true,
     },
   });
 
+  const [incomes, expenses, transfersOut, transfersIn] = await Promise.all([
+    prisma.income.groupBy({ by: ["assetId"], where: whereFor("asset"), _sum: { amount: true } }),
+    prisma.expense.groupBy({ by: ["assetId"], where: whereFor("asset"), _sum: { amount: true } }),
+    prisma.transfer.groupBy({ by: ["fromAssetId"], where: whereFor("fromAsset"), _sum: { amount: true } }),
+    prisma.transfer.groupBy({ by: ["toAssetId"], where: whereFor("toAsset"), _sum: { amount: true } }),
+  ]);
+
+  const sumFor = (rows, key, assetId) =>
+    Number(rows.find((r) => r[key] === assetId)?._sum.amount ?? 0);
+
   const data = assets.map((asset) => {
-    const totalExpenses = asset.expenses.reduce(
-      (sum, tx) => sum + Number(tx.amount),
-      0
-    );
-
-    const totalIncomes = asset.incomes.reduce(
-      (sum, tx) => sum + Number(tx.amount),
-      0
-    );
-
-    const totalTransferOut = asset.sentTransfers.reduce(
-      (sum, tx) => sum + Number(tx.amount),
-      0
-    );
-
-    const totalTransferIn = asset.receivedTransfers.reduce(
-      (sum, tx) => sum + Number(tx.amount),
-      0
-    );
-
+    const totalIncomes = sumFor(incomes, "assetId", asset.id);
+    const totalExpenses = sumFor(expenses, "assetId", asset.id);
+    const totalTransferOut = sumFor(transfersOut, "fromAssetId", asset.id);
+    const totalTransferIn = sumFor(transfersIn, "toAssetId", asset.id);
     const remainingBalance =
-      Number(asset.balance) +
-      totalIncomes -
-      totalExpenses -
-      totalTransferOut +
-      totalTransferIn;
+      Number(asset.balance) + totalIncomes - totalExpenses - totalTransferOut + totalTransferIn;
 
-    return {
-      ...asset,
-      totalExpenses,
-      totalIncomes,
-      totalTransferOut,
-      totalTransferIn,
-      remainingBalance,
-    };
+    return { ...asset, totalIncomes, totalExpenses, totalTransferOut, totalTransferIn, remainingBalance };
   });
-
-  const totalRemainingBalance = data.reduce(
-    (sum, asset) => sum + asset.remainingBalance,
-    0
-  );
 
   return {
     data,
-    remainingBalance: totalRemainingBalance,
+    total: data.reduce((sum, a) => sum + a.remainingBalance, 0),
+    netWorth: data
+      .filter((a) => a.includeInNetWorth)
+      .reduce((sum, a) => sum + a.remainingBalance, 0),
   };
 };
 
