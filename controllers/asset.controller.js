@@ -24,8 +24,9 @@ export const createAsset = asyncHandler(async (req, res) => {
 /* ---------------- GET ASSET ---------------- */
 export const getAsset = asyncHandler(async (req, res) => {
   const { id } = req.params;
+  const { dateFrom, dateTo } = req.query;
 
-  const response = await assetService.getAsset(req.user.id, id);
+  const response = await assetService.getAsset(req.user.id, id, dateFrom, dateTo);
 
   return res.status(200).json({
     success: true,

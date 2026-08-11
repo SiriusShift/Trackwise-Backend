@@ -86,8 +86,11 @@ export const createAsset = async (
 | Get Asset Summary (with trend)
 |--------------------------------------------------------------------------
 */
-export const getAsset = async (userId, id) => {
-  const { data, total, netWorth } = await getAssetBalance(userId, id);
+export const getAsset = async (userId, id, from, to) => {
+  const { data, total, netWorth } = await getAssetBalance(userId, id, {
+    from,
+    to,
+  });
 
   return {
     data,
@@ -95,19 +98,26 @@ export const getAsset = async (userId, id) => {
     netWorth,
   };
 };
-
 /*
 |--------------------------------------------------------------------------
 | Get Asset Balance (Core Calculation)
 |--------------------------------------------------------------------------
 */
-export const getAssetBalance = async (userId, id, date, { netWorthOnly = false } = {}) => {
-  const dateFilter = date ? { date: { lte: new Date(date) } } : {};
+export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, to } = {}) => {
+  const rangeFilter =
+    from || to
+      ? {
+        date: {
+          ...(from && { gte: new Date(from) }),
+          ...(to && { lte: new Date(to) }),
+        },
+      }
+      : null;
 
-  const whereFor = (relationField) => ({
+  const whereFor = (relationField, extra = {}) => ({
     isActive: true,
     status: "Completed",
-    ...dateFilter,
+    ...extra,
     [relationField]: { userId: Number(userId), ...(id ? { id: Number(id) } : {}) },
   });
 
@@ -127,12 +137,23 @@ export const getAssetBalance = async (userId, id, date, { netWorthOnly = false }
     },
   });
 
+  // Full-history sums — always unfiltered by date, since remainingBalance
+  // is a running total and breaks if any transactions are excluded.
   const [incomes, expenses, transfersOut, transfersIn] = await Promise.all([
     prisma.income.groupBy({ by: ["assetId"], where: whereFor("asset"), _sum: { amount: true } }),
     prisma.expense.groupBy({ by: ["assetId"], where: whereFor("asset"), _sum: { amount: true } }),
     prisma.transfer.groupBy({ by: ["fromAssetId"], where: whereFor("fromAsset"), _sum: { amount: true } }),
     prisma.transfer.groupBy({ by: ["toAssetId"], where: whereFor("toAsset"), _sum: { amount: true } }),
   ]);
+
+  // Period-scoped sums — only run when a range is actually requested,
+  // purely for display (e.g. "this month's income/expense" on a card).
+  const [rangeIncomes, rangeExpenses] = rangeFilter
+    ? await Promise.all([
+      prisma.income.groupBy({ by: ["assetId"], where: whereFor("asset", rangeFilter), _sum: { amount: true } }),
+      prisma.expense.groupBy({ by: ["assetId"], where: whereFor("asset", rangeFilter), _sum: { amount: true } }),
+    ])
+    : [[], []];
 
   const sumFor = (rows, key, assetId) =>
     Number(rows.find((r) => r[key] === assetId)?._sum.amount ?? 0);
@@ -145,7 +166,18 @@ export const getAssetBalance = async (userId, id, date, { netWorthOnly = false }
     const remainingBalance =
       Number(asset.balance) + totalIncomes - totalExpenses - totalTransferOut + totalTransferIn;
 
-    return { ...asset, totalIncomes, totalExpenses, totalTransferOut, totalTransferIn, remainingBalance };
+    return {
+      ...asset,
+      totalIncomes,
+      totalExpenses,
+      totalTransferOut,
+      totalTransferIn,
+      remainingBalance,
+      ...(rangeFilter && {
+        rangeIncome: sumFor(rangeIncomes, "assetId", asset.id),
+        rangeExpense: sumFor(rangeExpenses, "assetId", asset.id),
+      }),
+    };
   });
 
   return {
