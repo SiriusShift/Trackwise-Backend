@@ -2,7 +2,8 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import * as categoryService from "../services/categories.service.js";
 
 export const createCategory = asyncHandler(async (req, res) => {
-  const result = await categoryService.createCategory(req.body);
+  const { admin } = req.query
+  const result = await categoryService.createCategory(req.user.id, req.body, admin);
 
   res.status(201).json({
     success: true,

@@ -24,16 +24,20 @@ export const validateCategory = async (categoryId) => {
   return category;
 };
 
-export const createCategory = async (categories) => {
+export const createCategory = async (
+  userId,
+  categories,
+  isAdminMode,
+) => {
   if (!Array.isArray(categories) || categories.length === 0) {
-    throw new AppError(
-      "Categories should be a non-empty array.",
-      400
-    );
+    throw new AppError("Categories should be a non-empty array.", 400);
   }
 
   const result = await prisma.categories.createMany({
-    data: categories,
+    data: categories.map((category) => ({
+      ...category,
+      ...(isAdminMode ? {} : { userId }),
+    })),
     skipDuplicates: true,
   });
 

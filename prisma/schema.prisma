@@ -162,7 +162,6 @@ model Asset {
   balance     Decimal  @db.Decimal(20, 8)
 
   institution String?
-  icon        String?
   color       String?
 
   includeInNetWorth Boolean @default(true)
@@ -358,7 +357,6 @@ model Expense {
 
   @@index([userId])
   @@index([recurringId])
-  @@index([creditStatementId])
 }
 
 model Income {

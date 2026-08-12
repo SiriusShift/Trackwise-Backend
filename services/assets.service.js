@@ -103,7 +103,12 @@ export const getAsset = async (userId, id, from, to) => {
 | Get Asset Balance (Core Calculation)
 |--------------------------------------------------------------------------
 */
-export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, to } = {}) => {
+export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, to, asOf } = {}) => {
+  // asOf: as-of cutoff for remainingBalance — "what was the balance up to this point".
+  const asOfFilter = asOf ? { date: { lte: new Date(asOf) } } : {};
+
+  // from/to: bounded range, for period-scoped income/expense totals only —
+  // never used for remainingBalance, so it can't throw the running total off.
   const rangeFilter =
     from || to
       ? {
@@ -124,30 +129,64 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
   const assets = await prisma.asset.findMany({
     where: {
       userId: Number(userId),
-      ...(id ? { id: Number(id) } : {}),
+      // isActive: true,
+      ...(id && { id: Number(id) }),
       ...(netWorthOnly && { includeInNetWorth: true }),
     },
     select: {
       id: true,
       name: true,
-      balance: true,
-      currency: true,
       category: true,
+      subtype: true,
+      currency: true,
+      balance: true,
+      institution: true,
+      color: true,
       includeInNetWorth: true,
+
+      loanDetail: {
+        select: {
+          originalPrincipal: true,
+          interestRate: true,
+          interestPeriod: true,
+          interestMethod: true,
+          termMonths: true,
+          minimumPayment: true,
+          nextDueDate: true,
+        },
+      },
+
+      creditDetail: {
+        select: {
+          creditLimit: true,
+          statementDate: true,
+          dueDate: true,
+          minimumPayment: true,
+        },
+      },
+
+      investmentPosition: {
+        select: {
+          symbol: true,
+          quantity: true,
+          averageCostBasis: true,
+          valuationCurrency: true,
+          lastPrice: true,
+          lastPriceAt: true
+        },
+      },
     },
   });
 
-  // Full-history sums — always unfiltered by date, since remainingBalance
-  // is a running total and breaks if any transactions are excluded.
+  // Balance-affecting sums — filtered by asOf when given, otherwise full history.
   const [incomes, expenses, transfersOut, transfersIn] = await Promise.all([
-    prisma.income.groupBy({ by: ["assetId"], where: whereFor("asset"), _sum: { amount: true } }),
-    prisma.expense.groupBy({ by: ["assetId"], where: whereFor("asset"), _sum: { amount: true } }),
-    prisma.transfer.groupBy({ by: ["fromAssetId"], where: whereFor("fromAsset"), _sum: { amount: true } }),
-    prisma.transfer.groupBy({ by: ["toAssetId"], where: whereFor("toAsset"), _sum: { amount: true } }),
+    prisma.income.groupBy({ by: ["assetId"], where: whereFor("asset", asOfFilter), _sum: { amount: true } }),
+    prisma.expense.groupBy({ by: ["assetId"], where: whereFor("asset", asOfFilter), _sum: { amount: true } }),
+    prisma.transfer.groupBy({ by: ["fromAssetId"], where: whereFor("fromAsset", asOfFilter), _sum: { amount: true } }),
+    prisma.transfer.groupBy({ by: ["toAssetId"], where: whereFor("toAsset", asOfFilter), _sum: { amount: true } }),
   ]);
 
-  // Period-scoped sums — only run when a range is actually requested,
-  // purely for display (e.g. "this month's income/expense" on a card).
+  // Period-scoped sums — independent of asOf, purely for display totals.
   const [rangeIncomes, rangeExpenses] = rangeFilter
     ? await Promise.all([
       prisma.income.groupBy({ by: ["assetId"], where: whereFor("asset", rangeFilter), _sum: { amount: true } }),
@@ -188,6 +227,5 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
       .reduce((sum, a) => sum + a.remainingBalance, 0),
   };
 };
-
 const sumAmounts = (transactions) =>
   transactions.reduce((sum, tx) => sum + Number(tx.amount), 0);

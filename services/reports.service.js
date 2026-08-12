@@ -4,10 +4,10 @@ import { prisma } from "../config/prisma.js";
 import { getAssetBalance } from "./assets.service.js";
 import { generateExcelBuffer } from "./excel.service.js";
 
-export const getTransactionStatement = async ({ userId, assetId, from, to, format }) => {
-    const fromDate = moment(from).startOf("day").toDate();
-    const toDate = moment(to).endOf("day").toDate();
-    const openingResult = await getAssetBalance(userId, assetId, fromDate);
+export const getTransactionStatement = async ({ userId, assetId, from: fromDate, to: toDate, format }) => {
+    const from = moment(fromDate).startOf("day").toDate();
+    const to = moment(toDate).endOf("day").toDate();
+    const openingResult = await getAssetBalance(userId, assetId, { asOf: fromDate }); console.log(openingResult)
     const openingBalance = openingResult?.data?.[0]?.remainingBalance ?? 0;
     const filters = {
         isActive: true,
@@ -17,13 +17,13 @@ export const getTransactionStatement = async ({ userId, assetId, from, to, forma
 
     const [expenses, incomes, transfers] = await Promise.all([
         prisma.expense.findMany({
-            where: { ...filters, assetId: Number(assetId), date: { gte: fromDate, lte: toDate } }, select: {
+            where: { ...filters, assetId: Number(assetId), date: { gte: from, lte: to } }, select: {
                 id: true, date: true, amount: true, description: true, status: true,
                 category: { select: { name: true } },
             },
         }),
         prisma.income.findMany({
-            where: { ...filters, assetId: Number(assetId), date: { gte: fromDate, lte: toDate } }, select: {
+            where: { ...filters, assetId: Number(assetId), date: { gte: from, lte: to } }, select: {
                 id: true, date: true, amount: true, description: true, status: true,
                 category: { select: { name: true } },
             },
@@ -32,7 +32,7 @@ export const getTransactionStatement = async ({ userId, assetId, from, to, forma
             where: {
                 ...filters,
                 OR: [{ fromAssetId: Number(assetId) }, { toAssetId: Number(assetId) }],
-                date: { gte: fromDate, lte: toDate },
+                date: { gte: from, lte: to },
             },
             select: {
                 id: true, date: true, amount: true, description: true, status: true,
