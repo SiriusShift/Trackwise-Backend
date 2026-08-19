@@ -36,8 +36,26 @@ export const createAsset = async (
   color,
   icon,
   userId,
-  includeNetWorth
+  includeNetWorth,
+  statementDate,
+  dueDate,
+  minimumPaymentPercent,
+  minimumPaymentFloor
 ) => {
+  if (type === "CREDIT") {
+    if (!creditLimit) {
+      throw new AppError("creditLimit is required for CREDIT assets", 400);
+    }
+    for (const [label, val] of [
+      ["statementDate", statementDate],
+      ["dueDate", dueDate],
+    ]) {
+      if (val !== undefined && val !== null && (Number(val) < 1 || Number(val) > 31)) {
+        throw new AppError(`${label} must be a day of month between 1 and 31`, 400);
+      }
+    }
+  }
+
   const asset = await prisma.asset.create({
     data: {
       name,
@@ -47,9 +65,7 @@ export const createAsset = async (
       category: type,
       currency,
 
-      ...(subtype && {
-        subtype,
-      }),
+      ...(subtype && { subtype }),
 
       ...(type === "CREDIT" && {
         creditDetail: {
@@ -57,8 +73,11 @@ export const createAsset = async (
             creditLimit: parseFloat(creditLimit),
             statementDate: statementDate ? Number(statementDate) : null,
             dueDate: dueDate ? Number(dueDate) : null,
-            minimumPayment: minimumPayment
-              ? parseFloat(minimumPayment)
+            minimumPaymentPercent: minimumPaymentPercent
+              ? parseFloat(minimumPaymentPercent)
+              : null,
+            minimumPaymentFloor: minimumPaymentFloor
+              ? parseFloat(minimumPaymentFloor)
               : null,
           },
         },
@@ -68,9 +87,7 @@ export const createAsset = async (
       icon,
 
       user: {
-        connect: {
-          id: Number(userId),
-        },
+        connect: { id: Number(userId) },
       },
     },
     include: {
@@ -78,7 +95,7 @@ export const createAsset = async (
     },
   });
 
-  return asset
+  return asset;
 };
 
 /*
@@ -161,7 +178,8 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
           creditLimit: true,
           statementDate: true,
           dueDate: true,
-          minimumPayment: true,
+          minimumPaymentPercent: true,
+          minimumPaymentFloor: true
         },
       },
 
