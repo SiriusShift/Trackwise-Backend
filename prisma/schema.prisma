@@ -266,12 +266,10 @@ model CreditDetail {
   assetId Int   @unique
   asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
-  creditLimit           Decimal           @db.Decimal(20, 2)
-  statementDate         Int? // day of month (1-31), validate in app layer
-  dueDate               Int? // day of month (1-31), validate in app layer
-  minimumPaymentPercent Decimal?          @db.Decimal(5, 2) // e.g. 3.00 for 3%
-  minimumPaymentFloor   Decimal?          @db.Decimal(20, 2) // e.g. 200.00 flat minimum
-  statements            CreditStatement[]
+  creditLimit   Decimal           @db.Decimal(20, 2)
+  statementDate Int? // day of month (1-31), validate in app layer
+  dueDate       Int? // day of month (1-31), validate in app layer
+  statements    CreditStatement[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -292,7 +290,6 @@ model CreditStatement {
   statementBalance  Decimal @db.Decimal(20, 2) // original balance as of statementDate — don't edit after the fact
   minimumPaymentDue Decimal @db.Decimal(20, 2)
 
-  amountPaid      Decimal               @default(0) @db.Decimal(20, 2) // sum of linked payments; keep in sync in app logic
   interestCharged Decimal               @default(0) @db.Decimal(20, 2) // filled in at confirmation from the real statement, not computed
   lateFeeCharged  Decimal               @default(0) @db.Decimal(20, 2) // filled in at confirmation from the real statement, not computed
   status          CreditStatementStatus @default(PENDING)
@@ -301,12 +298,27 @@ model CreditStatement {
   // across several partial payments.
   payments Transfer[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  creditStatementFees CreditStatementFee[]
 
   @@unique([creditDetailId, statementDate]) // one statement per cycle
   @@index([creditDetailId])
   @@index([dueDate])
+}
+
+model CreditStatementFee {
+  id Int @id @default(autoincrement())
+
+  creditStatementId Int
+  creditStatement   CreditStatement @relation(fields: [creditStatementId], references: [id], onDelete: Cascade)
+
+  label  String // e.g. "Annual Fee", "Foreign Transaction Fee" — free text or app-layer enum
+  amount Decimal @db.Decimal(20, 2)
+
+  createdAt DateTime @default(now())
+
+  @@index([creditStatementId])
 }
 
 model InvestmentPosition {
