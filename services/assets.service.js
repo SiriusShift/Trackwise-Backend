@@ -1,6 +1,7 @@
 import { AppError } from "../utils/AppError.js";
 
 import { prisma } from "../config/prisma.js";
+import { getExchangeRates } from "./exchangeRate.service.js";
 /*
 |--------------------------------------------------------------------------
 | Validate Asset
@@ -176,7 +177,7 @@ export const updateAsset = async (
 |--------------------------------------------------------------------------
 */
 export const getAsset = async (userId, id, from, to) => {
-  const { data, total, netWorth } = await getAssetBalance(userId, id, {
+  const { data, total, netWorth, liabilities } = await getAssetBalance(userId, id, {
     from,
     to,
   });
@@ -184,6 +185,7 @@ export const getAsset = async (userId, id, from, to) => {
   return {
     data,
     total,
+    liabilities,
     netWorth,
   };
 };
@@ -243,7 +245,7 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
 
       creditDetail: {
         select: {
-          id: true, // join key for CreditStatement
+          id: true,
           creditLimit: true,
           statementDate: true,
           dueDate: true,
@@ -277,8 +279,6 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
     ])
     : [[], []];
 
-  // Open (unpaid/partial/overdue) statements per credit asset, with their payments
-  // resolved via Transfer.creditStatementId (exact, not date-inferred).
   const creditDetailIds = assets
     .filter((a) => a.category === "CREDIT" && a.creditDetail)
     .map((a) => a.creditDetail.id);
@@ -309,13 +309,26 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
       statementId: s.id,
       dueDate: s.dueDate,
       remainingOnStatement: Number(s.statementBalance) - paid,
-      // minimumPaymentDue: Math.max(0, Number(s.minimumPaymentDue) - paid),
     });
     statementsByDetailId.set(s.creditDetailId, list);
   }
 
   const sumFor = (rows, key, assetId) =>
     Number(rows.find((r) => r[key] === assetId)?._sum.amount ?? 0);
+
+  const settings = await prisma.settings.findFirst({
+    where: { userId: Number(userId) }
+  });
+  const baseCurrency = settings?.currency;
+
+  const uniqueForeignCurrencies = baseCurrency
+    ? [...new Set(assets.map((a) => a.currency).filter((c) => c && c !== baseCurrency))]
+    : [];
+
+  const rateEntries = await Promise.all(
+    uniqueForeignCurrencies.map(async (curr) => [curr, await getExchangeRates(curr, baseCurrency)])
+  );
+  const rateByCurrency = new Map(rateEntries);
 
   const data = assets.map((asset) => {
     const totalIncomes = sumFor(incomes, "assetId", asset.id);
@@ -325,16 +338,20 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
 
     const isCredit = asset.category === "CREDIT" && asset.creditDetail;
 
-
-    console.log(totalExpenses, "total expense")
-
     // CASH/BANK/LOAN/INVESTMENT: expenses reduce, transferIn increases (it's an asset).
     // CREDIT: charges increase what's owed, payments (transferIn) decrease it — inverse.
     const remainingBalance = isCredit
       ? Number(asset.balance) + totalExpenses - totalIncomes + totalTransferOut - totalTransferIn
       : Number(asset.balance) + totalIncomes - totalExpenses - totalTransferOut + totalTransferIn;
 
-    const openStatementsForAsset = isCredit ? (statementsByDetailId.get(asset.creditDetail.id) ?? []) : [];
+    const rate = baseCurrency && asset.currency !== baseCurrency
+      ? rateByCurrency.get(asset.currency)
+      : 1;
+    const convertedBalance = remainingBalance * (rate ?? 1);
+
+    const openStatementsForAsset = isCredit
+      ? (statementsByDetailId.get(asset.creditDetail.id) ?? [])
+      : [];
 
     return {
       ...asset,
@@ -343,6 +360,7 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
       totalTransferOut,
       totalTransferIn,
       remainingBalance,
+      convertedBalance,
       ...(isCredit && {
         remainingCredit: Number(asset.creditDetail.creditLimit) - remainingBalance,
         openStatements: openStatementsForAsset,
@@ -355,13 +373,28 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
     };
   });
 
+  const totalAssets = data
+    .filter((a) => !isLiabilityCategory(a.category))
+    .reduce((sum, a) => sum + a.convertedBalance, 0);
+
+  const totalLiabilities = data
+    .filter((a) => a.includeInNetWorth && isLiabilityCategory(a.category))
+    .reduce((sum, a) => sum + a.convertedBalance, 0);
+
+  const netWorth = data
+    .filter((a) => a.includeInNetWorth && !isLiabilityCategory(a.category))
+    .reduce((sum, a) => sum + a.convertedBalance, 0) - totalLiabilities;
+
   return {
     data,
-    total: data.reduce((sum, a) => sum + a.remainingBalance, 0),
-    netWorth: data
-      .filter((a) => a.includeInNetWorth)
-      .reduce((sum, a) => sum + a.remainingBalance, 0),
+    total: totalAssets,
+    liabilities: totalLiabilities,
+    netWorth,
   };
 };
 const sumAmounts = (transactions) =>
   transactions.reduce((sum, tx) => sum + Number(tx.amount), 0);
+export const LIABILITY_CATEGORIES = ["CREDIT", "LOAN"];
+
+export const isLiabilityCategory = (category) =>
+  LIABILITY_CATEGORIES.includes(category.toUpperCase());

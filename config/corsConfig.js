@@ -6,6 +6,7 @@ const allowedOrigins = [
   "http://192.168.1.15:5011",
   "http://10.10.13.15:5011",
   "http://192.168.68.53:5011",
+  "http://192.168.254.181:5011",
   `http://localhost:${process.env.PORT}`,
 ];
 
