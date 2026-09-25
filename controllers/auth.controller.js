@@ -37,6 +37,12 @@ export const isAuthenticated = asyncHandler(async (req, res) => {
   res.status(200).json(result);
 });
 
+export const unlinkGoogle = asyncHandler(async (req, res) => {
+  const result = await authService.unlinkGoogleService(req.user);
+
+  res.status(200).json(result);
+});
+
 export const logout = asyncHandler(async (req, res) => {
   const result = await authService.logoutService(req);
 

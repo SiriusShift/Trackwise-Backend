@@ -151,6 +151,7 @@ export const resetPasswordService = async ({ password, token }) => {
 };
 
 export const isAuthenticatedService = async (user) => {
+  console.log(user, "user")
   const settings = await prisma.settings.findFirst({
     where: {
       userId: user.id,
@@ -173,8 +174,36 @@ export const isAuthenticatedService = async (user) => {
       role: user.role,
       phoneNumber: user.phoneNumber,
       profileImage: user.profileImageUrl,
+      google_id: user.google_id
     },
     settings,
+  };
+};
+
+export const unlinkGoogleService = async (user) => {
+  if (!user.google_id) {
+    throw new AppError("Google account is not connected", 400);
+  }
+
+  if (!user.password) {
+    throw new AppError(
+      "Set a password before disconnecting your Google account, otherwise you won't be able to sign in.",
+      400
+    );
+  }
+
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: { google_id: null },
+  });
+
+  return {
+    success: true,
+    message: "Google account disconnected",
+    user: {
+      id: updatedUser.id,
+      google_id: updatedUser.google_id,
+    },
   };
 };
 

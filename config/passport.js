@@ -147,6 +147,50 @@ export const runPassport = () => {
 
   /*
   |--------------------------------------------------------------------------
+  | Google Link (connect Google to an already-authenticated account)
+  |--------------------------------------------------------------------------
+  */
+
+  passport.use(
+    "google-link",
+    new GoogleStrategy(
+      {
+        clientID: process.env.GOOGLE_CLIENT_ID,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+        callbackURL: "/auth/google/link/callback",
+        passReqToCallback: true,
+      },
+      async (req, accessToken, refreshToken, profile, done) => {
+        try {
+          if (!req.user) {
+            return done(null, false, { message: "Not authenticated" });
+          }
+
+          const existingLink = await prisma.user.findFirst({
+            where: { google_id: profile.id },
+          });
+
+          if (existingLink && existingLink.id !== req.user.id) {
+            return done(null, false, {
+              message: "This Google account is already linked to another user.",
+            });
+          }
+
+          const updatedUser = await prisma.user.update({
+            where: { id: req.user.id },
+            data: { google_id: profile.id },
+          });
+
+          return done(null, updatedUser);
+        } catch (error) {
+          return done(error, null);
+        }
+      }
+    )
+  );
+
+  /*
+  |--------------------------------------------------------------------------
   | Serialize User
   |--------------------------------------------------------------------------
   */

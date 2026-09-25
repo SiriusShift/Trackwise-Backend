@@ -18,6 +18,7 @@ import {
   register,
   resetPassword,
   sendEmailCode,
+  unlinkGoogle,
   verifyEmail,
 } from "../controllers/auth.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
@@ -178,6 +179,47 @@ router.get(
     }
   }
 );
+
+// Connect Google to an existing, already-authenticated account
+router.get(
+  "/auth/google/link",
+  requireAuth,
+  passport.authenticate("google-link", { scope: ["profile", "email"] })
+);
+
+router.get(
+  "/auth/google/link/callback",
+  requireAuth,
+  (req, res, next) => {
+    passport.authenticate("google-link", (err, user, info) => {
+      if (err) {
+        console.error("Google link error:", err);
+        return res.redirect(
+          `${process.env.CLIENT_URL}/settings?linkError=true&message=Internal server error`
+        );
+      }
+
+      if (!user) {
+        return res.redirect(
+          `${process.env.CLIENT_URL}/settings?linkError=true&message=${encodeURIComponent(
+            info?.message || "Unable to link Google account"
+          )}`
+        );
+      }
+
+      req.login(user, (err) => {
+        if (err) {
+          console.error("Login error:", err);
+          return next(err);
+        }
+
+        res.redirect(`${process.env.CLIENT_URL}/settings?linked=true`);
+      });
+    })(req, res, next);
+  }
+);
+
+router.route("/auth/google/unlink").delete(requireAuth, catchAsync(unlinkGoogle));
 
 router.route("/auth/verify").post(validate({ body: emailSchema }), catchAsync(verifyEmail));
 router.route("/auth/email-code").post(validate({ body: sendEmailCodeSchema }), catchAsync(sendEmailCode));
