@@ -8,6 +8,7 @@ const allowedOrigins = [
   "http://192.168.68.53:5011",
   "http://192.168.254.181:5011",
   `http://localhost:${process.env.PORT}`,
+  "https://trackwise.hygen.live"
 ];
 
 export const corsConfig = {
