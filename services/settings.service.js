@@ -1,4 +1,5 @@
 import { prisma } from "../config/prisma.js";
+import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
 const settingsSelect = {
   id: true,
@@ -11,6 +12,47 @@ const settingsSelect = {
   mobileNotification: true,
   notifyDays: true,
   updatedAt: true,
+  user: {
+    select: {
+      firstName: true,
+      lastName: true,
+      email: true,
+      phoneNumber: true,
+      profileImageUrl: true,
+    },
+  },
+};
+
+const formatSettings = ({ user, ...settings }) => ({
+  ...settings,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  email: user.email,
+  phoneNumber: user.phoneNumber,
+  profileImageUrl: user.profileImageUrl,
+});
+
+const userFieldsMap = {
+  first_name: "firstName",
+  last_name: "lastName",
+  email: "email",
+  phone_number: "phoneNumber",
+};
+
+const splitData = (data) => {
+  const userData = {};
+  const settingsData = {};
+
+  for (const [key, value] of Object.entries(data)) {
+    const userField = userFieldsMap[key];
+    if (userField) {
+      userData[userField] = value;
+    } else {
+      settingsData[key] = value;
+    }
+  }
+
+  return { userData, settingsData };
 };
 
 /*
@@ -27,7 +69,7 @@ export const getSettings = async (userId) => {
     select: settingsSelect,
   });
 
-  return settings;
+  return formatSettings(settings);
 };
 
 /*
@@ -35,13 +77,42 @@ export const getSettings = async (userId) => {
 | Update Settings
 |--------------------------------------------------------------------------
 */
-export const updateSettings = async (userId, data) => {
-  const settings = await prisma.settings.upsert({
-    where: { userId },
-    update: data,
-    create: { userId, ...data },
-    select: settingsSelect,
-  });
+export const updateSettings = async (userId, data, file) => {
+  const { userData, settingsData } = splitData(data);
 
-  return settings;
+  let profileImageUrl;
+
+  if (file) {
+    profileImageUrl = await uploadFileToS3(file, "Profile", userId);
+
+    const currentUser = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { profileImageUrl: true },
+    });
+
+    if (currentUser?.profileImageUrl) {
+      await deleteFileFromS3(currentUser.profileImageUrl);
+    }
+  }
+
+  const userUpdate = { ...userData, ...(profileImageUrl && { profileImageUrl }) };
+
+  const results = await prisma.$transaction([
+    ...(Object.keys(userUpdate).length
+      ? [
+          prisma.user.update({
+            where: { id: userId },
+            data: userUpdate,
+          }),
+        ]
+      : []),
+    prisma.settings.upsert({
+      where: { userId },
+      update: { ...settingsData },
+      create: { userId, ...settingsData },
+      select: settingsSelect,
+    }),
+  ]);
+
+  return formatSettings(results[results.length - 1]);
 };

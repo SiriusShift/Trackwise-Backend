@@ -1,4 +1,5 @@
 import { Router } from "express";
+import multer from "multer";
 import {
   getSettings,
   updateSettings,
@@ -10,11 +11,14 @@ import catchAsync from "../utils/catchAsync.js";
 
 const router = Router();
 
+const upload = multer();
+
 router
   .route("/")
   .get(requireAuth, catchAsync(getSettings))
   .patch(
     requireAuth,
+    upload.single("image"),
     validate({ body: updateSettingsSchema }),
     catchAsync(updateSettings),
   );

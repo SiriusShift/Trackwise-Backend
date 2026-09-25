@@ -12,7 +12,7 @@ export const getSettings = asyncHandler(async (req, res) => {
 });
 
 export const updateSettings = asyncHandler(async (req, res) => {
-  const settings = await settingsService.updateSettings(req.user.id, req.body);
+  const settings = await settingsService.updateSettings(req.user.id, req.body, req.file);
 
   res.status(200).json({
     success: true,

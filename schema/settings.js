@@ -9,6 +9,10 @@ export const updateSettingsSchema = Joi.object({
   emailNotification: Joi.boolean(),
   mobileNotification: Joi.boolean(),
   notifyDays: Joi.number().integer().min(0),
+  first_name: Joi.string().trim(),
+  last_name: Joi.string().trim(),
+  email: Joi.string().trim().email(),
+  phone_number: Joi.string().trim().allow(""),
 })
   .prefs({ stripUnknown: true })
   .min(1)
