@@ -3,6 +3,14 @@ import multer from "multer";
 
 import { requireAuth } from "../middleware/requireAuth.js";
 import catchAsync from "../utils/catchAsync.js";
+import { validate } from "../middleware/validate.js";
+import { idParams } from "../schema/common.js";
+import {
+  createRecurringSchema,
+  createTransferSchema,
+  transferPaymentSchema,
+  updateTransferSchema,
+} from "../schema/transaction.js";
 
 import {
   getGraph,
@@ -25,11 +33,21 @@ const upload = multer();
 router
   .route("/")
   .get(requireAuth, catchAsync(getTransfers))
-  .post(requireAuth, upload.single("image"), catchAsync(postTransfer));
+  .post(
+    requireAuth,
+    upload.single("image"),
+    validate({ body: createTransferSchema }),
+    catchAsync(postTransfer),
+  );
 
 router
   .route("/:id")
-  .put(requireAuth, upload.single("image"), catchAsync(updateTransfer));
+  .put(
+    requireAuth,
+    upload.single("image"),
+    validate({ params: idParams, body: updateTransferSchema }),
+    catchAsync(updateTransfer),
+  );
 
 router
   .route("/graph")
@@ -37,16 +55,21 @@ router
 
 router
   .route("/transfer/:id")
-  .patch(requireAuth, upload.single("image"), catchAsync(transfer));
+  .patch(
+    requireAuth,
+    upload.single("image"),
+    validate({ params: idParams, body: transferPaymentSchema }),
+    catchAsync(transfer),
+  );
 
 /* ---------------- RECURRING ---------------- */
 router
   .route("/receive/auto/:id")
-  .post(requireAuth, catchAsync(confirmRecurring));
+  .post(requireAuth, validate({ params: idParams }), catchAsync(confirmRecurring));
 
 router
   .route("/recurring")
-  .post(requireAuth, catchAsync(postRecurring))
+  .post(requireAuth, validate({ body: createRecurringSchema }), catchAsync(postRecurring))
   .get(requireAuth, catchAsync(getRecurring));
 
 export default router;

@@ -45,9 +45,41 @@ export const validateUserUpdateRequest = (requestType) => {
     if (error) {
       const msg = error.details.map((el) => el.message).join(",");
       // Instead of throwing an error directly, call next with the error
-      throw new ExpressError(msg, 400);
+      throw new AppError(msg, 400);
     } else {
       next(); // If no error, call next
     }
+  };
+};
+
+/*
+|--------------------------------------------------------------------------
+| Generic Validator
+|--------------------------------------------------------------------------
+| Usage: validate({ body: schema, params: schema, query: schema })
+| Unknown keys are allowed so extra form fields from the client don't fail
+| the request. Validated (type-converted) values replace the originals.
+*/
+export const validate = (schemas) => {
+  return (req, res, next) => {
+    for (const [source, schema] of Object.entries(schemas)) {
+      const { error, value } = schema.validate(req[source], {
+        abortEarly: false,
+        allowUnknown: true,
+      });
+
+      if (error) {
+        const msg = error.details.map((el) => el.message).join(",");
+        return next(new AppError(msg, 400));
+      }
+
+      if (source === "body") {
+        req.body = value;
+      } else {
+        Object.assign(req[source], value);
+      }
+    }
+
+    next();
   };
 };

@@ -34,3 +34,20 @@ export const resetPasswordSchema = Joi.object({
     }),
     token: Joi.string().required()
 });
+
+// Email is sent as an array by the client, e.g. ["user@mail.com"]
+const emailList = Joi.array().items(Joi.string().email()).min(1).required();
+
+export const signinSchema = Joi.object({
+    email: Joi.string().email().required(),
+    password: Joi.string().required(),
+});
+
+export const sendEmailCodeSchema = Joi.object({
+    email: emailList,
+    username: Joi.string().trim().required(),
+});
+
+export const emailSchema = Joi.object({
+    email: emailList,
+});

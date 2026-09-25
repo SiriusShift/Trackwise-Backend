@@ -16,6 +16,13 @@ import TransferRouter from "./transfers.routes.js";
 
 import { cancelRecurring, confirmRecurring, editRecurring, getRecurring, postRecurring } from "../controllers/recurring.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import { validate } from "../middleware/validate.js";
+import { idParams } from "../schema/common.js";
+import {
+  archiveTransactionQuery,
+  createRecurringSchema,
+  editHistorySchema,
+} from "../schema/transaction.js";
 
 const router = Router();
 
@@ -37,13 +44,26 @@ router.route("/history").get(requireAuth, catchAsync(getHistory));
 
 router
   .route("/edit/:id")
-  .patch(requireAuth, upload.single("image"), catchAsync(editHistory));
+  .patch(
+    requireAuth,
+    upload.single("image"),
+    validate({ params: idParams, body: editHistorySchema }),
+    catchAsync(editHistory),
+  );
 
-router.route("/delete/:id").patch(requireAuth, catchAsync(deleteHistory));
+router
+  .route("/delete/:id")
+  .patch(requireAuth, validate({ params: idParams }), catchAsync(deleteHistory));
 
 router.route("/statistics").get(requireAuth, catchAsync(getStatistics));
 
-router.route("/:id").patch(requireAuth, catchAsync(archiveTransaction));
+router
+  .route("/:id")
+  .patch(
+    requireAuth,
+    validate({ params: idParams, query: archiveTransactionQuery }),
+    catchAsync(archiveTransaction),
+  );
 // router.route("/due").get(requireAuth, catchAsync(dueTransactions))
 
 /*
@@ -54,17 +74,17 @@ router.route("/:id").patch(requireAuth, catchAsync(archiveTransaction));
 
 router
   .route("/recurring")
-  .post(requireAuth, catchAsync(postRecurring))
+  .post(requireAuth, validate({ body: createRecurringSchema }), catchAsync(postRecurring))
   .get(requireAuth, catchAsync(getRecurring));
 
 router
   .route("/recurring/:id")
-  .patch(requireAuth, catchAsync(cancelRecurring))
-  .put(requireAuth, catchAsync(editRecurring));
+  .patch(requireAuth, validate({ params: idParams }), catchAsync(cancelRecurring))
+  .put(requireAuth, validate({ params: idParams }), catchAsync(editRecurring));
 
 router
   .route("/recurring/:id/confirm")
-  .post(requireAuth, catchAsync(confirmRecurring));
+  .post(requireAuth, validate({ params: idParams }), catchAsync(confirmRecurring));
 /*
 |--------------------------------------------------------------------------
 | Child Routes

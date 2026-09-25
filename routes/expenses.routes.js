@@ -22,6 +22,13 @@ import {
 
 
 import { requireAuth } from "../middleware/requireAuth.js";
+import { validate } from "../middleware/validate.js";
+import { idParams } from "../schema/common.js";
+import {
+  billPaymentSchema,
+  createExpenseSchema,
+  updateExpenseSchema,
+} from "../schema/transaction.js";
 
 const router = Router();
 
@@ -41,13 +48,23 @@ const upload = multer();
 // Create expense
 router
   .route("/")
-  .post(requireAuth, upload.single("image"), catchAsync(postExpense))
+  .post(
+    requireAuth,
+    upload.single("image"),
+    validate({ body: createExpenseSchema }),
+    catchAsync(postExpense),
+  )
   .get(requireAuth, catchAsync(getExpenses));
 
 // Update expense
 router
   .route("/:id")
-  .put(requireAuth, upload.single("image"), catchAsync(updateExpense));
+  .put(
+    requireAuth,
+    upload.single("image"),
+    validate({ params: idParams, body: updateExpenseSchema }),
+    catchAsync(updateExpense),
+  );
 
 // Graph data
 router.route("/graph").get(requireAuth, catchAsync(getGraph));
@@ -55,11 +72,15 @@ router.route("/graph").get(requireAuth, catchAsync(getGraph));
 // Pay expense
 router
   .route("/bills/:id/pay")
-  .post(requireAuth, catchAsync(postBillPayment));
+  .post(
+    requireAuth,
+    validate({ params: idParams, body: billPaymentSchema }),
+    catchAsync(postBillPayment),
+  );
 
 router
   .route("/bills/:id/skip")
-  .patch(requireAuth, catchAsync(skipBillPayment));
+  .patch(requireAuth, validate({ params: idParams }), catchAsync(skipBillPayment));
 
 router
   .route("/bills")

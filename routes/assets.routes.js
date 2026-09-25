@@ -10,6 +10,8 @@ import {
 import {
   requireAuth
 } from "../middleware/requireAuth.js";
+import { validate } from "../middleware/validate.js";
+import { createAssetSchema } from "../schema/asset.js";
 
 const router = Router();
 
@@ -23,7 +25,7 @@ router
   .route("/")
   .post(
     requireAuth,
-    // validateCreateRequest,
+    validate({ body: createAssetSchema }),
     catchAsync(createAsset),
   )
   .get(

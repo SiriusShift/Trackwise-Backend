@@ -7,6 +7,7 @@ import { prisma } from "../config/prisma.js";
 import {
   validateCreateRequest,
   validateUserUpdateRequest,
+  validate,
 } from "../middleware/validate.js";
 
 import {
@@ -20,6 +21,11 @@ import {
   verifyEmail,
 } from "../controllers/auth.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import {
+  emailSchema,
+  sendEmailCodeSchema,
+  signinSchema,
+} from "../schema/user.js";
 
 const router = Router();
 
@@ -28,6 +34,7 @@ router
   .post(validateCreateRequest("user"), catchAsync(register));
 
 router.route("/sign-in").post(
+  validate({ body: signinSchema }),
   catchAsync(async (req, res, next) => {
     passport.authenticate("local", (err, user, info) => {
       if (err) {
@@ -172,9 +179,9 @@ router.get(
   }
 );
 
-router.route("/auth/verify").post(catchAsync(verifyEmail));
-router.route("/auth/email-code").post(catchAsync(sendEmailCode));
-router.route("/auth/forgot-password").post(catchAsync(forgotPassword));
+router.route("/auth/verify").post(validate({ body: emailSchema }), catchAsync(verifyEmail));
+router.route("/auth/email-code").post(validate({ body: sendEmailCodeSchema }), catchAsync(sendEmailCode));
+router.route("/auth/forgot-password").post(validate({ body: emailSchema }), catchAsync(forgotPassword));
 
 
 

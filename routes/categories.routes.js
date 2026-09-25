@@ -15,6 +15,14 @@ import {
 } from "../controllers/limits.controller.js";
 
 import { requireAuth } from "../middleware/requireAuth.js";
+import { validate } from "../middleware/validate.js";
+import { idParams } from "../schema/common.js";
+import {
+  createCategoryQuery,
+  createCategorySchema,
+  createLimitSchema,
+  updateLimitSchema,
+} from "../schema/category.js";
 
 const router = Router();
 
@@ -26,7 +34,11 @@ const router = Router();
 
 router
   .route("/")
-  .post(requireAuth, catchAsync(createCategory))
+  .post(
+    requireAuth,
+    validate({ body: createCategorySchema, query: createCategoryQuery }),
+    catchAsync(createCategory),
+  )
   .get(requireAuth, catchAsync(getAllCategory));
 
 /*
@@ -37,12 +49,16 @@ router
 
 router
   .route("/limits")
-  .post(requireAuth, catchAsync(addExpenseLimit))
+  .post(requireAuth, validate({ body: createLimitSchema }), catchAsync(addExpenseLimit))
   .get(requireAuth, catchAsync(getAllExpenseLimit));
 
 router
   .route("/limits/:id")
-  .patch(requireAuth, catchAsync(updateExpenseLimit))
-  .delete(requireAuth, catchAsync(deleteExpenseLimit));
+  .patch(
+    requireAuth,
+    validate({ params: idParams, body: updateLimitSchema }),
+    catchAsync(updateExpenseLimit),
+  )
+  .delete(requireAuth, validate({ params: idParams }), catchAsync(deleteExpenseLimit));
 
 export default router;

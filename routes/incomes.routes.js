@@ -3,6 +3,12 @@ import multer from "multer";
 
 import { requireAuth } from "../middleware/requireAuth.js";
 import catchAsync from "../utils/catchAsync.js";
+import { validate } from "../middleware/validate.js";
+import { idParams } from "../schema/common.js";
+import {
+  createIncomeSchema,
+  updateIncomeSchema,
+} from "../schema/transaction.js";
 
 import {
   getGraph,
@@ -22,11 +28,21 @@ const upload = multer();
 router
   .route("/")
   .get(requireAuth, catchAsync(getIncome))
-  .post(requireAuth, upload.single("image"), catchAsync(postIncome));
+  .post(
+    requireAuth,
+    upload.single("image"),
+    validate({ body: createIncomeSchema }),
+    catchAsync(postIncome),
+  );
 
 router
   .route("/:id")
-  .put(requireAuth, upload.single("image"), catchAsync(updateIncome));
+  .put(
+    requireAuth,
+    upload.single("image"),
+    validate({ params: idParams, body: updateIncomeSchema }),
+    catchAsync(updateIncome),
+  );
 
 router
   .route("/graph")
@@ -34,6 +50,11 @@ router
 
 router
   .route("/receive/:id")
-  .patch(requireAuth, upload.single("image"), catchAsync(confirmRecurring));
+  .patch(
+    requireAuth,
+    upload.single("image"),
+    validate({ params: idParams }),
+    catchAsync(confirmRecurring),
+  );
 
 export default router;
