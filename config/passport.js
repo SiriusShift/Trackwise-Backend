@@ -34,11 +34,11 @@ export const runPassport = () => {
             });
           }
 
-          if (user.google_id) {
-            return done(null, false, {
-              message: "User already signed up with Google",
-            });
-          }
+          // if (user.google_id) {
+          //   return done(null, false, {
+          //     message: "User already signed up with Google",
+          //   });
+          // }
 
           const isValidPassword = await bcrypt.compare(
             password,

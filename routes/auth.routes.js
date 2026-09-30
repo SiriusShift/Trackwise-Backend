@@ -195,7 +195,7 @@ router.get(
       if (err) {
         console.error("Google link error:", err);
         return res.redirect(
-          `${process.env.CLIENT_URL}/settings?linkError=true&message=Internal server error`
+          `${process.env.CLIENT_URL}/settings/account?linkError=true&message=Internal server error`
         );
       }
 
@@ -213,7 +213,7 @@ router.get(
           return next(err);
         }
 
-        res.redirect(`${process.env.CLIENT_URL}/settings?linked=true`);
+        res.redirect(`${process.env.CLIENT_URL}/settings/account?linked=true`);
       });
     })(req, res, next);
   }
