@@ -71,7 +71,7 @@ export const runPassport = () => {
       {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: "/auth/google/sign-in/callback",
+        callbackURL: `${process.env.BACKEND_URL}/auth/google/sign-in/callback`,
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
@@ -120,7 +120,7 @@ export const runPassport = () => {
       {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: "/auth/google/sign-up/callback",
+        callbackURL: `${process.env.BACKEND_URL}/auth/google/sign-up/callback`,
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
@@ -157,7 +157,7 @@ export const runPassport = () => {
       {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-        callbackURL: "/auth/google/link/callback",
+        callbackURL: `${process.env.BACKEND_URL}/auth/google/link/callback`,
         passReqToCallback: true,
       },
       async (req, accessToken, refreshToken, profile, done) => {
