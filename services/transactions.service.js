@@ -1,4 +1,4 @@
-import moment from "moment";
+import moment from "moment-timezone";
 
 import { validateExpense } from "./expenses.service.js";
 import { validateIncome } from "./incomes.service.js";
@@ -216,14 +216,24 @@ export const getHistory = async (userId, request) => {
 export const getStatistics = async (userId, data) => {
   const { startDate, endDate, mode } = data;
 
-  const start = moment(startDate).startOf(mode).toDate();
-  const end = moment(endDate).endOf(mode).toDate();
+  const settings = await prisma.settings.findFirst({
+    where: { userId: userId },
+    select: { timezone: true },
+  });
 
-  const prevStart = moment(startDate).clone().subtract(1, mode).startOf(mode).toDate();
-  const prevEnd = moment(endDate).clone().subtract(1, mode).endOf(mode).toDate();
+  const tz = settings?.timezone || "UTC";
+
+  const start = moment.tz(startDate, tz).startOf(mode).toDate();
+  const end = moment.tz(endDate, tz).endOf(mode).toDate();
+
+  const prevStart = moment.tz(startDate, tz).subtract(1, mode).startOf(mode).toDate();
+  const prevEnd = moment.tz(endDate, tz).subtract(1, mode).endOf(mode).toDate();
 
   const dateFilter = { gte: start, lte: end };
   const prevDateFilter = { gte: prevStart, lte: prevEnd };
+
+
+  console.log(dateFilter, prevDateFilter)
 
   // Fetch once, reuse everywhere
   const netWorthAssets = await prisma.asset.findMany({
@@ -310,9 +320,10 @@ export const getStatistics = async (userId, data) => {
   */
   const getCategoryBreakdown = async (type, filter) => {
     const model = type === "Income" ? prisma.income : prisma.expense;
+    const statusFilter = type === "Expense" ? { status: "Completed" } : {};
 
     const records = await model.findMany({
-      where: { userId, isActive: true, date: filter, assetId: { in: netWorthAssetIds } },
+      where: { userId, isActive: true, date: filter, assetId: { in: netWorthAssetIds }, ...statusFilter },
       select: { amount: true, category: { select: { name: true, color: true } } },
     });
 
@@ -369,12 +380,12 @@ export const getStatistics = async (userId, data) => {
 
     prisma.income.aggregate({
       _sum: { amount: true },
-      where: { userId, isActive: true, assetId: { in: netWorthAssetIds } },
+      where: { userId, isActive: true, date: { lte: end }, assetId: { in: netWorthAssetIds } },
     }),
 
     prisma.expense.aggregate({
       _sum: { amount: true },
-      where: { userId, isActive: true, status: "Completed", assetId: { in: netWorthAssetIds } },
+      where: { userId, isActive: true, status: "Completed", date: { lte: end }, assetId: { in: netWorthAssetIds } },
     }),
 
     prisma.income.aggregate({
@@ -390,6 +401,8 @@ export const getStatistics = async (userId, data) => {
     getCategoryBreakdown("Income", dateFilter),
     getCategoryBreakdown("Expense", dateFilter),
   ]);
+
+  console.log(income, "income!")
 
   /*
   |--------------------------------------------------------------------------
