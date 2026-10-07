@@ -1,8 +1,8 @@
 import "dotenv/config";
 import nodemailer from "nodemailer";
 import { AppError } from "../utils/AppError.js";
-import emailTemplate from "../emailTemplate.json" assert { type: "json" };
-import resetTemplate from "../resetPassword.json" assert { type: "json" };
+import emailTemplate from "../emailTemplate.json" with { type: "json" };
+import resetTemplate from "../resetPassword.json" with { type: "json" };
 
 const templates = {
     Verification_Code: emailTemplate.Template,
