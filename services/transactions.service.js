@@ -233,8 +233,6 @@ export const getStatistics = async (userId, data) => {
   const prevDateFilter = { gte: prevStart, lte: prevEnd };
 
 
-  console.log(dateFilter, prevDateFilter)
-
   // Fetch once, reuse everywhere
   const netWorthAssets = await prisma.asset.findMany({
     where: { userId, includeInNetWorth: true },
@@ -401,8 +399,6 @@ export const getStatistics = async (userId, data) => {
     getCategoryBreakdown("Income", dateFilter),
     getCategoryBreakdown("Expense", dateFilter),
   ]);
-
-  console.log(income, "income!")
 
   /*
   |--------------------------------------------------------------------------
