@@ -4,11 +4,12 @@
   "description": "Backend for trackwise",
   "main": "index.js",
   "type": "module",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+"scripts": {
+    "start": "node server.js",
     "serve": "nodemon server.js",
-    "start": "node server.js"
-  },
+    "serve:aws": "node --env-file=.env.aws server.js",
+    "serve:render": "node --env-file=.env.render server.js"
+},
   "author": "",
   "license": "ISC",
   "dependencies": {

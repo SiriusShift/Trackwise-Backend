@@ -1,0 +1,184 @@
+TRACKWISE BACKEND - DEPLOYMENT GUIDE
+=====================================
+
+
+================================================================
+OPTION A: DEPLOY TO RENDER
+================================================================
+
+PREREQUISITES
+-------------
+- Docker Desktop installed and running
+- Render account (render.com)
+- GitHub repo with your backend pushed
+
+STEP 1 - Push your code to GitHub
+----------------------------------
+1. Make sure your .gitignore includes:
+   - node_modules
+   - .env
+   - .env.*  (except .env.example)
+
+2. Push to GitHub:
+   git add .
+   git commit -m "dockerize backend"
+   git push origin main
+
+STEP 2 - Create a new Web Service on Render
+--------------------------------------------
+1. Go to render.com → Dashboard → New → Web Service
+2. Connect your GitHub repo
+3. Select the Trackwise-Backend folder (or root if it's the only repo)
+4. Set the following:
+   - Environment: Docker
+   - Region: Choose closest to your users
+   - Branch: main
+   - Dockerfile Path: ./Dockerfile
+
+STEP 3 - Set environment variables on Render
+---------------------------------------------
+Go to your service → Environment tab and add all variables from your .env.render:
+
+   DATABASE_URL        = postgresql://...render.com/...  (or Neon URL)
+   EMAIL_PROVIDER      = smtp  (for Maileroo) OR aws (for SES)
+   SESSION_SECRET      = your-secret
+   CLIENT_URL          = https://your-frontend.render.com
+   BACKEND_URL         = https://your-backend.render.com
+   PORT                = 5000
+   NODE_ENV            = production
+
+   # If EMAIL_PROVIDER=smtp (Maileroo)
+   SMTP_HOST           = smtp.maileroo.com
+   SMTP_PORT           = 587
+   EMAIL_USER          = your-maileroo-email
+   EMAIL_PASS          = your-maileroo-api-key
+
+   # If EMAIL_PROVIDER=aws (SES)
+   AWS_ACCESS_KEY      = ...
+   AWS_SECRET_KEY      = ...
+   AWS_REGION          = ...
+   AWS_SES_SENDER      = ...
+
+   # Always needed for S3
+   AWS_S3_BUCKET_NAME  = ...
+
+   # Google OAuth
+   GOOGLE_CLIENT_ID    = ...
+   GOOGLE_CLIENT_SECRET= ...
+
+STEP 4 - Deploy
+---------------
+1. Click "Create Web Service"
+2. Render will pull your repo and build the Docker image automatically
+3. Watch the deploy logs — you should see:
+   - "Prisma migrate deploy" running
+   - "Server running on port 5000"
+
+STEP 5 - Test
+-------------
+Visit: https://your-service-name.onrender.com
+You should get: { "success": true, "message": "API is running" }
+
+NOTE: Free tier on Render spins down after inactivity (cold starts ~30s).
+Upgrade to a paid plan to keep it always on.
+
+
+================================================================
+OPTION B: DEPLOY TO AWS (ECR + ECS)
+================================================================
+
+PREREQUISITES
+-------------
+- AWS CLI installed and configured (aws configure)
+- Docker Desktop installed and running
+- AWS account with ECR and ECS access
+
+STEP 1 - Create an ECR repository
+-----------------------------------
+1. Go to AWS Console → ECR → Create repository
+2. Name it: trackwise-backend
+3. Copy the repository URI (looks like: 123456789.dkr.ecr.ap-southeast-1.amazonaws.com/trackwise-backend)
+
+STEP 2 - Build and push your Docker image
+------------------------------------------
+Run these commands (replace REGION and ACCOUNT_ID):
+
+   # Authenticate Docker to ECR
+   aws ecr get-login-password --region ap-southeast-1 | docker login --username AWS --password-stdin <ACCOUNT_ID>.dkr.ecr.ap-southeast-1.amazonaws.com
+
+   # Build the image
+   docker build -t trackwise-backend .
+
+   # Tag the image
+   docker tag trackwise-backend:latest <ACCOUNT_ID>.dkr.ecr.ap-southeast-1.amazonaws.com/trackwise-backend:latest
+
+   # Push to ECR
+   docker push <ACCOUNT_ID>.dkr.ecr.ap-southeast-1.amazonaws.com/trackwise-backend:latest
+
+STEP 3 - Create an ECS Cluster
+--------------------------------
+1. Go to AWS Console → ECS → Clusters → Create Cluster
+2. Name it: trackwise-cluster
+3. Infrastructure: AWS Fargate (serverless, no EC2 to manage)
+
+STEP 4 - Create a Task Definition
+-----------------------------------
+1. ECS → Task Definitions → Create new
+2. Family name: trackwise-backend
+3. Container:
+   - Name: trackwise-backend
+   - Image URI: your ECR URI from Step 1
+   - Port: 5000
+4. Environment variables: add all your .env.aws variables here
+   (same list as Render Step 3 but use AWS values)
+5. CPU: 0.25 vCPU, Memory: 0.5 GB (adjust as needed)
+
+STEP 5 - Create a Service
+--------------------------
+1. Go to your ECS Cluster → Services → Create
+2. Launch type: Fargate
+3. Task definition: trackwise-backend
+4. Service name: trackwise-backend-service
+5. Desired tasks: 1
+6. Networking:
+   - Choose your VPC and subnets
+   - Security group: allow inbound on port 5000
+   - Auto-assign public IP: ENABLED
+
+STEP 6 - (Optional) Add a Load Balancer
+-----------------------------------------
+For production, add an Application Load Balancer (ALB):
+1. Create ALB in EC2 → Load Balancers
+2. Target group pointing to port 5000
+3. Attach to your ECS service
+4. This gives you a stable URL and HTTPS support
+
+STEP 7 - Test
+-------------
+Visit the public IP of your task (ECS → Cluster → Tasks → your task → Public IP)
+Or your ALB DNS name if you added one.
+You should get: { "success": true, "message": "API is running" }
+
+STEP 8 - Updating the deployment
+----------------------------------
+When you push new code, re-run Step 2 (build + push),
+then force a new deployment:
+
+   aws ecs update-service --cluster trackwise-cluster --service trackwise-backend-service --force-new-deployment
+
+
+================================================================
+SWITCHING BETWEEN AWS AND RENDER
+================================================================
+
+Local development:
+   npm run serve:aws      # uses .env.aws
+   npm run serve:render   # uses .env.render
+
+Docker locally:
+   docker compose --env-file .env.aws up --build
+   docker compose --env-file .env.render up --build
+
+Deployed:
+   - On Render: change env vars in the Render dashboard, redeploy
+   - On AWS ECS: update the Task Definition with new env vars, redeploy
