@@ -3,6 +3,7 @@ import { Router } from "express";
 import catchAsync from "../utils/catchAsync.js";
 
 import {
+  archiveAsset,
   createAsset,
   getAsset,
 } from "../controllers/asset.controller.js";
@@ -31,6 +32,7 @@ router
   .get(
     requireAuth,
     catchAsync(getAsset),
-  );
+  )
 
+router.route("/:id/archive").patch(requireAuth, archiveAsset)
 export default router;

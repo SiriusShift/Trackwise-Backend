@@ -87,6 +87,32 @@ export const createAsset = async (
   return asset;
 };
 
+/*
+|--------------------------------------------------------------------------
+| Archive / Unarchive Asset
+|--------------------------------------------------------------------------
+| Idempotent: sets the state to `archived` and does nothing if it already
+| matches. Uses the existing `isActive` / `closedAt` soft-close fields.
+*/
+export const archiveAsset = async (userId, id, archived = true) => {
+  const asset = await validateAsset(id, userId);
+
+  if (asset.isActive === !archived) {
+    return asset;
+  }
+
+  return prisma.asset.update({
+    where: { id: asset.id },
+    data: {
+      isActive: !archived,
+      closedAt: archived ? new Date() : null,
+    },
+    include: {
+      creditDetail: true,
+    },
+  });
+};
+
 export const updateAsset = async (
   id,
   name,
@@ -217,6 +243,7 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
   const assets = await prisma.asset.findMany({
     where: {
       userId: Number(userId),
+      isActive: true,
       ...(id && { id: Number(id) }),
       ...(netWorthOnly && { includeInNetWorth: true }),
     },

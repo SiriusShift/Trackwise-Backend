@@ -34,3 +34,19 @@ export const getAsset = asyncHandler(async (req, res) => {
     ...response,
   });
 });
+
+/* ---------------- ARCHIVE ASSET ---------------- */
+export const archiveAsset = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const archived = req.body?.archived ?? true;
+
+  const response = await assetService.archiveAsset(req.user.id, id, archived);
+
+  return res.status(200).json({
+    success: true,
+    message: archived
+      ? "Asset archived successfully"
+      : "Asset restored successfully",
+    data: response,
+  });
+});
