@@ -1,12 +1,15 @@
 import crypto from "crypto";
 
 import { AppError } from "../utils/AppError.js";
-import {
-  sendEmail,
-  verifyEmailAddress,
-} from "./ses.service.js";
+import { sendEmail as sesSendEmail, verifyEmailAddress as sesVerifyEmailAddress } from "./ses.service.js";
+import { sendEmail as mailSendEmail, verifyEmailAddress as mailVerifyEmailAddress } from "./mail.service.js";
 
 import { prisma } from "../config/prisma.js";
+
+// Set EMAIL_PROVIDER=aws to use AWS SES; defaults to SMTP (Render/nodemailer)
+const useAWS = process.env.EMAIL_PROVIDER === "aws";
+const sendEmail = useAWS ? sesSendEmail : mailSendEmail;
+const verifyEmailAddress = useAWS ? sesVerifyEmailAddress : mailVerifyEmailAddress;
 
 const year = new Date().getFullYear();
 
@@ -70,11 +73,11 @@ export const sendEmailCode = async ({ email, username }) => {
 };
 
 export const forgotPassword = async ({ email }) => {
-  if (!email || !Array.isArray(email)) {
+  if (!email) {
     throw new AppError("Invalid email format.", 400);
   }
 
-  const emailAddress = email[0];
+  const emailAddress = email;
 
   const user = await prisma.user.findFirst({
     where: {
@@ -151,11 +154,11 @@ export const forgotPassword = async ({ email }) => {
 };
 
 export const verifyEmail = async ({ email }) => {
-  if (!email || !Array.isArray(email)) {
+  if (!email) {
     throw new AppError("Invalid email format.", 400);
   }
 
-  const result = await verifyEmailAddress(email);
+  const result = await verifyEmailAddress([email]);
 
   if (!result) {
     throw new AppError(

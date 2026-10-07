@@ -49,5 +49,5 @@ export const sendEmailCodeSchema = Joi.object({
 });
 
 export const emailSchema = Joi.object({
-    email: emailList,
+    email: Joi.string().email().required(),
 });
