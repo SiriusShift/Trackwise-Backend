@@ -63,19 +63,3 @@ const archiveIncome = asyncHandler(async (req, res, next) => {
   });
 
 });
-
-export const collectIncome = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
-
-  const response = await incomeService.collectIncome(
-    req.user.id,
-    req.body,
-    id,
-    req.file
-  );
-  res.status(200).json({
-    message: "Receive successful",
-    success: true,
-    data: response,
-  });
-});

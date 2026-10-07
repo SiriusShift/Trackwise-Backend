@@ -135,7 +135,7 @@ export const postBillPayment = asyncHandler(async (req, res) => {
     null,
     id
   );
-  await recurringService.transactBill(id)
+  await recurringService.transactBill(id, req.user.id)
   return res.status(200).json({
     success: true,
     message: "Bill paid successfully",
@@ -150,7 +150,7 @@ export const skipBillPayment = asyncHandler(async (req, res) => {
   const response = await expenseService.skipBillPayment(
     id
   );
-  await recurringService.transactBill(id)
+  await recurringService.transactBill(id, req.user.id)
   return res.status(200).json({
     success: true,
     message: "Bill paid successfully",

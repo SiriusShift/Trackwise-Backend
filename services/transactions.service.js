@@ -4,28 +4,7 @@ import { validateExpense } from "./expenses.service.js";
 import { validateIncome } from "./incomes.service.js";
 import { validateTransfers } from "./transfers.service.js";
 
-import {
-  deleteFileFromS3,
-  uploadFileToS3,
-} from "../services/s3.service.js";
-import { AppError } from "../utils/AppError.js";
-
 import { prisma } from "../config/prisma.js";
-/*
-|--------------------------------------------------------------------------
-| Validate Transaction History
-|--------------------------------------------------------------------------
-*/
-export const validateTransactionHistory = async (id) => {
-  const history = await prisma.transactionHistory.findFirst({
-    where: { id: Number(id) },
-  });
-
-  if (!history) throw new AppError("History not found", 404);
-
-  return history;
-};
-
 /*
 |--------------------------------------------------------------------------
 | Get History (Paginated)
@@ -433,59 +412,6 @@ export const getStatistics = async (userId, data) => {
     incomeBreakdown,
     expenseBreakdown,
   };
-};
-
-/*
-|--------------------------------------------------------------------------
-| Edit History
-|--------------------------------------------------------------------------
-*/
-export const editHistory = async (userId, data, file, id) => {
-  const history = await validateTransactionHistory(id);
-
-  let image = history.image;
-
-  if (file) {
-    image = await uploadFileToS3(file, "Expense", userId);
-
-    if (history.image) {
-      await deleteFileFromS3(history.image);
-    }
-  }
-
-  const transaction = await prisma.transactionHistory.update({
-    where: { id: Number(id) },
-    data: {
-      amount: Number(data.amount),
-      description: data.description,
-      date: data.date,
-      image,
-      updatedAt: new Date(),
-      user: { connect: { id: userId } },
-    },
-  });
-
-  return transaction;
-};
-
-/*
-|--------------------------------------------------------------------------
-| Delete History (Soft Delete)
-|--------------------------------------------------------------------------
-*/
-export const deleteHistory = async (id) => {
-  const transaction = await prisma.transactionHistory.findUnique({
-    where: { id: Number(id) },
-  });
-
-  if (!transaction) throw new AppError("Transaction not found", 404);
-
-  await prisma.transactionHistory.update({
-    where: { id: Number(id) },
-    data: { isActive: false },
-  });
-
-  return true;
 };
 
 /*

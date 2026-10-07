@@ -51,13 +51,6 @@ export const updateTransferSchema = createTransferSchema.keys({
   image: Joi.string().allow("", null),
 });
 
-export const transferPaymentSchema = Joi.object({
-  amount: amount.required(),
-  from: id.required(),
-  date: Joi.date().required(),
-  description,
-});
-
 /*
 |--------------------------------------------------------------------------
 | Bills
@@ -70,12 +63,6 @@ export const billPaymentSchema = createExpenseSchema;
 | History
 |--------------------------------------------------------------------------
 */
-export const editHistorySchema = Joi.object({
-  amount: amount.required(),
-  date: Joi.date().required(),
-  description,
-});
-
 export const archiveTransactionQuery = Joi.object({
   type: Joi.string().valid("expense", "income", "transfer").required(),
 });

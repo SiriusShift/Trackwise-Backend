@@ -1,10 +1,7 @@
 import { Router } from "express";
-import multer from "multer";
 
 import {
   archiveTransaction,
-  deleteHistory,
-  editHistory,
   getHistory,
   getStatistics
 } from "../controllers/transactions.controller.js";
@@ -14,14 +11,13 @@ import ExpenseRouter from "./expenses.routes.js";
 import IncomeRouter from "./incomes.routes.js";
 import TransferRouter from "./transfers.routes.js";
 
-import { cancelRecurring, confirmRecurring, editRecurring, getRecurring, postRecurring } from "../controllers/recurring.controller.js";
+import { cancelRecurring, editRecurring, getRecurring, postRecurring } from "../controllers/recurring.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
 import { idParams } from "../schema/common.js";
 import {
   archiveTransactionQuery,
   createRecurringSchema,
-  editHistorySchema,
 } from "../schema/transaction.js";
 
 const router = Router();
@@ -32,7 +28,6 @@ const router = Router();
 |--------------------------------------------------------------------------
 | Using memory storage for form-data (no files persisted to disk)
 */
-const upload = multer();
 
 /*
 |--------------------------------------------------------------------------
@@ -41,19 +36,6 @@ const upload = multer();
 */
 
 router.route("/history").get(requireAuth, catchAsync(getHistory));
-
-router
-  .route("/edit/:id")
-  .patch(
-    requireAuth,
-    upload.single("image"),
-    validate({ params: idParams, body: editHistorySchema }),
-    catchAsync(editHistory),
-  );
-
-router
-  .route("/delete/:id")
-  .patch(requireAuth, validate({ params: idParams }), catchAsync(deleteHistory));
 
 router.route("/statistics").get(requireAuth, catchAsync(getStatistics));
 
@@ -80,11 +62,8 @@ router
 router
   .route("/recurring/:id")
   .patch(requireAuth, validate({ params: idParams }), catchAsync(cancelRecurring))
-  .put(requireAuth, validate({ params: idParams }), catchAsync(editRecurring));
+  .put(requireAuth, validate({ params: idParams, body: createRecurringSchema }), catchAsync(editRecurring));
 
-router
-  .route("/recurring/:id/confirm")
-  .post(requireAuth, validate({ params: idParams }), catchAsync(confirmRecurring));
 /*
 |--------------------------------------------------------------------------
 | Child Routes

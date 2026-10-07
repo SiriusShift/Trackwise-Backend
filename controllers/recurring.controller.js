@@ -55,16 +55,19 @@ export const editRecurring = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const response = await recurringService.editRecurring(id, req.query);
+    const response = await recurringService.editRecurring(req.user.id, id, req.body);
 
     return res.status(200).json({
-      message: `Successfully editing recurring ${req.query.type}`,
+      message: "Recurring transaction updated successfully",
       success: true,
       ...response,
     });
   } catch (err) {
     console.error("editRecurring error:", err);
-    return res.status(500).json({ error: "Internal server error" });
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.statusCode ? err.message : "Internal server error",
+    });
   }
 };
 
@@ -77,50 +80,18 @@ export const cancelRecurring = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const response = await recurringService.cancelRecurring(id);
+    const response = await recurringService.cancelRecurring(req.user.id, id);
 
     return res.status(200).json({
-      message: `Successfully cancelled recurring ${req.query.type}`,
+      message: "Recurring transaction cancelled successfully",
       success: true,
       ...response,
     });
   } catch (err) {
     console.error("cancelRecurring error:", err);
-    return res.status(500).json({ error: "Internal server error" });
-  }
-};
-
-/*
-|--------------------------------------------------------------------------
-| Transact Recurring
-|--------------------------------------------------------------------------
-*/
-export const confirmRecurring = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const response = await recurringService.transactRecurring(
-      req.user.id,
-      id,
-      type
-    );
-
-    if (!response.success) {
-      return res.status(400).json({
-        success: false,
-        message: response.message,
-      });
-    }
-
-    return res.status(200).json({
-      message: `Successfully transacted recurring ${type}`,
-      success: true,
-      ...response,
-    });
-  } catch (err) {
-    console.error("transactRecurring error:", err);
-    return res.status(500).json({
-      message: "Internal server error",
+    return res.status(err.statusCode || 500).json({
+      success: false,
+      message: err.statusCode ? err.message : "Internal server error",
     });
   }
 };

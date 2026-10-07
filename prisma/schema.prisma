@@ -435,6 +435,7 @@ model RecurringTransaction {
   nextDueDate     DateTime
   endDate         DateTime?
   lastTriggeredAt DateTime?
+  endedAt         DateTime?
   isActive        Boolean            @default(true)
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt

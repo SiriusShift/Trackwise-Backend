@@ -1,14 +1,8 @@
-import moment from "moment";
+import moment from "moment-timezone";
 
 import { validateCategory } from "./categories.service.js";
-// import {
-//   createTransactionHistory,
-//   createTransactionNotification,
-//   createTransactionRecord,
-// } from "./transactions.service.js";
 
 import { AppError } from "../utils/AppError.js";
-import { determineTransactionStatus } from "../utils/transaction.utils.js";
 
 import { prisma } from "../config/prisma.js";
 
@@ -18,133 +12,48 @@ import { prisma } from "../config/prisma.js";
 |--------------------------------------------------------------------------
 */
 export const postRecurring = async (userId, data) => {
-  console.log(data, "DATA!")
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
   const assetFromId = Number(data?.account);
   const assetToId = Number(data?.to?.id);
-  const isAuto = data.behaviour === "AUTO_LOG";
   const type = data?.type;
 
-  const status = await determineTransactionStatus(
-    data?.type,
-    data?.behaviour,
-    assetFromId,
-    amount,
-    userId,
-  );
+  if (!["Expense", "Income", "Transfer"].includes(type)) {
+    throw new AppError("Invalid transaction type", 400);
+  }
 
   await validateCategory(categoryId);
 
   const recurringData = {
     user: { connect: { id: userId } },
-    type: data?.type,
+    type,
     category: { connect: { id: categoryId } },
     amount,
     description: data?.description,
     startDate: data?.date,
-    nextDueDate: moment(data?.date)
-      .add(Number(data.every), data.frequency)
-      .toDate(),
+    // NOTE: first due date IS the start date. It used to be start + interval, which skipped
+    // the first occurrence (no reminder / no auto-log on the start date). The hourly cron
+    // (config/cron.js) creates the transaction or reminder once that day arrives, so a
+    // start date of today is picked up within the hour and no immediate insert is needed here.
+    nextDueDate: new Date(data?.date),
     interval: Number(data?.every),
     unit: data?.frequency,
     behaviour: data?.behaviour,
   };
 
-  if (type === "Expense") {
-    recurringData.fromAsset = {
-      connect: { id: assetFromId },
-    };
+  if (type === "Expense" || type === "Transfer") {
+    recurringData.fromAsset = { connect: { id: assetFromId } };
   }
 
-  if (type === "Income") {
-    recurringData.toAsset = {
-      connect: { id: assetToId },
-    };
-  }
-
-  if (type === "Transfer") {
-    recurringData.fromAsset = {
-      connect: { id: assetFromId },
-    };
-
-    recurringData.toAsset = {
-      connect: { id: assetToId },
-    };
+  if (type === "Income" || type === "Transfer") {
+    recurringData.toAsset = { connect: { id: assetToId } };
   }
 
   if (data?.endDate) {
     recurringData.endDate = data.endDate;
   }
 
-  const recurring = await prisma.recurringTransaction.create({
-    data: recurringData,
-  });
-
-  const transformedData = {
-    amount,
-    description: data.description,
-    status,
-    date: data.date,
-
-    user: {
-      connect: { id: userId },
-    },
-
-    category: {
-      connect: { id: categoryId },
-    },
-
-    recurringTemplate: {
-      connect: { id: recurring.id },
-    },
-  };
-
-  if (type === "Expense") {
-    transformedData.asset = {
-      connect: { id: assetFromId },
-    };
-  }
-
-  if (type === "Income") {
-    transformedData.asset = {
-      connect: { id: assetToId },
-    };
-  }
-
-  if (type === "Transfer") {
-    transformedData.fromAsset = {
-      connect: { id: assetFromId },
-    };
-
-    transformedData.toAsset = {
-      connect: { id: assetToId },
-    };
-  }
-
-  const modelMap = {
-    Expense: prisma.expense,
-    Income: prisma.income,
-    Transfer: prisma.transfer,
-  };
-
-  const model = modelMap[type];
-
-  if (!model) {
-    throw new AppError("Invalid transaction type", 400);
-  }
-  let transaction = null;
-
-  if (isAuto) {
-    if (isAuto && moment(data.date).isSame(moment(), "day")) {
-      transaction = await model.create({
-        data: transformedData,
-      });
-    }
-  }
-
-  return transaction;
-
+  return prisma.recurringTransaction.create({ data: recurringData });
 };
 
 /*
@@ -254,93 +163,45 @@ export const cancelRecurring = async (id) => {
 
 };
 
-/*
-|--------------------------------------------------------------------------
-| Manual Transaction Trigger
-|--------------------------------------------------------------------------
-*/
-export const transactRecurring = async (userId, id, type) => {
-  const modelMap = {
-    Expense: prisma.expense,
-    Income: prisma.income,
-    Transfer: prisma.transfer,
-  };
-
-  const model = modelMap[type];
-  if (!model) throw new AppError(`Invalid transaction type: ${type}`, 400);
-
-  const transaction = await model.findUnique({
+export const transactBill = async (id, userId) => {
+  const recurring = await prisma.recurringTransaction.findUnique({
     where: { id: Number(id) },
   });
 
-  if (!transaction) {
-    throw new AppError(`${type} with id ${id} not found`, 404);
+  if (!recurring) throw new AppError("Recurring bill not found", 404);
+
+  const settings = userId
+    ? await prisma.settings.findFirst({
+      where: { userId: Number(userId) },
+      select: { timezone: true },
+    })
+    : null;
+  const timezone = settings?.timezone || "UTC";
+
+  // NOTE: same rule as the cron: next = startDate + k * interval (> current due).
+  // Previously this always added 1 month, ignoring interval/unit, and passed a moment
+  // object to Prisma instead of a Date.
+  const currentDue = moment(recurring.nextDueDate).tz(timezone).startOf("day");
+  const anchor = moment.tz(recurring.startDate, timezone).startOf("day");
+  let k = 1;
+  let next = anchor.clone().add(k * recurring.interval, recurring.unit);
+  while (!next.isAfter(currentDue)) {
+    k++;
+    next = anchor.clone().add(k * recurring.interval, recurring.unit);
   }
 
-  const assetId = transaction.assetId;
-  const amount = transaction.amount;
+  const ended =
+    recurring.endDate && next.isAfter(moment(recurring.endDate).tz(timezone).endOf("day"));
 
-  const status = await determineTransactionStatus(
-    type,
-    true,
-    assetId,
-    amount,
-    userId,
-  );
-
-  if (status === "Failed") {
-    return {
-      success: false,
-      message: "Transaction failed due to insufficient balance.",
-    };
-  }
-
-  if (type === "Expense") {
-    await prisma.expense.update({
-      where: { id: Number(id) },
-      data: { status },
-    });
-
-    await prisma.transactionHistory.create({
-      data: {
-        expense: { connect: { id: transaction.id } },
-        user: { connect: { id: userId } },
-        fromAsset: { connect: { id: assetId } },
-        transactionType: type,
-        amount: Number(amount),
-        description: `${transaction.description} — ${moment(
-          transaction.date,
-        ).format("YYYY-MM-DD")} (Manual retry due to insufficient balance)`,
-        date: new Date(),
-      },
-    });
-  }
-
-  return {
-    success: true,
-    transaction,
-  };
-};
-
-
-export const transactBill = async (id) => {
-
-  const recurring = await prisma.recurringTransaction.findFirst({
-    where: {
-      id: Number(id)
-    }
-  })
   await prisma.recurringTransaction.update({
-    where: {
-      id: Number(id)
-    },
+    where: { id: recurring.id },
     data: {
-      nextDueDate: moment(recurring?.nextDueDate).add(1, "month")
-    }
-  })
-  return {
-    success: true,
-  };
+      nextDueDate: next.toDate(),
+      lastTriggeredAt: new Date(),
+      // NOTE: close the schedule when the next cycle would fall after endDate.
+      ...(ended && { status: "ENDED", isActive: false }),
+    },
+  });
 
-
+  return { success: true };
 };

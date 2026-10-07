@@ -173,6 +173,7 @@ export const updateExpense = async (userId, data, file, id) => {
       date: data.date,
       categoryId: categoryId,
       assetId: assetId,
+      image,
       updatedAt: new Date(),
     },
   });

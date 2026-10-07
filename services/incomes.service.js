@@ -183,59 +183,6 @@ export const deleteIncome = async (id) => {
     data: { isActive: false },
   });
 
-  await prisma.transactionHistory.updateMany({
-    where: { incomeId: Number(id) },
-    data: { isActive: false },
-  });
-};
-
-/* =========================
-   COLLECT INCOME
-========================= */
-
-export const collectIncome = async (userId, data, id, file) => {
-  const income = await validateIncome(id);
-
-  const amount = Number(data.amount);
-  const assetId = Number(data.to);
-
-  const image = file ? await uploadFileToS3(file, "Income", userId) : null;
-
-  const aggregate = await prisma.transactionHistory.aggregate({
-    where: {
-      incomeId: income.id,
-      isActive: true,
-    },
-    _sum: { amount: true },
-  });
-
-  const totalReceived = Number(aggregate._sum.amount || 0) + amount;
-
-  const status =
-    totalReceived >= income.amount
-      ? "Received"
-      : totalReceived > 0
-        ? "Partial"
-        : "Pending";
-
-  await prisma.income.update({
-    where: { id: income.id },
-    data: { status },
-  });
-
-  await prisma.transactionHistory.create({
-    data: {
-      income: { connect: { id: income.id } },
-      user: { connect: { id: userId } },
-      toAsset: { connect: { id: assetId } },
-
-      transactionType: "Income",
-      amount,
-      description: data.description,
-      date: data.date,
-      image,
-    },
-  });
 };
 
 export const getGraph = async (userId, query) => {

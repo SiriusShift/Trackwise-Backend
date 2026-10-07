@@ -52,7 +52,7 @@ export const postTransfer = async (req, res, next) => {
 export const updateTransfer = async (req, res, next) => {
   const { id } = req.params;
   try {
-    const updateExpense = await expenseService.updateExpense(
+    const transfer = await transferService.updateTransfer(
       req.user.id,
       req.body,
       req.file,
@@ -60,13 +60,14 @@ export const updateTransfer = async (req, res, next) => {
     );
     res.status(200).json({
       success: true,
-      message: "Expense updated successfully",
-      data: updateExpense,
+      message: "Transfer updated successfully",
+      data: transfer,
     });
   } catch (err) {
-    console.log("Error while updating expense", err);
-    return res.status(500).json({
-      error: "Internal server error",
+    console.error("Error while updating transfer", err);
+    res.status(err.statusCode || err.status || 500).json({
+      success: false,
+      message: err.message || "Internal server error",
     });
   }
 };
@@ -88,28 +89,6 @@ export const updateTransfer = async (req, res, next) => {
 //     });
 //   }
 // };
-
-export const transfer = async (req, res, next) => {
-  const { id } = req.params;
-  try {
-    const response = await expenseService.postPayment(
-      req.user.id,
-      req.body,
-      id,
-      req.file,
-    );
-    res.status(200).json({
-      message: "Payment successful",
-      success: true,
-      data: response,
-    });
-  } catch (err) {
-    console.log("Error while updating expense", err);
-    return res.status(500).json({
-      error: "Internal server error",
-    });
-  }
-};
 
 // Expense Graph
 export const getGraph = async (req, res, next) => {

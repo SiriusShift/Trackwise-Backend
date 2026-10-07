@@ -17,10 +17,6 @@ import {
   updateIncome
 } from "../controllers/incomes.controller.js";
 
-import {
-  confirmRecurring
-} from "../controllers/recurring.controller.js";
-
 const router = Router();
 const upload = multer();
 
@@ -47,14 +43,5 @@ router
 router
   .route("/graph")
   .get(requireAuth, catchAsync(getGraph));
-
-router
-  .route("/receive/:id")
-  .patch(
-    requireAuth,
-    upload.single("image"),
-    validate({ params: idParams }),
-    catchAsync(confirmRecurring),
-  );
 
 export default router;

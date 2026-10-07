@@ -23,53 +23,6 @@ export const getHistory = async (req, res) => {
   }
 };
 
-/* ---------------- EDIT HISTORY ---------------- */
-export const editHistory = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    const response = await transactionService.editHistory(
-      req.user.id,
-      req.body,
-      req.file,
-      id
-    );
-
-    return res.status(200).json({
-      success: true,
-      message: "Transaction history successfully edited",
-      data: response,
-    });
-  } catch (error) {
-    console.error("editHistory error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
-
-/* ---------------- DELETE HISTORY ---------------- */
-export const deleteHistory = async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    await transactionService.deleteHistory(id);
-
-    return res.status(200).json({
-      success: true,
-      message: "Transaction history successfully deleted",
-    });
-  } catch (error) {
-    console.error("deleteHistory error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Internal server error",
-    });
-  }
-};
 
 /* ---------------- STATISTICS ---------------- */
 export const getStatistics = async (req, res) => {
