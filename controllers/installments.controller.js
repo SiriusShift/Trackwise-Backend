@@ -14,7 +14,7 @@ const postInstallmentController = async (req, res, next) => {
       data: installment,
     });
   } catch (err) {
-    console.error("Error while fetching expenses:", error);
+    console.error("Error while fetching expenses:", err);
     res.status(500).json({
       success: false,
       message: "Internal server error",
