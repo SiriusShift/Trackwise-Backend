@@ -9,6 +9,7 @@ import catchAsync from "../utils/catchAsync.js";
 
 import ExpenseRouter from "./expenses.routes.js";
 import IncomeRouter from "./incomes.routes.js";
+import SchedulesRouter from "./schedules.routes.js";
 import TransferRouter from "./transfers.routes.js";
 
 import { cancelRecurring, editRecurring, getRecurring, postRecurring } from "../controllers/recurring.controller.js";
@@ -38,6 +39,9 @@ const router = Router();
 router.route("/history").get(requireAuth, catchAsync(getHistory));
 
 router.route("/statistics").get(requireAuth, catchAsync(getStatistics));
+
+// Mounted before "/:id" so "schedules" isn't captured as a transaction id.
+router.use("/schedules", SchedulesRouter);
 
 router
   .route("/:id")

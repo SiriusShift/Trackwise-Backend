@@ -1,6 +1,5 @@
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import * as expenseService from "../services/expenses.service.js";
-import * as recurringService from "../services/recurring.service.js";
 
 /* ---------------- GET EXPENSES ---------------- */
 export const getExpenses = asyncHandler(async (req, res) => {
@@ -86,74 +85,6 @@ export const getGraph = asyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     message: "Detailed expenses fetched successfully",
-    data: response,
-  });
-});
-
-/* ---------------- GET BILLS ---------------- */
-export const getBills = asyncHandler(async (req, res) => {
-  const response = await expenseService.getScheduledExpenses(req.user.id, req.query);
-
-  return res.status(200).json({
-    success: true,
-    message: "Bills fetched successfully",
-    data: response,
-  });
-});
-
-export const getBill = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-  const response = await expenseService.getScheduledExpense(req.user.id, id);
-
-  return res.status(200).json({
-    success: true,
-    message: "Bill fetched successfully",
-    data: response,
-  });
-});
-
-export const getBillPayments = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const response = await expenseService.getBillPayments(id);
-
-  console.log('bills', response)
-  return res.status(200).json({
-    success: true,
-    message: "Bill payment history fetched successfully",
-    data: response,
-  });
-
-});
-
-export const postBillPayment = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const response = await expenseService.postExpense(
-    req.user.id,
-    req.body,
-    null,
-    id
-  );
-  await recurringService.transactBill(id, req.user.id)
-  return res.status(200).json({
-    success: true,
-    message: "Bill paid successfully",
-    data: response,
-  });
-
-});
-
-export const skipBillPayment = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  const response = await expenseService.skipBillPayment(
-    id
-  );
-  await recurringService.transactBill(id, req.user.id)
-  return res.status(200).json({
-    success: true,
-    message: "Bill paid successfully",
     data: response,
   });
 });

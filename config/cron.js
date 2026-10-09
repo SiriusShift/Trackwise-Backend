@@ -1,6 +1,7 @@
 import moment from "moment-timezone"; // NOTE: must be moment-timezone — plain "moment" has no .tz()
 import cron from "node-cron";
 import { getAssetBalance } from "../services/assets.service.js";
+import { syncCreditStatements } from "../services/schedules.service.js";
 
 import { prisma } from "../config/prisma.js";
 
@@ -51,6 +52,13 @@ cron.schedule("0 * * * *", async () => {
       // NOTE: a destructuring default only covers `undefined`; a DB null/"" would break moment.tz.
       const timezone = tz || "UTC";
       const todayLocal = moment().tz(timezone).startOf("day");
+
+      // Close credit card cycles into statements so they show up as scheduled bills.
+      try {
+        await syncCreditStatements(userId, timezone);
+      } catch (err) {
+        console.error(`❌ Failed syncing credit statements for user ${userId}:`, err);
+      }
 
       let recurringList;
       try {
@@ -165,7 +173,8 @@ cron.schedule("0 * * * *", async () => {
             recurringDueDate: firedAt,
             userId,
             ...(item.type === "Expense" && { assetId: item.fromAssetId }),
-            ...(item.type === "Income" && { assetId: item.toAssetId }),
+            // Income stores its account in fromAssetId now; older rows used toAssetId.
+            ...(item.type === "Income" && { assetId: item.fromAssetId ?? item.toAssetId }),
             ...(item.type === "Transfer" && {
               fromAssetId: item.fromAssetId,
               toAssetId: item.toAssetId,

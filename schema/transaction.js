@@ -53,10 +53,33 @@ export const updateTransferSchema = createTransferSchema.keys({
 
 /*
 |--------------------------------------------------------------------------
-| Bills
+| Schedules
 |--------------------------------------------------------------------------
 */
-export const billPaymentSchema = createExpenseSchema;
+export const getSchedulesQuery = Joi.object({
+  dateFrom: Joi.date(),
+  dateTo: Joi.date(),
+  type: Joi.string().valid("Expense", "Income", "Transfer"),
+  source: Joi.string().valid("RECURRING", "CREDIT_STATEMENT"),
+  actionable: Joi.boolean(),
+});
+
+// Category / account / description default to the schedule's own values.
+export const payScheduleSchema = Joi.object({
+  amount: amount.required(),
+  date: Joi.date().required(),
+  account: id,
+  category: id,
+  description: description.allow(""),
+});
+
+export const payCreditStatementSchema = Joi.object({
+  amount: amount.required(),
+  date: Joi.date().required(),
+  account: id.required(),
+  category: id,
+  description: description.allow(""),
+});
 
 /*
 |--------------------------------------------------------------------------
@@ -87,13 +110,14 @@ export const createRecurringSchema = Joi.object({
   frequency: Joi.string().valid(...units).required(),
   behaviour: Joi.string().valid(...behaviours).required(),
   account: id.when("type", {
-    is: Joi.valid("Expense", "Transfer"),
+    is: Joi.valid("Expense", "Income", "Transfer"),
     then: Joi.required(),
   }),
   to: Joi.alternatives()
     .try(id, Joi.object({ id: id.required() }).unknown())
     .when("type", {
-      is: Joi.valid("Income", "Transfer"),
+      is: Joi.valid("Transfer"),
       then: Joi.required(),
+      otherwise: Joi.allow(null),
     }),
 });

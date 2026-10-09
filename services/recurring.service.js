@@ -41,11 +41,11 @@ export const postRecurring = async (userId, data) => {
     behaviour: data?.behaviour,
   };
 
-  if (type === "Expense" || type === "Transfer") {
+  if (type === "Expense" || type === "Transfer" || type === "Income") {
     recurringData.fromAsset = { connect: { id: assetFromId } };
   }
 
-  if (type === "Income" || type === "Transfer") {
+  if (type === "Transfer") {
     recurringData.toAsset = { connect: { id: assetToId } };
   }
 
@@ -136,11 +136,61 @@ export const getRecurring = async (userId, query) => {
 
 /*
 |--------------------------------------------------------------------------
-| Edit Recurring (TODO)
+| Edit Recurring
 |--------------------------------------------------------------------------
 */
-export const editRecurring = async () => {
-  return "";
+export const editRecurring = async (userId, id, data) => {
+  const existing = await prisma.recurringTransaction.findFirst({
+    where: { id: Number(id), userId: Number(userId) },
+  });
+
+  if (!existing) throw new AppError("Recurring transaction not found", 404);
+
+  const amount = Number(data.amount);
+  const categoryId = Number(data.category);
+  const assetFromId = Number(data?.account);
+  const assetToId = Number(data?.to?.id);
+  const type = data?.type;
+
+  if (!["Expense", "Income", "Transfer"].includes(type)) {
+    throw new AppError("Invalid transaction type", 400);
+  }
+
+  await validateCategory(categoryId);
+
+  const updateData = {
+    type,
+    category: { connect: { id: categoryId } },
+    amount,
+    description: data?.description,
+    interval: Number(data?.every),
+    unit: data?.frequency,
+    behaviour: data?.behaviour,
+    endDate: data?.endDate ? data.endDate : null,
+  };
+
+  // NOTE: only reset the schedule when the start date actually changed; otherwise keep
+  // nextDueDate so editing e.g. the amount doesn't re-trigger an already processed cycle.
+  const newStart = new Date(data?.date);
+  if (data?.date && newStart.getTime() !== existing.startDate.getTime()) {
+    updateData.startDate = newStart;
+    updateData.nextDueDate = newStart;
+  }
+
+  updateData.fromAsset =
+    type === "Expense" || type === "Transfer"
+      ? { connect: { id: assetFromId } }
+      : { disconnect: true };
+
+  updateData.toAsset =
+    type === "Income" || type === "Transfer"
+      ? { connect: { id: assetToId } }
+      : { disconnect: true };
+
+  return prisma.recurringTransaction.update({
+    where: { id: existing.id },
+    data: updateData,
+  });
 };
 
 /*
@@ -163,15 +213,16 @@ export const cancelRecurring = async (id) => {
 
 };
 
-export const transactBill = async (id, userId) => {
-  const recurring = await prisma.recurringTransaction.findUnique({
+// `tx` lets callers advance the schedule inside their own $transaction.
+export const transactBill = async (id, userId, tx = prisma) => {
+  const recurring = await tx.recurringTransaction.findUnique({
     where: { id: Number(id) },
   });
 
   if (!recurring) throw new AppError("Recurring bill not found", 404);
 
   const settings = userId
-    ? await prisma.settings.findFirst({
+    ? await tx.settings.findFirst({
       where: { userId: Number(userId) },
       select: { timezone: true },
     })
@@ -193,7 +244,7 @@ export const transactBill = async (id, userId) => {
   const ended =
     recurring.endDate && next.isAfter(moment(recurring.endDate).tz(timezone).endOf("day"));
 
-  await prisma.recurringTransaction.update({
+  await tx.recurringTransaction.update({
     where: { id: recurring.id },
     data: {
       nextDueDate: next.toDate(),

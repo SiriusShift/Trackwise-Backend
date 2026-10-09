@@ -80,7 +80,7 @@ export const cancelRecurring = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const response = await recurringService.cancelRecurring(req.user.id, id);
+    const response = await recurringService.cancelRecurring(id);
 
     return res.status(200).json({
       message: "Recurring transaction cancelled successfully",

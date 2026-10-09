@@ -4,14 +4,9 @@ import multer from "multer";
 import catchAsync from "../utils/catchAsync.js";
 
 import {
-  getBill,
-  getBillPayments,
-  getBills,
   getExpenses,
   getGraph,
-  postBillPayment,
   postExpense,
-  skipBillPayment,
   updateExpense
 } from "../controllers/expenses.controller.js";
 
@@ -25,7 +20,6 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
 import { idParams } from "../schema/common.js";
 import {
-  billPaymentSchema,
   createExpenseSchema,
   updateExpenseSchema,
 } from "../schema/transaction.js";
@@ -69,32 +63,7 @@ router
 // Graph data
 router.route("/graph").get(requireAuth, catchAsync(getGraph));
 
-// Pay expense
-router
-  .route("/bills/:id/pay")
-  .post(
-    requireAuth,
-    validate({ params: idParams, body: billPaymentSchema }),
-    catchAsync(postBillPayment),
-  );
-
-router
-  .route("/bills/:id/skip")
-  .patch(requireAuth, validate({ params: idParams }), catchAsync(skipBillPayment));
-
-router
-  .route("/bills")
-  .get(requireAuth, catchAsync(getBills));
-
-router
-  .route("/bills/:id")
-  .get(requireAuth, catchAsync(getBill));
-
-router
-  .route("/bills/:id/history")
-  .get(requireAuth, catchAsync(getBillPayments));
-
-
+// Bills moved to /transactions/schedules (routes/schedules.routes.js)
 
 /*
 |--------------------------------------------------------------------------
