@@ -95,9 +95,25 @@ export const runPassport = () => {
               });
             }
 
-            return done(null, false, {
-              message: "Account does not exist.",
+            // No account yet: sign the user up automatically
+            const email = profile.emails?.[0]?.value;
+            if (!email) {
+              return done(null, false, {
+                message: "Google account has no email address.",
+              });
+            }
+
+            const newUser = await prisma.user.create({
+              data: {
+                google_id: profile.id,
+                firstName: profile._json?.given_name || "",
+                lastName: profile._json?.family_name || "",
+                email,
+                profileImageUrl: profile._json?.picture,
+              },
             });
+
+            return done(null, newUser);
           }
 
           return done(null, user);
