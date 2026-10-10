@@ -1,6 +1,7 @@
 // services/auth.service.js
 
 import bcrypt from "bcrypt";
+import { OAuth2Client } from "google-auth-library";
 import { prisma } from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
 import { decryptString } from "../utils/customFunction.js";
@@ -225,5 +226,52 @@ export const logoutService = (req) => {
         });
       });
     });
+  });
+};
+const googleClient = new OAuth2Client();
+
+export const googleOneTapService = async (credential) => {
+  if (!credential) {
+    throw new AppError("Missing Google credential", 400);
+  }
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+    payload = ticket.getPayload();
+  } catch {
+    throw new AppError("Invalid Google credential", 401);
+  }
+
+  if (!payload?.email || !payload.email_verified) {
+    throw new AppError("Google account has no verified email address.", 401);
+  }
+
+  const existing = await prisma.user.findFirst({
+    where: { google_id: payload.sub },
+  });
+  if (existing) return existing;
+
+  const emailUser = await prisma.user.findUnique({
+    where: { email: payload.email },
+  });
+  if (emailUser) {
+    throw new AppError(
+      "This email is already registered but not linked to Google.",
+      409
+    );
+  }
+
+  return prisma.user.create({
+    data: {
+      google_id: payload.sub,
+      firstName: payload.given_name || "",
+      lastName: payload.family_name || "",
+      email: payload.email,
+      profileImageUrl: payload.picture,
+    },
   });
 };

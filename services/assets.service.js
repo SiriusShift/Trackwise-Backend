@@ -113,90 +113,59 @@ export const archiveAsset = async (userId, id, archived = true) => {
   });
 };
 
+/*
+|--------------------------------------------------------------------------
+| Update Asset
+|--------------------------------------------------------------------------
+| Category, subtype, currency and balance are immutable after creation (the
+| edit dialog locks them) since changing them would corrupt the transaction
+| history. Only descriptive fields and credit card details can change.
+*/
 export const updateAsset = async (
+  userId,
   id,
-  name,
-  balance,
-  currency,
-  type,
-  subtype,
-  color,
-  includeNetWorth,
-  creditDetail
+  { name, color, institution, includeNetWorth, creditDetail }
 ) => {
-  if (type === "CREDIT") {
-    if (!creditDetail?.creditLimit) {
+  const existing = await validateAsset(id, userId);
+  const isCredit = existing.category === "CREDIT";
+
+  if (isCredit && creditDetail) {
+    if (!creditDetail.creditLimit) {
       throw new AppError("creditLimit is required for CREDIT assets", 400);
     }
-
     for (const [label, val] of [
-      ["statementDate", creditDetail?.statementDate],
-      ["dueDate", creditDetail?.dueDate],
+      ["statementDate", creditDetail.statementDate],
+      ["dueDate", creditDetail.dueDate],
     ]) {
-      if (
-        val !== undefined &&
-        val !== null &&
-        (Number(val) < 1 || Number(val) > 31)
-      ) {
-        throw new AppError(
-          `${label} must be a day of month between 1 and 31`,
-          400
-        );
+      if (val !== undefined && val !== null && (Number(val) < 1 || Number(val) > 31)) {
+        throw new AppError(`${label} must be a day of month between 1 and 31`, 400);
       }
     }
   }
 
-  const asset = await prisma.asset.update({
-    where: {
-      id: Number(id),
-    },
-    data: {
-      name,
-      balance: parseFloat(balance),
-      currency,
-      category: type,
-      subtype: subtype ?? null,
-      color,
-      includeInNetWorth: includeNetWorth,
+  const creditData = isCredit && creditDetail && {
+    creditLimit: parseFloat(creditDetail.creditLimit),
+    statementDate: creditDetail.statementDate ? Number(creditDetail.statementDate) : null,
+    dueDate: creditDetail.dueDate ? Number(creditDetail.dueDate) : null,
+  };
 
-      ...(type === "CREDIT"
-        ? {
-          creditDetail: {
-            upsert: {
-              create: {
-                creditLimit: parseFloat(creditDetail.creditLimit),
-                statementDate: creditDetail.statementDate
-                  ? Number(creditDetail.statementDate)
-                  : null,
-                dueDate: creditDetail.dueDate
-                  ? Number(creditDetail.dueDate)
-                  : null,
-              },
-              update: {
-                creditLimit: parseFloat(creditDetail.creditLimit),
-                statementDate: creditDetail.statementDate
-                  ? Number(creditDetail.statementDate)
-                  : null,
-                dueDate: creditDetail.dueDate
-                  ? Number(creditDetail.dueDate)
-                  : null,
-              },
-            },
-          },
-        }
-        : {
-          creditDetail: {
-            delete: {},
-          },
-        }),
+  return prisma.asset.update({
+    where: { id: existing.id },
+    data: {
+      ...(name !== undefined && { name }),
+      ...(color !== undefined && { color }),
+      ...(institution !== undefined && { institution: institution || null }),
+      ...(includeNetWorth !== undefined && { includeInNetWorth: includeNetWorth }),
+      ...(creditData && {
+        creditDetail: { upsert: { create: creditData, update: creditData } },
+      }),
     },
     include: {
       creditDetail: true,
     },
   });
-
-  return asset;
 };
+
 /*
 |--------------------------------------------------------------------------
 | Get Asset Summary (with trend)

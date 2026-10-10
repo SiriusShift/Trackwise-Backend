@@ -6,13 +6,14 @@ import {
   archiveAsset,
   createAsset,
   getAsset,
+  updateAsset,
 } from "../controllers/asset.controller.js";
 
 import {
   requireAuth
 } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
-import { createAssetSchema } from "../schema/asset.js";
+import { createAssetSchema, updateAssetSchema } from "../schema/asset.js";
 
 const router = Router();
 
@@ -32,7 +33,15 @@ router
   .get(
     requireAuth,
     catchAsync(getAsset),
-  )
+  );
+
+router
+  .route("/:id")
+  .put(
+    requireAuth,
+    validate({ body: updateAssetSchema }),
+    catchAsync(updateAsset),
+  );
 
 router.route("/:id/archive").patch(requireAuth, archiveAsset)
 export default router;

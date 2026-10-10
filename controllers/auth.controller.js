@@ -25,6 +25,16 @@ export const login = asyncHandler(async (req, res, next) => {
   return res.status(200).json(result);
 });
 
+export const googleOneTap = asyncHandler(async (req, res) => {
+  const user = await authService.googleOneTapService(req.body?.credential);
+
+  const logIn = promisify(req.login.bind(req));
+  await logIn(user);
+
+  const result = await authService.loginService(user);
+  return res.status(200).json(result);
+});
+
 export const resetPassword = asyncHandler(async (req, res, next) => {
   const result = await authService.resetPasswordService(req.body);
 

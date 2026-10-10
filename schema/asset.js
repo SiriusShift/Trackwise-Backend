@@ -39,3 +39,11 @@ export const createAssetSchema = Joi.object({
     otherwise: Joi.optional().allow(null),
   }),
 });
+
+export const updateAssetSchema = Joi.object({
+  name: Joi.string().trim().max(100),
+  color: Joi.string().trim().allow(null, ""),
+  institution: Joi.string().trim().max(100).allow(null, ""),
+  includeNetWorth: Joi.boolean(),
+  creditDetail: creditDetailSchema.allow(null),
+});

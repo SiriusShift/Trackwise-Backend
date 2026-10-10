@@ -12,6 +12,7 @@ import {
 
 import {
   forgotPassword,
+  googleOneTap,
   isAuthenticated,
   login,
   logout,
@@ -220,7 +221,7 @@ router.get(
 );
 
 router.route("/auth/google/unlink").delete(requireAuth, catchAsync(unlinkGoogle));
-
+router.route("/auth/google/one-tap").post(catchAsync(googleOneTap));
 router.route("/auth/verify").post(validate({ body: emailSchema }), catchAsync(verifyEmail));
 router.route("/auth/email-code").post(validate({ body: sendEmailCodeSchema }), catchAsync(sendEmailCode));
 router.route("/auth/forgot-password").post(validate({ body: emailSchema }), catchAsync(forgotPassword));

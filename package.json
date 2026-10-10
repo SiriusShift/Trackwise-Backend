@@ -4,12 +4,12 @@
   "description": "Backend for trackwise",
   "main": "index.js",
   "type": "module",
-"scripts": {
+  "scripts": {
     "start": "node server.js",
     "serve": "nodemon server.js",
     "serve:aws": "node --env-file=.env.aws server.js",
     "serve:render": "node --env-file=.env.render server.js"
-},
+  },
   "author": "",
   "license": "ISC",
   "dependencies": {
@@ -27,6 +27,7 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.1",
     "express-session": "^1.18.1",
+    "google-auth-library": "^10.9.1",
     "helmet": "^8.2.0",
     "joi": "^17.13.3",
     "moment": "^2.30.1",

@@ -40,10 +40,7 @@ export const runPassport = () => {
           //   });
           // }
 
-          const isValidPassword = await bcrypt.compare(
-            password,
-            user.password
-          );
+          const isValidPassword = await bcrypt.compare(password, user.password);
 
           if (!isValidPassword) {
             return done(null, false, {
@@ -55,8 +52,8 @@ export const runPassport = () => {
         } catch (error) {
           return done(error);
         }
-      }
-    )
+      },
+    ),
   );
 
   /*
@@ -120,8 +117,8 @@ export const runPassport = () => {
         } catch (error) {
           return done(error, null);
         }
-      }
-    )
+      },
+    ),
   );
 
   /*
@@ -148,8 +145,7 @@ export const runPassport = () => {
 
           if (existingUser) {
             return done(null, false, {
-              message:
-                "An account with this email already exists.",
+              message: "An account with this email already exists.",
             });
           }
 
@@ -157,8 +153,8 @@ export const runPassport = () => {
         } catch (error) {
           return done(error, null);
         }
-      }
-    )
+      },
+    ),
   );
 
   /*
@@ -201,10 +197,15 @@ export const runPassport = () => {
         } catch (error) {
           return done(error, null);
         }
-      }
-    )
+      },
+    ),
   );
 
+  /*
+  |--------------------------------------------------------------------------
+  | Serialize User
+  |--------------------------------------------------------------------------
+  */
   /*
   |--------------------------------------------------------------------------
   | Serialize User
