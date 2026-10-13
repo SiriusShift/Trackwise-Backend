@@ -3,10 +3,12 @@ import nodemailer from "nodemailer";
 import { AppError } from "../utils/AppError.js";
 import emailTemplate from "../emailTemplate.json" with { type: "json" };
 import resetTemplate from "../resetPassword.json" with { type: "json" };
+import notificationTemplate from "../notificationEmail.json" with { type: "json" };
 
 const templates = {
     Verification_Code: emailTemplate.Template,
     Reset_Password: resetTemplate.Template,
+    Notification: notificationTemplate.Template,
 };
 
 const transporter = nodemailer.createTransport({

@@ -2,6 +2,7 @@ import moment from "moment-timezone"; // NOTE: must be moment-timezone — plain
 import cron from "node-cron";
 import { getAssetBalance } from "../services/assets.service.js";
 import { syncCreditStatements } from "../services/schedules.service.js";
+import { sendNotificationEmail } from "../services/email.service.js";
 
 import { prisma } from "../config/prisma.js";
 
@@ -45,10 +46,21 @@ cron.schedule("0 * * * *", async () => {
   // NOTE: top-level guard so an unexpected error never becomes an unhandled rejection.
   try {
     const users = await prisma.settings.findMany({
-      select: { userId: true, timezone: true },
+      select: {
+        userId: true,
+        timezone: true,
+        emailNotification: true,
+        notifyDays: true,
+        user: { select: { email: true } },
+      },
     });
 
-    for (const { userId, timezone: tz } of users) {
+    for (const { userId, timezone: tz, emailNotification, notifyDays, user } of users) {
+      // NOTE: email is a best-effort extra on top of the in-app notification; it never blocks the run.
+      const emailUser = (title, message) => {
+        if (emailNotification && user?.email) sendNotificationEmail(user.email, { title, message });
+      };
+
       // NOTE: a destructuring default only covers `undefined`; a DB null/"" would break moment.tz.
       const timezone = tz || "UTC";
       const todayLocal = moment().tz(timezone).startOf("day");
@@ -69,7 +81,8 @@ cron.schedule("0 * * * *", async () => {
             status: "ACTIVE",
             // NOTE: only fetch items that can possibly be due (+1 day buffer for timezones);
             // the exact local-day check happens below.
-            nextDueDate: { lte: moment().add(1, "day").toDate() },
+            // Widened by notifyDays so advance reminders can be sent.
+            nextDueDate: { lte: moment().add(1 + Math.max(notifyDays ?? 0, 0), "day").toDate() },
           },
         });
       } catch (err) {
@@ -80,7 +93,26 @@ cron.schedule("0 * * * *", async () => {
       for (const item of recurringList) {
         try {
           const nextDueLocal = moment(item.nextDueDate).tz(timezone).startOf("day");
-          if (todayLocal.isBefore(nextDueLocal)) continue;
+          if (todayLocal.isBefore(nextDueLocal)) {
+            /* ---------------- UPCOMING (advance reminder) ---------------- */
+            const daysUntil = nextDueLocal.diff(todayLocal, "days");
+            if (notifyDays > 0 && daysUntil <= notifyDays) {
+              const dueLabel = nextDueLocal.format("MMM D, YYYY");
+              const message = `${item.description} is due on ${dueLabel}.`;
+              // Dedup: one advance reminder per schedule per due date (message embeds the date).
+              const alreadySent = await prisma.notification.findFirst({
+                where: { userId, recurringId: item.id, title: "Upcoming bill", message },
+                select: { id: true },
+              });
+              if (!alreadySent) {
+                await prisma.notification.create({
+                  data: { userId, recurringId: item.id, title: "Upcoming bill", message, type: "Reminder" },
+                });
+                emailUser("Upcoming bill", message);
+              }
+            }
+            continue;
+          }
 
           // NOTE: respect endDate. Past it, close the schedule instead of firing again.
           if (item.endDate && nextDueLocal.isAfter(moment(item.endDate).tz(timezone).endOf("day"))) {
@@ -122,6 +154,7 @@ cron.schedule("0 * * * *", async () => {
                 update: { result: "REMINDED", errorMessage: null },
               }),
             ]);
+            emailUser("Bill due", `${item.description} is due today.`);
             continue;
           }
 
@@ -147,15 +180,17 @@ cron.schedule("0 * * * *", async () => {
 
               // NOTE: tell the user, but only on the first failure of this cycle (not every hour).
               if (!existingLog) {
+                const failMessage = `${item.description} could not be logged: ${errorMessage}. It will retry automatically.`;
                 await prisma.notification.create({
                   data: {
                     userId,
                     recurringId: item.id,
                     title: "Recurring transaction failed",
-                    message: `${item.description} could not be logged: ${errorMessage}. It will retry automatically.`,
+                    message: failMessage,
                     type: "Error",
                   },
                 });
+                emailUser("Recurring transaction failed", failMessage);
               }
               continue;
             }

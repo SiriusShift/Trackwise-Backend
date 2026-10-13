@@ -21,6 +21,12 @@ const sendInBackground = (emailAddress, data, template) => {
   });
 };
 
+// Fire-and-forget notification email (used by the recurring cron).
+export const sendNotificationEmail = (emailAddress, { title, message }) => {
+  if (!emailAddress) return;
+  sendInBackground(emailAddress, { title, message, year }, "Notification");
+};
+
 export const sendEmailCode = async ({ email, username }) => {
   if (!email || !Array.isArray(email)) {
     throw new AppError("Invalid email format.", 400);

@@ -1,0 +1,8 @@
+{
+    "Template": {
+      "TemplateName": "Notification",
+      "SubjectPart": "{{title}}",
+      "TextPart": "{{message}}",
+      "HtmlPart": "<!doctype html>\n<html>\n<head>\n    <meta charset=\"utf-8\">\n    <link href=\"https://fonts.googleapis.com/css2?family=Quicksand:wght@400;700&display=swap\" rel=\"stylesheet\">\n    <style>\n        body {\n            font-family: 'Quicksand', sans-serif;\n            background-color: #f4f4f4;\n            margin: 0;\n            padding: 0;\n            color: #333;\n        }\n        .content {\n            width: 600px;\n            max-width: 100%;\n            padding: 20px;\n            background-color: #ffffff;\n            text-align: center;\n            box-sizing: border-box;\n            margin: 20px auto;\n        }\n        .footer {\n            font-size: 12px;\n            color: #888;\n            text-align: center;\n            margin-top: 10px;\n        }\n        .black-nav {\n            width: 100%;\n            background-color: black;\n            height: 10px;\n        }\n    </style>\n</head>\n<body>\n    <div class=\"black-nav\"></div>\n    <table role=\"presentation\" class=\"content\" align=\"center\" cellpadding=\"0\" cellspacing=\"0\">\n        <tr>\n            <td>\n                <h2>{{title}}</h2>\n                <p>{{message}}</p>\n                <div class=\"footer\">\n                    <p>You are receiving this because email notifications are enabled in your Trackwise settings.</p>\n                    <p>Trackwise &copy; {{year}}</p>\n                </div>\n            </td>\n        </tr>\n    </table>\n</body>\n</html>"
+    }
+  }
