@@ -11,6 +11,7 @@ import {
 } from "../middleware/validate.js";
 
 import {
+  changePassword,
   completeTour,
   forgotPassword,
   googleOneTap,
@@ -25,12 +26,14 @@ import {
 import { requireAuth } from "../middleware/requireAuth.js";
 import {
   authLimiter,
+  changePasswordLimiter,
   emailIpLimiter,
   emailSendLimiter,
   resetPasswordLimiter,
   signInLimiter,
 } from "../middleware/rateLimit.js";
 import {
+  changePasswordSchema,
   emailSchema,
   sendEmailCodeSchema,
   signinSchema,
@@ -69,6 +72,15 @@ router.route("/sign-in").post(
 router
   .route("/reset-password")
   .post(resetPasswordLimiter, validateUserUpdateRequest("password"), catchAsync(resetPassword));
+
+router
+  .route("/change-password")
+  .patch(
+    requireAuth,
+    changePasswordLimiter,
+    validate({ body: changePasswordSchema }),
+    catchAsync(changePassword)
+  );
 
 router.route("/auth-status").get(requireAuth, isAuthenticated);
 

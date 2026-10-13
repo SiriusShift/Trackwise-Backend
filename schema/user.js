@@ -36,6 +36,14 @@ export const resetPasswordSchema = Joi.object({
     email: Joi.string().email().required(),
 });
 
+// currentPassword is omitted for Google-only accounts that have no password yet
+export const changePasswordSchema = Joi.object({
+    currentPassword: Joi.string().allow("").optional(),
+    newPassword: Joi.string().required().pattern(passwordPattern).messages({
+        "string.pattern.base": passwordError,
+    }),
+});
+
 // Email is sent as an array by the client, e.g. ["user@mail.com"]
 const emailList = Joi.array().items(Joi.string().email()).min(1).required();
 

@@ -41,7 +41,13 @@ export const resetPassword = asyncHandler(async (req, res, next) => {
   return res.status(200).json(result);
 });
 
-export const isAuthenticated = asyncHandler(async (req, res) => {
+export const changePassword = asyncHandler(async (req, res) => {
+  const result = await authService.changePasswordService(req.user, req.body);
+
+  res.status(200).json(result);
+});
+
+export const isAuthenticated =asyncHandler(async (req, res) => {
   const result = await authService.isAuthenticatedService(req.user);
 
   res.status(200).json(result);

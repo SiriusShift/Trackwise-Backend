@@ -58,6 +58,21 @@ export const resetPasswordLimiter = rateLimit({
     }),
 });
 
+// Change-password: the current password is checked, so cap guesses per user.
+export const changePasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  validate: { keyGeneratorIpFallback: false },
+  keyGenerator: (req) => String(req.user?.id ?? req.ip),
+  handler: (req, res) =>
+    res.status(429).json({
+      success: false,
+      message: "Too many attempts. Please try again later.",
+    }),
+});
+
 // Generic cap for other unauthenticated auth endpoints.
 export const authLimiter = build({
   windowMs: 15 * 60 * 1000,

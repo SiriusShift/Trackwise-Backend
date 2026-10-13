@@ -148,7 +148,47 @@ export const resetPasswordService = async ({ password, token, email }) => {
   };
 };
 
-export const isAuthenticatedService = async (user) => {
+export const changePasswordService = async (
+  user,
+  { currentPassword, newPassword }
+) => {
+  // Google-only accounts have no password yet, so there is nothing to verify.
+  if (user.password) {
+    if (!currentPassword) {
+      throw new AppError("Current password is required", 400);
+    }
+
+    const matches = await bcrypt.compare(currentPassword, user.password);
+    if (!matches) {
+      throw new AppError("Current password is incorrect", 400);
+    }
+
+    if (await bcrypt.compare(newPassword, user.password)) {
+      throw new AppError(
+        "New password must be different from the current password",
+        400
+      );
+    }
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+
+    await tx.resetToken.deleteMany({ where: { userId: user.id } });
+  });
+
+  return {
+    success: true,
+    message: user.password ? "Password changed" : "Password set",
+  };
+};
+
+export const isAuthenticatedService =async (user) => {
   const settings = await prisma.settings.findFirst({
     where: {
       userId: user.id,
@@ -172,6 +212,7 @@ export const isAuthenticatedService = async (user) => {
       phoneNumber: user.phoneNumber,
       profileImage: user.profileImageUrl,
       google_id: user.google_id,
+      hasPassword: !!user.password,
       hasSeenTour: user.hasSeenTour,
     },
     settings,
