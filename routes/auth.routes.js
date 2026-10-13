@@ -11,6 +11,7 @@ import {
 } from "../middleware/validate.js";
 
 import {
+  completeTour,
   forgotPassword,
   googleOneTap,
   isAuthenticated,
@@ -102,7 +103,7 @@ router.get(
         }
 
         // Optionally redirect after successful login
-        res.redirect(`${process.env.CLIENT_URL}/`);
+        res.redirect(`${process.env.CLIENT_URL}/dashboard`);
       });
     })(req, res, next);
   }
@@ -170,7 +171,7 @@ router.get(
         }
 
         // Redirect after successful sign-up
-        res.redirect(`${process.env.CLIENT_URL}/`);
+        res.redirect(`${process.env.CLIENT_URL}/dashboard`);
       });
     } catch (error) {
       console.error("Error during user creation:", error);
@@ -221,11 +222,10 @@ router.get(
 );
 
 router.route("/auth/google/unlink").delete(requireAuth, catchAsync(unlinkGoogle));
+router.route("/auth/tour").patch(requireAuth, catchAsync(completeTour));
 router.route("/auth/google/one-tap").post(catchAsync(googleOneTap));
 router.route("/auth/verify").post(validate({ body: emailSchema }), catchAsync(verifyEmail));
 router.route("/auth/email-code").post(validate({ body: sendEmailCodeSchema }), catchAsync(sendEmailCode));
 router.route("/auth/forgot-password").post(validate({ body: emailSchema }), catchAsync(forgotPassword));
-
-
 
 export default router;

@@ -175,9 +175,26 @@ export const isAuthenticatedService = async (user) => {
       role: user.role,
       phoneNumber: user.phoneNumber,
       profileImage: user.profileImageUrl,
-      google_id: user.google_id
+      google_id: user.google_id,
+      hasSeenTour: user.hasSeenTour,
     },
     settings,
+  };
+};
+
+export const completeTourService = async (user) => {
+  const updatedUser = await prisma.user.update({
+    where: { id: user.id },
+    data: { hasSeenTour: true },
+  });
+
+  return {
+    success: true,
+    message: "Tour completed",
+    user: {
+      id: updatedUser.id,
+      hasSeenTour: updatedUser.hasSeenTour,
+    },
   };
 };
 

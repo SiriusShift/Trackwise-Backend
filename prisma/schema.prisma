@@ -124,9 +124,10 @@ model User {
   profileImageUrl String? @map("profile_image_url")
   isActive        Boolean @default(true)
 
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @default(now()) @updatedAt
-  google_id String?  @unique
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @default(now()) @updatedAt
+  google_id   String?  @unique
+  hasSeenTour Boolean  @default(false) @map("has_seen_tour")
 
   assets            Asset[]
   expenses          Expense[]

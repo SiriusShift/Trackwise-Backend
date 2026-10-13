@@ -53,10 +53,22 @@ export const unlinkGoogle = asyncHandler(async (req, res) => {
   res.status(200).json(result);
 });
 
+export const completeTour = asyncHandler(async (req, res) => {
+  const result = await authService.completeTourService(req.user);
+
+  res.status(200).json(result);
+});
+
 export const logout = asyncHandler(async (req, res) => {
   const result = await authService.logoutService(req);
 
-  res.clearCookie("trackwise_session");
+  const isProduction = process.env.NODE_ENV === "production";
+  res.clearCookie("trackwise_session", {
+    path: "/",
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax",
+  });
 
   res.status(200).json(result);
 });
