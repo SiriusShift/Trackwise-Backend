@@ -55,7 +55,8 @@ export const archiveTransaction = async (req, res) => {
   try {
     await transactionService.archiveTransaction(
       req.query.type,
-      id
+      id,
+          req.user.id
     );
 
     return res.status(200).json({

@@ -72,25 +72,7 @@ export const updateTransfer = async (req, res, next) => {
   }
 };
 
-// const archiveTransfer = async (req, res, next) => {
-//   const { id } = req.params;
-//   try {
-//     const updateExpense = await expenseService.deleteExpense("transfer", id);
-
-//     res.status(200).json({
-//       success: true,
-//       message: "Transfer archived successfully",
-//       data: updateExpense,
-//     });
-//   } catch (err) {
-//     console.log("Error while archiving transfer", err);
-//     return res.status(500).json({
-//       error: "Internal server error",
-//     });
-//   }
-// };
-
-// Expense Graph
+// Transfer Graph
 export const getGraph = async (req, res, next) => {
   try {
     const response = await transferService.getTransferGraph(

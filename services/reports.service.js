@@ -1,13 +1,15 @@
-import moment from "moment";
+import moment from "moment-timezone";
 import Papa from "papaparse";
 import { prisma } from "../config/prisma.js";
 import { getAssetBalance } from "./assets.service.js";
 import { generateExcelBuffer } from "./excel.service.js";
 
-export const getTransactionStatement = async ({ userId, assetId, from: fromDate, to: toDate, format }) => {
-    const from = moment(fromDate).startOf("day").toDate();
-    const to = moment(toDate).endOf("day").toDate();
-    const openingResult = await getAssetBalance(userId, assetId, { asOf: fromDate }); console.log(openingResult)
+export const getTransactionStatement = async ({ userId, assetId, from: fromDate, to: toDate, format, timezone = "UTC" }) => {
+    // Whole days in the user's timezone, not the server's
+    const from = moment.tz(fromDate, timezone).startOf("day").toDate();
+    const to = moment.tz(toDate, timezone).endOf("day").toDate();
+    // Opening balance = everything before the first moment of the statement
+    const openingResult = await getAssetBalance(userId, assetId, { asOf: new Date(from.getTime() - 1) }); console.log(openingResult)
     const openingBalance = openingResult?.data?.[0]?.remainingBalance ?? 0;
     const filters = {
         isActive: true,
@@ -105,7 +107,7 @@ export const getTransactionStatement = async ({ userId, assetId, from: fromDate,
         ];
 
         const rows = withBalance.map((tx) => ({
-            date: moment(tx.date).format("YYYY-MM-DD hh:mm A"),
+            date: moment.tz(tx.date, timezone).format("YYYY-MM-DD hh:mm A"),
             type: tx.type,
             category: tx.category?.name ?? "",
             description: tx.description,

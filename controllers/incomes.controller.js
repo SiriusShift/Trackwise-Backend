@@ -49,17 +49,3 @@ export const updateIncome = asyncHandler(async (req, res, next) => {
   });
 
 });
-
-
-const archiveIncome = asyncHandler(async (req, res, next) => {
-  const { id } = req.params;
-
-  const updateExpense = await incomeService.deleteExpense("income", id);
-
-  res.status(200).json({
-    success: true,
-    message: "Income archived successfully",
-    data: updateExpense,
-  });
-
-});

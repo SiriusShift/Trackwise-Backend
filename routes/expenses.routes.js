@@ -1,5 +1,5 @@
 import { Router } from "express";
-import multer from "multer";
+import { upload } from "../middleware/upload.js";
 
 import catchAsync from "../utils/catchAsync.js";
 
@@ -21,6 +21,7 @@ import { validate } from "../middleware/validate.js";
 import { idParams } from "../schema/common.js";
 import {
   createExpenseSchema,
+  graphQuery,
   updateExpenseSchema,
 } from "../schema/transaction.js";
 
@@ -31,7 +32,6 @@ const router = Router();
 | Multer Setup
 |--------------------------------------------------------------------------
 */
-const upload = multer();
 
 /*
 |--------------------------------------------------------------------------
@@ -61,8 +61,8 @@ router
   );
 
 // Graph data
-router.route("/graph").get(requireAuth, catchAsync(getGraph));
 
+router.route("/graph").get(requireAuth, validate({ query: graphQuery }), catchAsync(getGraph));
 // Bills moved to /transactions/schedules (routes/schedules.routes.js)
 
 /*

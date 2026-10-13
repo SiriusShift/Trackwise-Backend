@@ -20,6 +20,12 @@ export const createExpenseSchema = Joi.object({
   account: id,
 });
 
+export const graphQuery = Joi.object({
+  startDate: Joi.date().iso().required(),
+  endDate: Joi.date().iso().required(),
+  mode: Joi.string().valid("day", "week", "month", "year").required(),
+});
+
 export const updateExpenseSchema = createExpenseSchema.keys({
   // Existing image URL; omitting it removes the current image
   image: Joi.string().allow("", null),
@@ -95,8 +101,8 @@ export const archiveTransactionQuery = Joi.object({
 | Recurring
 |--------------------------------------------------------------------------
 */
-const types = ["Expense", "Income", "Transfer"];
-const units = ["day", "week", "month", "year"];
+export const types = ["Expense", "Income", "Transfer"];
+export const units = ["day", "week", "month", "year"];
 const behaviours = ["AUTO_LOG", "REMIND"];
 
 export const createRecurringSchema = Joi.object({

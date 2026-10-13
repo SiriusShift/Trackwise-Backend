@@ -1,5 +1,5 @@
 import { Router } from "express";
-import multer from "multer";
+import { upload } from "../middleware/upload.js";
 
 import { requireAuth } from "../middleware/requireAuth.js";
 import catchAsync from "../utils/catchAsync.js";
@@ -8,6 +8,7 @@ import { idParams } from "../schema/common.js";
 import {
   createRecurringSchema,
   createTransferSchema,
+  graphQuery,
   updateTransferSchema,
 } from "../schema/transaction.js";
 
@@ -24,7 +25,6 @@ import {
 } from "../controllers/recurring.controller.js";
 
 const router = Router();
-const upload = multer();
 
 /* ---------------- TRANSFERS ---------------- */
 router
@@ -48,7 +48,7 @@ router
 
 router
   .route("/graph")
-  .get(requireAuth, catchAsync(getGraph));
+  .get(requireAuth, validate({ query: graphQuery }), catchAsync(getGraph));
 
 /* ---------------- RECURRING ---------------- */
 router

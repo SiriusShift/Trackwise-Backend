@@ -1,4 +1,3 @@
-import moment from "moment";
 
 import { AppError } from "../utils/AppError.js";
 import { validateAsset } from "./assets.service.js";
@@ -6,6 +5,8 @@ import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
 import { prisma } from "../config/prisma.js";
+import { getPeriodRange, getUserTimezone } from "../utils/userTimezone.js";
+import { units } from "../schema/transaction.js";
 
 /* =========================
    VALIDATION
@@ -188,34 +189,42 @@ export const deleteIncome = async (id) => {
 export const getGraph = async (userId, query) => {
   const { startDate, endDate, mode } = query;
 
+  if (!units.includes(mode)) throw new AppError("Invalid mode", 400);
+
   const userIdNum = Number(userId);
+
+  const timezone = await getUserTimezone(userIdNum);
+  const { start, end, prevStart } = getPeriodRange(startDate, endDate, mode, timezone);
 
   const filters = {
     userId: userIdNum,
     isActive: true,
     date: {
-      gte: new Date(startDate),
-      lte: new Date(endDate),
+      gte: start,
+      lte: end,
     },
   };
 
 
   /* ------------------ TREND DATA ------------------ */
-  const trendData = await prisma.$queryRawUnsafe(`
-      SELECT
-        date_trunc('${mode}', "date") AS period,
-        SUM(amount) AS total
-      FROM "Income"
-      WHERE
-        "date" >= '${moment(startDate)
-      .subtract(1, "month")
-      .toISOString()}'::timestamp
-        AND "date" <= '${endDate}'::timestamp
-        AND "isActive" = true
-        AND "userId" = ${userIdNum}
-      GROUP BY period
-      ORDER BY period
-    `);
+  // "date" is stored as UTC (timestamp without time zone). Convert it to the user's
+  // local time before truncating so day/week/month buckets follow their timezone.
+  const rangeStart = prevStart.toISOString();
+  const rangeEnd = end.toISOString();
+
+  const trendData = await prisma.$queryRaw`
+    SELECT
+      date_trunc(${mode}::text, ("date" AT TIME ZONE 'UTC') AT TIME ZONE ${timezone}::text) AS period,
+      SUM(amount) AS total
+    FROM "Income"
+    WHERE
+      "date" >= ${rangeStart}::timestamp
+      AND "date" <= ${rangeEnd}::timestamp
+      AND "isActive" = true
+      AND "userId" = ${userIdNum}
+    GROUP BY period
+    ORDER BY period
+  `;
 
   const trend =
     trendData.length >= 2 && trendData[0]?.total

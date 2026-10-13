@@ -1,7 +1,8 @@
-import moment from "moment";
+import moment from "moment-timezone";
 import { asyncHandler } from "../middleware/asyncHandler.js";
 import * as reportsService from "../services/reports.service.js";
 import { AppError } from "../utils/AppError.js";
+import { getUserTimezone } from "../utils/userTimezone.js";
 
 const VALID_FORMATS = ["json", "csv", "excel"];
 
@@ -40,6 +41,7 @@ export const getTransactionStatement = asyncHandler(
         }
 
         const userId = req.user.id; // adjust to however you attach the authed user
+        const timezone = await getUserTimezone(userId);
 
         const statement = await reportsService.getTransactionStatement({
             userId,
@@ -47,9 +49,10 @@ export const getTransactionStatement = asyncHandler(
             from: fromDate,
             to: toDate,
             format,
+            timezone,
         });
 
-        const filenameBase = `Transaction-Statement_${parsedAssetId}_${moment(fromDate).format("YYYY-MM-DD")}_to_${moment(toDate).format("YYYY-MM-DD")}`;
+        const filenameBase = `Transaction-Statement_${parsedAssetId}_${moment.tz(fromDate, timezone).format("YYYY-MM-DD")}_to_${moment.tz(toDate, timezone).format("YYYY-MM-DD")}`;
         if (format === "excel") {
             res.setHeader(
                 "Content-Type",
