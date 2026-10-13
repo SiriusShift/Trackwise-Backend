@@ -41,7 +41,6 @@ router
     requireAuth,
     validate({ body: updateAssetSchema }),
     catchAsync(updateAsset),
-  );
+  ).patch(requireAuth, archiveAsset);
 
-router.route("/:id/archive").patch(requireAuth, archiveAsset)
 export default router;

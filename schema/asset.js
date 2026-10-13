@@ -25,6 +25,11 @@ const creditDetailSchema = Joi.object({
   dueDate: Joi.number().integer().min(1).max(31).allow(null),
 });
 
+const savingDetailSchema = Joi.object({
+  targetAmount: Joi.number().positive().required(),
+  targetDate: Joi.date().allow(null),
+});
+
 export const createAssetSchema = Joi.object({
   name: Joi.string().trim().max(100).required(),
   balance: Joi.number().required(),
@@ -38,6 +43,7 @@ export const createAssetSchema = Joi.object({
     then: Joi.required(),
     otherwise: Joi.optional().allow(null),
   }),
+  savingDetail: savingDetailSchema.allow(null),
 });
 
 export const updateAssetSchema = Joi.object({
@@ -46,4 +52,5 @@ export const updateAssetSchema = Joi.object({
   institution: Joi.string().trim().max(100).allow(null, ""),
   includeNetWorth: Joi.boolean(),
   creditDetail: creditDetailSchema.allow(null),
+  savingDetail: savingDetailSchema.allow(null),
 });

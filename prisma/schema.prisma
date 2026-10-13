@@ -139,6 +139,7 @@ model User {
   settings          Settings?
   notifications     Notification[]
   resetTokens       ResetToken[]
+  savingsGoals      SavingsGoal[]
 }
 
 model Asset {
@@ -178,8 +179,9 @@ model Asset {
   // Optional relations: default is SetNull, made explicit so deleting an
   // asset never fails or silently changes behavior on a Prisma upgrade —
   // it just detaches the historical record from the account.
-  expenses Expense[]
-  incomes  Income[]
+  expenses     Expense[]
+  incomes      Income[]
+  savingsGoals SavingsGoal[]
 
   sentTransfers     Transfer[] @relation("FromAsset")
   receivedTransfers Transfer[] @relation("ToAsset")
@@ -190,6 +192,7 @@ model Asset {
   loanDetail         LoanDetail?
   investmentPosition InvestmentPosition?
   creditDetail       CreditDetail?
+  savingDetail       SavingDetail?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -197,6 +200,39 @@ model Asset {
   @@index([userId])
   @@index([userId, category])
   @@index([userId, isActive])
+}
+
+model SavingsGoal {
+  id           Int       @id @default(autoincrement())
+  name         String
+  targetAmount Decimal   @db.Decimal(20, 2)
+  targetDate   DateTime?
+  isActive     Boolean   @default(true)
+
+  userId Int
+  user   User @relation(fields: [userId], references: [id])
+
+  // Option A: goal backed by a specific savings asset (progress = asset.balance)
+  assetId Int?
+  asset   Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model SavingDetail {
+  id Int @id @default(autoincrement())
+
+  assetId Int   @unique
+  asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  targetAmount Decimal   @db.Decimal(20, 2)
+  targetDate   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model LoanDetail {

@@ -36,7 +36,8 @@ export const createAsset = async (
   color,
   userId,
   includeNetWorth,
-  creditDetail
+  creditDetail,
+  savingDetail,
 ) => {
   if (type === "CREDIT") {
     if (!creditDetail?.creditLimit) {
@@ -46,8 +47,15 @@ export const createAsset = async (
       ["statementDate", creditDetail?.statementDate],
       ["dueDate", creditDetail?.dueDate],
     ]) {
-      if (val !== undefined && val !== null && (Number(val) < 1 || Number(val) > 31)) {
-        throw new AppError(`${label} must be a day of month between 1 and 31`, 400);
+      if (
+        val !== undefined &&
+        val !== null &&
+        (Number(val) < 1 || Number(val) > 31)
+      ) {
+        throw new AppError(
+          `${label} must be a day of month between 1 and 31`,
+          400,
+        );
       }
     }
   }
@@ -67,12 +75,26 @@ export const createAsset = async (
         creditDetail: {
           create: {
             creditLimit: parseFloat(creditDetail?.creditLimit),
-            statementDate: creditDetail?.statementDate ? Number(creditDetail?.statementDate) : null,
-            dueDate: creditDetail?.dueDate ? Number(creditDetail?.dueDate) : null,
+            statementDate: creditDetail?.statementDate
+              ? Number(creditDetail?.statementDate)
+              : null,
+            dueDate: creditDetail?.dueDate
+              ? Number(creditDetail?.dueDate)
+              : null,
           },
         },
       }),
-
+      ...(subtype === "SAVINGS" &&
+        savingDetail && {
+          savingDetail: {
+            create: {
+              targetAmount: parseFloat(savingDetail.targetAmount),
+              targetDate: savingDetail.targetDate
+                ? new Date(savingDetail.targetDate)
+                : null,
+            },
+          },
+        }),
       color,
 
       user: {
@@ -81,6 +103,7 @@ export const createAsset = async (
     },
     include: {
       creditDetail: true,
+      savingDetail: true,
     },
   });
 
@@ -109,6 +132,7 @@ export const archiveAsset = async (userId, id, archived = true) => {
     },
     include: {
       creditDetail: true,
+      savingDetail: true,
     },
   });
 };
@@ -124,10 +148,11 @@ export const archiveAsset = async (userId, id, archived = true) => {
 export const updateAsset = async (
   userId,
   id,
-  { name, color, institution, includeNetWorth, creditDetail }
+  { name, color, institution, includeNetWorth, creditDetail, savingDetail },
 ) => {
   const existing = await validateAsset(id, userId);
   const isCredit = existing.category === "CREDIT";
+  const isSavings = existing.subtype === "SAVINGS";
 
   if (isCredit && creditDetail) {
     if (!creditDetail.creditLimit) {
@@ -137,17 +162,35 @@ export const updateAsset = async (
       ["statementDate", creditDetail.statementDate],
       ["dueDate", creditDetail.dueDate],
     ]) {
-      if (val !== undefined && val !== null && (Number(val) < 1 || Number(val) > 31)) {
-        throw new AppError(`${label} must be a day of month between 1 and 31`, 400);
+      if (
+        val !== undefined &&
+        val !== null &&
+        (Number(val) < 1 || Number(val) > 31)
+      ) {
+        throw new AppError(
+          `${label} must be a day of month between 1 and 31`,
+          400,
+        );
       }
     }
   }
 
-  const creditData = isCredit && creditDetail && {
-    creditLimit: parseFloat(creditDetail.creditLimit),
-    statementDate: creditDetail.statementDate ? Number(creditDetail.statementDate) : null,
-    dueDate: creditDetail.dueDate ? Number(creditDetail.dueDate) : null,
-  };
+  const creditData = isCredit &&
+    creditDetail && {
+      creditLimit: parseFloat(creditDetail.creditLimit),
+      statementDate: creditDetail.statementDate
+        ? Number(creditDetail.statementDate)
+        : null,
+      dueDate: creditDetail.dueDate ? Number(creditDetail.dueDate) : null,
+    };
+
+  const savingData = isSavings &&
+    savingDetail && {
+      targetAmount: parseFloat(savingDetail.targetAmount),
+      targetDate: savingDetail.targetDate
+        ? new Date(savingDetail.targetDate)
+        : null,
+    };
 
   return prisma.asset.update({
     where: { id: existing.id },
@@ -155,13 +198,19 @@ export const updateAsset = async (
       ...(name !== undefined && { name }),
       ...(color !== undefined && { color }),
       ...(institution !== undefined && { institution: institution || null }),
-      ...(includeNetWorth !== undefined && { includeInNetWorth: includeNetWorth }),
+      ...(includeNetWorth !== undefined && {
+        includeInNetWorth: includeNetWorth,
+      }),
       ...(creditData && {
         creditDetail: { upsert: { create: creditData, update: creditData } },
+      }),
+      ...(savingData && {
+        savingDetail: { upsert: { create: savingData, update: savingData } },
       }),
     },
     include: {
       creditDetail: true,
+      savingDetail: true,
     },
   });
 };
@@ -172,10 +221,14 @@ export const updateAsset = async (
 |--------------------------------------------------------------------------
 */
 export const getAsset = async (userId, id, from, to) => {
-  const { data, total, netWorth, liabilities } = await getAssetBalance(userId, id, {
-    from,
-    to,
-  });
+  const { data, total, netWorth, liabilities } = await getAssetBalance(
+    userId,
+    id,
+    {
+      from,
+      to,
+    },
+  );
 
   return {
     data,
@@ -189,24 +242,31 @@ export const getAsset = async (userId, id, from, to) => {
 | Get Asset Balance (Core Calculation)
 |--------------------------------------------------------------------------
 */
-export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, to, asOf } = {}) => {
+export const getAssetBalance = async (
+  userId,
+  id,
+  { netWorthOnly = false, from, to, asOf } = {},
+) => {
   const asOfFilter = asOf ? { date: { lte: new Date(asOf) } } : {};
 
   const rangeFilter =
     from || to
       ? {
-        date: {
-          ...(from && { gte: new Date(from) }),
-          ...(to && { lte: new Date(to) }),
-        },
-      }
+          date: {
+            ...(from && { gte: new Date(from) }),
+            ...(to && { lte: new Date(to) }),
+          },
+        }
       : null;
 
   const whereFor = (relationField, extra = {}) => ({
     isActive: true,
     status: "Completed",
     ...extra,
-    [relationField]: { userId: Number(userId), ...(id ? { id: Number(id) } : {}) },
+    [relationField]: {
+      userId: Number(userId),
+      ...(id ? { id: Number(id) } : {}),
+    },
   });
 
   const assets = await prisma.asset.findMany({
@@ -248,6 +308,13 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
         },
       },
 
+      savingDetail: {
+        select: {
+          targetAmount: true,
+          targetDate: true,
+        },
+      },
+
       investmentPosition: {
         select: {
           symbol: true,
@@ -255,24 +322,48 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
           averageCostBasis: true,
           valuationCurrency: true,
           lastPrice: true,
-          lastPriceAt: true
+          lastPriceAt: true,
         },
       },
     },
   });
 
   const [incomes, expenses, transfersOut, transfersIn] = await Promise.all([
-    prisma.income.groupBy({ by: ["assetId"], where: whereFor("asset", asOfFilter), _sum: { amount: true } }),
-    prisma.expense.groupBy({ by: ["assetId"], where: whereFor("asset", asOfFilter), _sum: { amount: true } }),
-    prisma.transfer.groupBy({ by: ["fromAssetId"], where: whereFor("fromAsset", asOfFilter), _sum: { amount: true } }),
-    prisma.transfer.groupBy({ by: ["toAssetId"], where: whereFor("toAsset", asOfFilter), _sum: { amount: true } }),
+    prisma.income.groupBy({
+      by: ["assetId"],
+      where: whereFor("asset", asOfFilter),
+      _sum: { amount: true },
+    }),
+    prisma.expense.groupBy({
+      by: ["assetId"],
+      where: whereFor("asset", asOfFilter),
+      _sum: { amount: true },
+    }),
+    prisma.transfer.groupBy({
+      by: ["fromAssetId"],
+      where: whereFor("fromAsset", asOfFilter),
+      _sum: { amount: true },
+    }),
+    prisma.transfer.groupBy({
+      by: ["toAssetId"],
+      where: whereFor("toAsset", asOfFilter),
+      _sum: { amount: true },
+    }),
   ]);
 
   const [rangeIncomes, rangeExpenses] = rangeFilter
     ? await Promise.all([
-      prisma.income.groupBy({ by: ["assetId"], where: whereFor("asset", rangeFilter), _sum: { amount: true } }),
-      prisma.expense.groupBy({ by: ["assetId"], where: whereFor("asset", rangeFilter), _sum: { amount: true } }),
-    ])
+        prisma.income.groupBy({
+          by: ["assetId"],
+          where: whereFor("asset", rangeFilter),
+          _sum: { amount: true },
+        }),
+        prisma.expense.groupBy({
+          by: ["assetId"],
+          where: whereFor("asset", rangeFilter),
+          _sum: { amount: true },
+        }),
+      ])
     : [[], []];
 
   const creditDetailIds = assets
@@ -281,20 +372,20 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
 
   const openStatements = creditDetailIds.length
     ? await prisma.creditStatement.findMany({
-      where: {
-        creditDetailId: { in: creditDetailIds },
-        status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
-      },
-      select: {
-        id: true,
-        creditDetailId: true,
-        statementBalance: true,
-        minimumPaymentDue: true,
-        dueDate: true,
-        payments: { select: { amount: true } },
-      },
-      orderBy: { dueDate: "asc" },
-    })
+        where: {
+          creditDetailId: { in: creditDetailIds },
+          status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
+        },
+        select: {
+          id: true,
+          creditDetailId: true,
+          statementBalance: true,
+          minimumPaymentDue: true,
+          dueDate: true,
+          payments: { select: { amount: true } },
+        },
+        orderBy: { dueDate: "asc" },
+      })
     : [];
 
   const statementsByDetailId = new Map();
@@ -313,16 +404,23 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
     Number(rows.find((r) => r[key] === assetId)?._sum.amount ?? 0);
 
   const settings = await prisma.settings.findFirst({
-    where: { userId: Number(userId) }
+    where: { userId: Number(userId) },
   });
   const baseCurrency = settings?.currency;
 
   const uniqueForeignCurrencies = baseCurrency
-    ? [...new Set(assets.map((a) => a.currency).filter((c) => c && c !== baseCurrency))]
+    ? [
+        ...new Set(
+          assets.map((a) => a.currency).filter((c) => c && c !== baseCurrency),
+        ),
+      ]
     : [];
 
   const rateEntries = await Promise.all(
-    uniqueForeignCurrencies.map(async (curr) => [curr, await getExchangeRates(curr, baseCurrency)])
+    uniqueForeignCurrencies.map(async (curr) => [
+      curr,
+      await getExchangeRates(curr, baseCurrency),
+    ]),
   );
   const rateByCurrency = new Map(rateEntries);
 
@@ -337,12 +435,21 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
     // CASH/BANK/LOAN/INVESTMENT: expenses reduce, transferIn increases (it's an asset).
     // CREDIT: charges increase what's owed, payments (transferIn) decrease it — inverse.
     const remainingBalance = isCredit
-      ? Number(asset.balance) + totalExpenses - totalIncomes + totalTransferOut - totalTransferIn
-      : Number(asset.balance) + totalIncomes - totalExpenses - totalTransferOut + totalTransferIn;
+      ? Number(asset.balance) +
+        totalExpenses -
+        totalIncomes +
+        totalTransferOut -
+        totalTransferIn
+      : Number(asset.balance) +
+        totalIncomes -
+        totalExpenses -
+        totalTransferOut +
+        totalTransferIn;
 
-    const rate = baseCurrency && asset.currency !== baseCurrency
-      ? rateByCurrency.get(asset.currency)
-      : 1;
+    const rate =
+      baseCurrency && asset.currency !== baseCurrency
+        ? rateByCurrency.get(asset.currency)
+        : 1;
     const convertedBalance = remainingBalance * (rate ?? 1);
 
     const openStatementsForAsset = isCredit
@@ -358,7 +465,8 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
       remainingBalance,
       convertedBalance,
       ...(isCredit && {
-        remainingCredit: Number(asset.creditDetail.creditLimit) - remainingBalance,
+        remainingCredit:
+          Number(asset.creditDetail.creditLimit) - remainingBalance,
         openStatements: openStatementsForAsset,
         pendingDue: openStatementsForAsset[0]?.remainingOnStatement ?? 0,
       }),
@@ -377,9 +485,10 @@ export const getAssetBalance = async (userId, id, { netWorthOnly = false, from, 
     .filter((a) => a.includeInNetWorth && isLiabilityCategory(a.category))
     .reduce((sum, a) => sum + a.convertedBalance, 0);
 
-  const netWorth = data
-    .filter((a) => a.includeInNetWorth && !isLiabilityCategory(a.category))
-    .reduce((sum, a) => sum + a.convertedBalance, 0) - totalLiabilities;
+  const netWorth =
+    data
+      .filter((a) => a.includeInNetWorth && !isLiabilityCategory(a.category))
+      .reduce((sum, a) => sum + a.convertedBalance, 0) - totalLiabilities;
 
   return {
     data,
