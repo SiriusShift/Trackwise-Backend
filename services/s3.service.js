@@ -3,7 +3,31 @@ import {
   PutObjectCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
+import { randomUUID } from "node:crypto";
+import { ALLOWED_IMAGE_TYPES, MAX_UPLOAD_BYTES } from "../middleware/upload.js";
 import { AppError } from "../utils/AppError.js";
+
+// Detect the real image type from magic bytes; never trust client-supplied type.
+const sniffImageType = (buf) => {
+  if (!buf || buf.length < 12) return null;
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  if (buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  const head = buf.subarray(0, 6).toString("ascii");
+  if (head === "GIF87a" || head === "GIF89a") return "image/gif";
+  if (buf.subarray(0, 4).toString("ascii") === "RIFF" && buf.subarray(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return null;
+};
+
+const validateImageBuffer = (buffer) => {
+  if (!buffer || buffer.length === 0 || buffer.length > MAX_UPLOAD_BYTES) {
+    throw new AppError("Invalid image size (max 5 MB)", 400);
+  }
+  const type = sniffImageType(buffer);
+  if (!type || !ALLOWED_IMAGE_TYPES[type]) {
+    throw new AppError("Only JPEG, PNG, WebP or GIF images are allowed", 400);
+  }
+  return type;
+};
 
 const s3 = new S3Client({
   credentials: {
@@ -23,23 +47,14 @@ export const uploadBase64ToS3 = async (base64Image, fileName, folder) => {
     throw new AppError("Invalid base64 image string", 400);
   }
 
-  let corrected = base64Image;
-
-  if (!base64Image.startsWith("data:image/")) {
-    corrected = `data:image/png;base64,${base64Image}`;
+  const base64Data = base64Image.replace(/^data:image\/[\w.+-]+;base64,/, "");
+  if (base64Data.length > Math.ceil((MAX_UPLOAD_BYTES * 4) / 3) + 4) {
+    throw new AppError("Invalid image size (max 5 MB)", 400);
   }
-
-  const match = corrected.match(/^data:(image\/\w+);base64,/);
-
-  if (!match) {
-    throw new AppError("Invalid base64 format", 400);
-  }
-
-  const fileType = match[1];
-  const base64Data = corrected.replace(/^data:image\/\w+;base64,/, "");
   const buffer = Buffer.from(base64Data, "base64");
+  const fileType = validateImageBuffer(buffer);
 
-  const key = `${folder}/${fileName}`;
+  const key = `${folder}/${randomUUID()}.${ALLOWED_IMAGE_TYPES[fileType]}`;
 
   const command = new PutObjectCommand({
     Bucket: process.env.AWS_S3_BUCKET_NAME,
@@ -47,6 +62,8 @@ export const uploadBase64ToS3 = async (base64Image, fileName, folder) => {
     Body: buffer,
     ContentType: fileType,
     ACL: "public-read",
+    ContentDisposition: "inline",
+    CacheControl: "public, max-age=31536000, immutable",
   });
 
   await s3.send(command);
@@ -61,14 +78,17 @@ export const uploadBase64ToS3 = async (base64Image, fileName, folder) => {
 */
 export const uploadFileToS3 = async (file, folder, userId) => {
 
-  const key = `users/${userId}/${folder}/${file.originalname}`;
+  const fileType = validateImageBuffer(file.buffer);
+  const key = `users/${userId}/${folder}/${randomUUID()}.${ALLOWED_IMAGE_TYPES[fileType]}`;
 
   const command = new PutObjectCommand({
     Bucket: process.env.AWS_S3_BUCKET_NAME,
     Key: key,
     Body: file.buffer,
-    ContentType: file.mimetype,
+    ContentType: fileType,
     ACL: "public-read",
+    ContentDisposition: "inline",
+    CacheControl: "public, max-age=31536000, immutable",
   });
 
   await s3.send(command);

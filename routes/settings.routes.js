@@ -1,5 +1,5 @@
 import { Router } from "express";
-import multer from "multer";
+import { upload } from "../middleware/upload.js";
 import {
   getSettings,
   updateSettings,
@@ -11,7 +11,6 @@ import catchAsync from "../utils/catchAsync.js";
 
 const router = Router();
 
-const upload = multer();
 
 router
   .route("/")

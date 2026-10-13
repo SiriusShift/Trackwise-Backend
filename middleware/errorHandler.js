@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import multer from "multer";
 import { AppError } from "../utils/AppError.js";
 
 export const errorHandler = (err, req, res, next) => {
@@ -8,6 +9,13 @@ export const errorHandler = (err, req, res, next) => {
             success: false,
             message: err.message,
             ...(err.details && { details: err.details }),
+        });
+    }
+
+    if (err instanceof multer.MulterError) {
+        return res.status(err.code === "LIMIT_FILE_SIZE" ? 413 : 400).json({
+            success: false,
+            message: err.code === "LIMIT_FILE_SIZE" ? "File too large (max 5 MB)" : "Invalid upload",
         });
     }
 
