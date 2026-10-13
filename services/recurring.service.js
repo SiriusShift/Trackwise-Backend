@@ -178,12 +178,12 @@ export const editRecurring = async (userId, id, data) => {
   }
 
   updateData.fromAsset =
-    type === "Expense" || type === "Transfer"
+    type === "Expense" || type === "Transfer"  || 
+    type === "Income" 
       ? { connect: { id: assetFromId } }
       : { disconnect: true };
 
-  updateData.toAsset =
-    type === "Income" || type === "Transfer"
+  updateData.toAsset = type === "Transfer"
       ? { connect: { id: assetToId } }
       : { disconnect: true };
 

@@ -56,8 +56,11 @@ export const getCategories = async (userId, type) => {
     },
     include: {
       categoriesTracker: {
+    where: { userId, isActive: true }, // add this
+
         select: {
           id: true,
+          isActive: true,
         },
       },
     },
