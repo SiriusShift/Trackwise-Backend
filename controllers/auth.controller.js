@@ -86,9 +86,3 @@ export const forgotPassword = asyncHandler(async (req, res) => {
 
   res.status(200).json(result);
 });
-
-export const verifyEmail = asyncHandler(async (req, res) => {
-  const result = await emailService.verifyEmail(req.body);
-
-  res.status(200).json(result);
-});

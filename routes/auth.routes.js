@@ -21,9 +21,15 @@ import {
   resetPassword,
   sendEmailCode,
   unlinkGoogle,
-  verifyEmail,
 } from "../controllers/auth.controller.js";
 import { requireAuth } from "../middleware/requireAuth.js";
+import {
+  authLimiter,
+  emailIpLimiter,
+  emailSendLimiter,
+  resetPasswordLimiter,
+  signInLimiter,
+} from "../middleware/rateLimit.js";
 import {
   emailSchema,
   sendEmailCodeSchema,
@@ -34,9 +40,10 @@ const router = Router();
 
 router
   .route("/sign-up")
-  .post(validateCreateRequest("user"), catchAsync(register));
+  .post(authLimiter, validateCreateRequest("user"), catchAsync(register));
 
 router.route("/sign-in").post(
+  signInLimiter,
   validate({ body: signinSchema }),
   catchAsync(async (req, res, next) => {
     passport.authenticate("local", (err, user, info) => {
@@ -61,7 +68,7 @@ router.route("/sign-in").post(
 
 router
   .route("/reset-password")
-  .post(validateUserUpdateRequest("password"), catchAsync(resetPassword));
+  .post(resetPasswordLimiter, validateUserUpdateRequest("password"), catchAsync(resetPassword));
 
 router.route("/auth-status").get(requireAuth, isAuthenticated);
 
@@ -74,17 +81,10 @@ router.get(
 );
 
 router.get(
-  "/auth/google/sign-in",
-  passport.authenticate("google-sign-in", { scope: ["profile", "email"] })
-);
-
-router.get(
   "/auth/google/sign-in/callback",
   // Handle authentication response and error explicitly
   (req, res, next) => {
     passport.authenticate("google-sign-in", (err, user, info) => {
-
-      console.log("test", err);
       if (err) {
         // If there’s an error (for example, database issue, network issue, etc.)
         console.error("Authentication error:", err);
@@ -133,8 +133,6 @@ router.get(
           )}`
         );
       }
-
-      console.log("hello", profile);
 
       // Attach the profile to the request object for the next middleware
       req.profile = {
@@ -203,7 +201,7 @@ router.get(
 
       if (!user) {
         return res.redirect(
-          `${process.env.CLIENT_URL}/settings?linkError=true&message=${encodeURIComponent(
+          `${process.env.CLIENT_URL}/settings/account?linkError=true&message=${encodeURIComponent(
             info?.message || "Unable to link Google account"
           )}`
         );
@@ -223,9 +221,11 @@ router.get(
 
 router.route("/auth/google/unlink").delete(requireAuth, catchAsync(unlinkGoogle));
 router.route("/auth/tour").patch(requireAuth, catchAsync(completeTour));
-router.route("/auth/google/one-tap").post(catchAsync(googleOneTap));
-router.route("/auth/verify").post(validate({ body: emailSchema }), catchAsync(verifyEmail));
-router.route("/auth/email-code").post(validate({ body: sendEmailCodeSchema }), catchAsync(sendEmailCode));
-router.route("/auth/forgot-password").post(validate({ body: emailSchema }), catchAsync(forgotPassword));
+router.route("/auth/google/one-tap").post(authLimiter, catchAsync(googleOneTap));
+// /auth/verify (SES identity verification for arbitrary addresses) was removed:
+// it was unauthenticated, unused by the client, and let anyone trigger SES
+// verification emails to any address.
+router.route("/auth/email-code").post(emailIpLimiter, emailSendLimiter, validate({ body: sendEmailCodeSchema }), catchAsync(sendEmailCode));
+router.route("/auth/forgot-password").post(emailIpLimiter, emailSendLimiter, validate({ body: emailSchema }), catchAsync(forgotPassword));
 
 export default router;

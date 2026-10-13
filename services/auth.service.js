@@ -4,7 +4,6 @@ import bcrypt from "bcrypt";
 import { OAuth2Client } from "google-auth-library";
 import { prisma } from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
-import { decryptString } from "../utils/customFunction.js";
 export const registerUserService = async ({
   email,
   password,
@@ -51,9 +50,7 @@ export const registerUserService = async ({
     throw new AppError("Username is already taken", 409);
   }
 
-  const decryptedPassword = decryptString(password);
-
-  const hashedPassword = await bcrypt.hash(decryptedPassword, 10);
+  const hashedPassword = await bcrypt.hash(password, 10);
 
   // Transaction for consistency
   const result = await prisma.$transaction(async (tx) => {
@@ -111,19 +108,18 @@ export const loginService = async (user) => {
   };
 };
 
-export const resetPasswordService = async ({ password, token }) => {
+export const resetPasswordService = async ({ password, token, email }) => {
   const findToken = await prisma.resetToken.findFirst({
     where: {
       token,
+      user: {
+        email,
+      },
     },
   });
 
-  if (!findToken) {
-    throw new AppError("Invalid token", 400);
-  }
-
-  if (new Date() > findToken.expiresAt) {
-    throw new AppError("Token has expired", 400);
+  if (!findToken || new Date() > findToken.expiresAt) {
+    throw new AppError("Invalid or expired token", 400);
   }
 
   const hashedPassword = await bcrypt.hash(password, 10);
@@ -138,9 +134,10 @@ export const resetPasswordService = async ({ password, token }) => {
       },
     });
 
-    await tx.resetToken.delete({
+    // Invalidate every outstanding token for this user, not just the one used
+    await tx.resetToken.deleteMany({
       where: {
-        token,
+        userId: findToken.userId,
       },
     });
   });
@@ -152,7 +149,6 @@ export const resetPasswordService = async ({ password, token }) => {
 };
 
 export const isAuthenticatedService = async (user) => {
-  console.log(user, "user")
   const settings = await prisma.settings.findFirst({
     where: {
       userId: user.id,

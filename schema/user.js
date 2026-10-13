@@ -32,7 +32,8 @@ export const resetPasswordSchema = Joi.object({
     password: Joi.string().required().pattern(passwordPattern).messages({
         "string.pattern.base": passwordError,
     }),
-    token: Joi.string().required()
+    token: Joi.string().required(),
+    email: Joi.string().email().required(),
 });
 
 // Email is sent as an array by the client, e.g. ["user@mail.com"]

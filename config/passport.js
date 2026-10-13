@@ -7,6 +7,9 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { app } from "../app.js";
 import { prisma } from "./prisma.js";
 
+// Compared against when no real hash exists, to keep sign-in timing uniform.
+const DUMMY_HASH = bcrypt.hashSync("trackwise-dummy-password", 10);
+
 export const runPassport = () => {
   app.use(passport.initialize());
   app.use(passport.session());
@@ -28,21 +31,15 @@ export const runPassport = () => {
             where: { email },
           });
 
-          if (!user) {
-            return done(null, false, {
-              message: "User doesn't exist",
-            });
-          }
+          // Unknown email, Google-only account (no password) and wrong password
+          // all get the same message, and always cost one bcrypt compare, so
+          // neither the response nor its timing reveals which emails exist.
+          const isValidPassword = await bcrypt.compare(
+            password,
+            user?.password || DUMMY_HASH,
+          );
 
-          // if (user.google_id) {
-          //   return done(null, false, {
-          //     message: "User already signed up with Google",
-          //   });
-          // }
-
-          const isValidPassword = await bcrypt.compare(password, user.password);
-
-          if (!isValidPassword) {
+          if (!user || !user.password || !isValidPassword) {
             return done(null, false, {
               message: "Incorrect email or password",
             });
@@ -69,6 +66,7 @@ export const runPassport = () => {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         callbackURL: `${process.env.BACKEND_URL}/auth/google/sign-in/callback`,
+        state: true,
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
@@ -134,6 +132,7 @@ export const runPassport = () => {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         callbackURL: `${process.env.BACKEND_URL}/auth/google/sign-up/callback`,
+        state: true,
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
@@ -170,6 +169,9 @@ export const runPassport = () => {
         clientID: process.env.GOOGLE_CLIENT_ID,
         clientSecret: process.env.GOOGLE_CLIENT_SECRET,
         callbackURL: `${process.env.BACKEND_URL}/auth/google/link/callback`,
+        // Random per-request state stored in the session and verified on the
+        // callback, so a callback URL crafted by an attacker (CSRF) is rejected.
+        state: true,
         passReqToCallback: true,
       },
       async (req, accessToken, refreshToken, profile, done) => {

@@ -1,17 +1,25 @@
 import crypto from "crypto";
 
 import { AppError } from "../utils/AppError.js";
-import { sendEmail as sesSendEmail, verifyEmailAddress as sesVerifyEmailAddress } from "./ses.service.js";
-import { sendEmail as mailSendEmail, verifyEmailAddress as mailVerifyEmailAddress } from "./mail.service.js";
+import { sendEmail as sesSendEmail } from "./ses.service.js";
+import { sendEmail as mailSendEmail } from "./mail.service.js";
 
 import { prisma } from "../config/prisma.js";
 
 // Set EMAIL_PROVIDER=aws to use AWS SES; defaults to SMTP (Render/nodemailer)
 const useAWS = process.env.EMAIL_PROVIDER === "aws";
 const sendEmail = useAWS ? sesSendEmail : mailSendEmail;
-const verifyEmailAddress = useAWS ? sesVerifyEmailAddress : mailVerifyEmailAddress;
 
 const year = new Date().getFullYear();
+
+// Send without making the caller wait. Awaiting the send would make the
+// response slower for registered emails than for unknown ones, which leaks
+// whether an account exists.
+const sendInBackground = (emailAddress, data, template) => {
+  sendEmail(emailAddress, data, template).catch((err) => {
+    console.error(`Failed to send "${template}" email:`, err.message);
+  });
+};
 
 export const sendEmailCode = async ({ email, username }) => {
   if (!email || !Array.isArray(email)) {
@@ -19,19 +27,6 @@ export const sendEmailCode = async ({ email, username }) => {
   }
 
   const emailAddress = email[0];
-
-  const existingEmail = await prisma.user.findFirst({
-    where: {
-      email: emailAddress,
-    },
-  });
-
-  if (existingEmail) {
-    throw new AppError(
-      "Email already exists in our database.",
-      409
-    );
-  }
 
   const existingUsername = await prisma.user.findFirst({
     where: {
@@ -46,29 +41,36 @@ export const sendEmailCode = async ({ email, username }) => {
     );
   }
 
-  const code = crypto
-    .randomInt(0, 1000000)
-    .toString()
-    .padStart(6, "0");
-
-  await sendEmail(
-    emailAddress,
-    { code, year },
-    "Verification_Code"
-  );
-
-  await prisma.emailVerification.create({
-    data: {
+  const existingEmail = await prisma.user.findFirst({
+    where: {
       email: emailAddress,
-      verificationCode: code,
-      expirationTime: new Date(Date.now() + 5 * 60 * 1000),
-      isVerified: false,
     },
   });
 
+  // Same response whether or not the email is registered, so this endpoint
+  // can't be used to find out who has an account. No code is sent or stored
+  // for registered emails.
+  if (!existingEmail) {
+    const code = crypto
+      .randomInt(0, 1000000)
+      .toString()
+      .padStart(6, "0");
+
+    await prisma.emailVerification.create({
+      data: {
+        email: emailAddress,
+        verificationCode: code,
+        expirationTime: new Date(Date.now() + 5 * 60 * 1000),
+        isVerified: false,
+      },
+    });
+
+    sendInBackground(emailAddress, { code, year }, "Verification_Code");
+  }
+
   return {
     success: true,
-    message: "Email sent.",
+    message: "If this email can be registered, a verification code has been sent.",
   };
 };
 
@@ -79,6 +81,13 @@ export const forgotPassword = async ({ email }) => {
 
   const emailAddress = email;
 
+  // Identical response for unknown emails, rate-limited users and successes.
+  const response = {
+    success: true,
+    message:
+      "If an account exists for this email, a reset code has been sent. Check your inbox and spam folder.",
+  };
+
   const user = await prisma.user.findFirst({
     where: {
       email: emailAddress,
@@ -86,7 +95,7 @@ export const forgotPassword = async ({ email }) => {
   });
 
   if (!user) {
-    throw new AppError("Email doesn't exist.", 404);
+    return response;
   }
 
   const existingRequest = await prisma.resetToken.findFirst({
@@ -103,10 +112,7 @@ export const forgotPassword = async ({ email }) => {
     Date.now() - new Date(existingRequest.createdAt).getTime() <
     5 * 60 * 1000
   ) {
-    throw new AppError(
-      "A reset link was already sent. Please wait 5 minutes before requesting again.",
-      429
-    );
+    return response;
   }
 
   let token;
@@ -138,7 +144,7 @@ export const forgotPassword = async ({ email }) => {
     },
   });
 
-  await sendEmail(
+  sendInBackground(
     emailAddress,
     {
       code: token,
@@ -147,28 +153,5 @@ export const forgotPassword = async ({ email }) => {
     "Reset_Password"
   );
 
-  return {
-    success: true,
-    message: "Email sent. Check your inbox and spam folder.",
-  };
-};
-
-export const verifyEmail = async ({ email }) => {
-  if (!email) {
-    throw new AppError("Invalid email format.", 400);
-  }
-
-  const result = await verifyEmailAddress([email]);
-
-  if (!result) {
-    throw new AppError(
-      "Failed to verify email address.",
-      400
-    );
-  }
-
-  return {
-    success: true,
-    message: "Email verified.",
-  };
+  return response;
 };

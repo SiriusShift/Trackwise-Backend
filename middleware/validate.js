@@ -1,6 +1,5 @@
 import { googleSignupSchema, resetPasswordSchema, signupSchema } from "../schema/user.js";
 import { AppError } from "../utils/AppError.js";
-import { decryptString } from "../utils/customFunction.js";
 
 export const validateCreateRequest = (requestType) => {
   return (req, res, next) => {
@@ -10,7 +9,7 @@ export const validateCreateRequest = (requestType) => {
       case "user":
         error = signupSchema.validate({
           ...req.body,
-          password: decryptString(req.body.password),
+          password: req.body.password,
         }).error;
         break;
       case "user-google":
