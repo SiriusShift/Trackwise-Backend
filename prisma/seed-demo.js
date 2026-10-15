@@ -498,7 +498,7 @@ const main = async () => {
     const statement = await prisma.creditStatement.create({
       data: {
         creditDetailId: card.creditDetail.id, statementDate: s.closing, dueDate: s.due,
-        statementBalance: s.balance, minimumPaymentDue: Math.max(500, Math.round(s.balance * 0.05)),
+        statementBalance: s.balance,
         status: paid ? "PAID" : "PENDING",
       },
     });

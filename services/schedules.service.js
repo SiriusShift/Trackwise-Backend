@@ -1,7 +1,7 @@
 import moment from "moment-timezone";
 
 import { AppError } from "../utils/AppError.js";
-import { getAssetBalance } from "./assets.service.js";
+import { assertCanReceive, assertCanSpend, getAssetBalance, validateAsset } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { transactBill } from "./recurring.service.js";
 
@@ -26,6 +26,12 @@ import { prisma } from "../config/prisma.js";
 */
 
 const OPEN_STATEMENT_STATUSES = ["PENDING", "PARTIAL", "OVERDUE"];
+
+// Accounts a card bill can be paid from (not another card or a loan).
+const PAYMENT_SOURCE_CATEGORIES = ["CASH", "BANK"];
+
+// How many missed statement cycles to create at once for a card.
+const MAX_STATEMENT_BACKFILL = 12;
 
 // Safety cap so a daily schedule over a huge range can't explode the response.
 const MAX_OCCURRENCES_PER_ITEM = 400;
@@ -159,43 +165,45 @@ export const syncCreditStatements = async (userId, timezone) => {
 
   for (const card of cards) {
     const { creditDetail } = card;
-    const closeDate = lastStatementClose(today, creditDetail.statementDate);
     const openedOn = moment(card.openedAt ?? card.createdAt).tz(tz).startOf("day");
 
-    // Card didn't exist yet when this cycle closed.
-    if (!closeDate.isBefore(openedOn)) {
-      const exists = await prisma.creditStatement.findUnique({
-        where: {
-          creditDetailId_statementDate: {
+    // Every cycle that closed since the card existed (newest first), so a
+    // cycle missed while the app/cron was off is still billed. A card didn't
+    // exist yet for cycles that closed before it was opened.
+    const closeDates = [];
+    let close = lastStatementClose(today, creditDetail.statementDate);
+    while (!close.isBefore(openedOn) && closeDates.length < MAX_STATEMENT_BACKFILL) {
+      closeDates.push(close);
+      close = lastStatementClose(close.clone().subtract(1, "day"), creditDetail.statementDate);
+    }
+
+    const existing = await prisma.creditStatement.findMany({
+      where: {
+        creditDetailId: creditDetail.id,
+        statementDate: { in: closeDates.map((d) => d.toDate()) },
+      },
+      select: { statementDate: true },
+    });
+    const existingTimes = new Set(existing.map((e) => e.statementDate.getTime()));
+
+    for (const closeDate of closeDates.filter((d) => !existingTimes.has(d.toDate().getTime()))) {
+      const asset = await getAssetRemainingBalance(userId, card.id, {
+        asOf: closeDate.clone().endOf("day").toDate(),
+      });
+      const statementBalance = Math.max(Number(asset?.remainingBalance ?? 0), 0);
+
+      await prisma.creditStatement.createMany({
+        data: [
+          {
             creditDetailId: creditDetail.id,
             statementDate: closeDate.toDate(),
+            dueDate: creditDueDate(closeDate, creditDetail.dueDate, creditDetail.statementDate).toDate(),
+            statementBalance,
+            status: statementBalance > 0 ? "PENDING" : "PAID",
           },
-        },
-        select: { id: true },
+        ],
+        skipDuplicates: true, // concurrent request/cron already created it
       });
-
-      if (!exists) {
-        const asset = await getAssetRemainingBalance(userId, card.id, {
-          asOf: closeDate.clone().endOf("day").toDate(),
-        });
-        const statementBalance = Math.max(Number(asset?.remainingBalance ?? 0), 0);
-
-        await prisma.creditStatement.createMany({
-          data: [
-            {
-              creditDetailId: creditDetail.id,
-              statementDate: closeDate.toDate(),
-              dueDate: creditDueDate(closeDate, creditDetail.dueDate, creditDetail.statementDate).toDate(),
-              statementBalance,
-              // NOTE: no minimum-payment config exists on CreditDetail, so the
-              // full balance is used until one is added.
-              minimumPaymentDue: statementBalance,
-              status: statementBalance > 0 ? "PENDING" : "PAID",
-            },
-          ],
-          skipDuplicates: true, // concurrent request/cron already created it
-        });
-      }
     }
 
     // Refresh status of open statements from actual payments.
@@ -212,6 +220,25 @@ export const syncCreditStatements = async (userId, timezone) => {
         await prisma.creditStatement.update({ where: { id: statement.id }, data: { status } });
       }
     }
+
+    // A newer statement's balance already includes anything still unpaid from
+    // older ones, so once a newer statement is PAID the older open ones are
+    // settled too (instead of staying OVERDUE forever).
+    const newestPaid = await prisma.creditStatement.findFirst({
+      where: { creditDetailId: creditDetail.id, status: "PAID" },
+      orderBy: { statementDate: "desc" },
+      select: { statementDate: true },
+    });
+    if (newestPaid) {
+      await prisma.creditStatement.updateMany({
+        where: {
+          creditDetailId: creditDetail.id,
+          status: { in: OPEN_STATEMENT_STATUSES },
+          statementDate: { lt: newestPaid.statementDate },
+        },
+        data: { status: "PAID" },
+      });
+    }
   }
 };
 
@@ -227,7 +254,6 @@ const toCreditItem = (statement, asset, amountPaid) => {
     description: `${asset.name} bill`,
     amount: remaining,
     statementBalance,
-    minimumPaymentDue: Number(statement.minimumPaymentDue),
     amountPaid,
     statementDate: statement.statementDate,
     dueDate: statement.dueDate,
@@ -305,7 +331,6 @@ const getCreditItems = async (userId, timezone, from, to) => {
             description: `${card.name} bill`,
             amount: estimate,
             statementBalance: estimate,
-            minimumPaymentDue: estimate,
             amountPaid: 0,
             statementDate: nextClose.toDate(),
             dueDate: nextDue.toDate(),
@@ -549,11 +574,7 @@ export const payRecurringSchedule = async (userId, id, data) => {
 
   // Money leaves the account for Expense/Transfer, so check it can cover it.
   if (recurring.type !== "Income" && date <= new Date()) {
-    const asset = await getAssetRemainingBalance(userId, accountId);
-    if (!asset) throw new AppError("Account not found", 404);
-    if (asset.category !== "CREDIT" && Number(asset.remainingBalance) < amount) {
-      throw new AppError("Insufficient balance", 400);
-    }
+    await assertCanSpend(userId, accountId, amount);
   }
 
   if (recurring.type === "Transfer" && !recurring.toAssetId) {
@@ -634,7 +655,6 @@ const findStatement = async (userId, id) => {
     where: { id: Number(id), creditDetail: { asset: { userId: Number(userId) } } },
     include: {
       creditDetail: { include: { asset: { select: assetSelect } } },
-      creditStatementFees: { select: { id: true, label: true, amount: true } },
     },
   });
 
@@ -658,9 +678,6 @@ export const getCreditStatementSchedule = async (userId, id) => {
     id: statement.id,
     currentBalance: balance?.remainingBalance ?? null,
     creditLimit: Number(statement.creditDetail.creditLimit),
-    interestCharged: Number(statement.interestCharged),
-    lateFeeCharged: Number(statement.lateFeeCharged),
-    fees: statement.creditStatementFees.map((fee) => ({ ...fee, amount: Number(fee.amount) })),
     payments: payments.map((p) => ({ ...p, amount: Number(p.amount) })),
   };
 };
@@ -675,10 +692,14 @@ export const payCreditStatement = async (userId, id, data) => {
 
   if (fromAssetId === card.id) throw new AppError("Pay from a different account than the card", 400);
 
-  const fromAsset = await getAssetRemainingBalance(userId, fromAssetId);
-  if (!fromAsset) throw new AppError("Account not found", 404);
-  if (date <= new Date() && Number(fromAsset.remainingBalance) < amount) {
-    throw new AppError("Insufficient balance", 400);
+  const fromAsset = await validateAsset(fromAssetId, userId);
+  if (!PAYMENT_SOURCE_CATEGORIES.includes(fromAsset.category)) {
+    throw new AppError("Pay the bill from a cash or bank account", 400);
+  }
+
+  if (date <= new Date()) {
+    await assertCanSpend(userId, fromAssetId, amount);
+    await assertCanReceive(userId, card.id, amount);
   }
 
   const categoryId = await resolveTransferCategory(userId, data.category);

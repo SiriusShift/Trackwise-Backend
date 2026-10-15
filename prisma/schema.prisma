@@ -324,8 +324,7 @@ model CreditStatement {
   statementDate DateTime // date this cycle closed
   dueDate       DateTime // payment due date for this cycle
 
-  statementBalance  Decimal @db.Decimal(20, 2) // original balance as of statementDate — don't edit after the fact
-  minimumPaymentDue Decimal @db.Decimal(20, 2)
+  statementBalance Decimal @db.Decimal(20, 2) // original balance as of statementDate — don't edit after the fact
 
   interestCharged Decimal               @default(0) @db.Decimal(20, 2) // filled in at confirmation from the real statement, not computed
   lateFeeCharged  Decimal               @default(0) @db.Decimal(20, 2) // filled in at confirmation from the real statement, not computed
