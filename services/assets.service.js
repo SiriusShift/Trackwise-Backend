@@ -24,6 +24,28 @@ export const validateAsset = async (assetId, userId) => {
 
 /*
 |--------------------------------------------------------------------------
+| Account Categories per Transaction
+|--------------------------------------------------------------------------
+| Which account categories each kind of transaction may use. LOAN is left out
+| until loan balances and payments are implemented.
+*/
+export const ACCOUNT_RULES = {
+  expense: { categories: ["CASH", "BANK", "CREDIT"], label: "Expenses" },
+  income: { categories: ["CASH", "BANK"], label: "Income" },
+  transferFrom: { categories: ["CASH", "BANK", "CREDIT", "INVESTMENT"], label: "Transfers from" },
+  transferTo: { categories: ["CASH", "BANK", "CREDIT", "INVESTMENT"], label: "Transfers to" },
+};
+
+export const assertAccountCategory = async (userId, assetId, rule) => {
+  const asset = await validateAsset(assetId, userId);
+  if (!rule.categories.includes(asset.category)) {
+    throw new AppError(`${rule.label} a ${asset.category.toLowerCase()} account isn't supported`, 400);
+  }
+  return asset;
+};
+
+/*
+|--------------------------------------------------------------------------
 | Create Asset
 |--------------------------------------------------------------------------
 */
@@ -380,7 +402,6 @@ export const getAssetBalance = async (
           id: true,
           creditDetailId: true,
           statementBalance: true,
-          minimumPaymentDue: true,
           dueDate: true,
           payments: { select: { amount: true } },
         },
@@ -497,6 +518,59 @@ export const getAssetBalance = async (
     netWorth,
   };
 };
+/*
+|--------------------------------------------------------------------------
+| Assert Can Spend
+|--------------------------------------------------------------------------
+| Shared guard for money leaving an account. CASH/BANK need enough balance;
+| CREDIT needs enough room under the credit limit (remainingCredit).
+| `restore` is the amount of the transaction being edited, which is already
+| counted against the account, so it is added back before comparing.
+*/
+export const assertCanSpend = async (userId, assetId, amount, { restore = 0 } = {}) => {
+  const result = await getAssetBalance(userId, assetId);
+  const asset = result?.data?.[0];
+  if (!asset) throw new AppError("Account not found", 404);
+
+  if (asset.category === "CREDIT") {
+    const available = Number(asset.remainingCredit ?? 0) + Number(restore);
+    if (Number(amount) > available) {
+      throw new AppError(`Credit limit exceeded. Available credit: ${available.toFixed(2)}`, 400);
+    }
+  } else if (Number(amount) > Number(asset.remainingBalance) + Number(restore)) {
+    throw new AppError("Insufficient balance", 400);
+  }
+
+  return asset;
+};
+
+/*
+|--------------------------------------------------------------------------
+| Assert Can Receive
+|--------------------------------------------------------------------------
+| Guard for money arriving in an account. Only CREDIT is limited: a payment
+| can't exceed what the card currently owes, otherwise its balance goes
+| negative. `restore` is the amount of the payment being edited, which is
+| already reducing the owed balance.
+*/
+export const assertCanReceive = async (userId, assetId, amount, { restore = 0 } = {}) => {
+  const result = await getAssetBalance(userId, assetId);
+  const asset = result?.data?.[0];
+  if (!asset) throw new AppError("Account not found", 404);
+
+  if (asset.category === "CREDIT") {
+    const owed = Math.max(Number(asset.remainingBalance), 0) + Number(restore);
+    if (Number(amount) > owed) {
+      throw new AppError(
+        `Payment exceeds the amount owed on ${asset.name}. Amount owed: ${owed.toFixed(2)}`,
+        400,
+      );
+    }
+  }
+
+  return asset;
+};
+
 const sumAmounts = (transactions) =>
   transactions.reduce((sum, tx) => sum + Number(tx.amount), 0);
 export const LIABILITY_CATEGORIES = ["CREDIT", "LOAN"];

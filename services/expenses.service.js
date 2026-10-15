@@ -1,6 +1,6 @@
 
 import { AppError } from "../utils/AppError.js";
-import { getAssetBalance } from "./assets.service.js";
+import { ACCOUNT_RULES, assertAccountCategory, assertCanSpend } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
@@ -115,11 +115,10 @@ export const postExpense = async (userId, data, file, id) => {
 
   await validateCategory(categoryId);
 
-  if (assetId) {
-    const asset = await getAssetBalance(userId, assetId);
-    if (date <= new Date() && asset.balance < amount) {
-      throw new AppError("Insufficient balance", 400);
-    }
+  if (assetId) await assertAccountCategory(userId, assetId, ACCOUNT_RULES.expense);
+
+  if (assetId && date <= new Date()) {
+    await assertCanSpend(userId, assetId, amount);
   }
 
   const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
@@ -154,6 +153,19 @@ export const updateExpense = async (userId, data, file, id) => {
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
   const assetId = Number(data.account);
+
+  if (assetId) await assertAccountCategory(userId, assetId, ACCOUNT_RULES.expense);
+
+  // The expense's current amount is already counted against its account when
+  // it is Completed on the same one, so add it back before checking.
+  if (assetId && new Date(data.date) <= new Date()) {
+    await assertCanSpend(userId, assetId, amount, {
+      restore:
+        expense.status === "Completed" && expense.assetId === assetId
+          ? Number(expense.amount)
+          : 0,
+    });
+  }
 
   let image = expense.image;
 

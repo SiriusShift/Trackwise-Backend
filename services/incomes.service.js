@@ -1,6 +1,6 @@
 
 import { AppError } from "../utils/AppError.js";
-import { validateAsset } from "./assets.service.js";
+import { ACCOUNT_RULES, assertAccountCategory, validateAsset } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
@@ -34,9 +34,8 @@ export const postIncome = async (userId, data, file) => {
   const assetId = Number(data.account);
   const date = new Date(data.date);
 
-  console.log(data, "data!");
   await validateCategory(categoryId);
-  await validateAsset(assetId, userId);
+  await assertAccountCategory(userId, assetId, ACCOUNT_RULES.income);
 
   const image = file ? await uploadFileToS3(file, "Income", userId) : null;
 

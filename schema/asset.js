@@ -30,6 +30,13 @@ const savingDetailSchema = Joi.object({
   targetDate: Joi.date().allow(null),
 });
 
+// Statements and bill reminders are generated from these two days, so a new
+// card needs them (existing cards without them can still be edited).
+const newCreditDetailSchema = creditDetailSchema.keys({
+  statementDate: Joi.number().integer().min(1).max(31).required(),
+  dueDate: Joi.number().integer().min(1).max(31).required(),
+});
+
 export const createAssetSchema = Joi.object({
   name: Joi.string().trim().max(100).required(),
   balance: Joi.number().required(),
@@ -40,7 +47,7 @@ export const createAssetSchema = Joi.object({
   includeNetWorth: Joi.boolean(),
   creditDetail: creditDetailSchema.when("type", {
     is: "CREDIT",
-    then: Joi.required(),
+    then: newCreditDetailSchema.required(),
     otherwise: Joi.optional().allow(null),
   }),
   savingDetail: savingDetailSchema.allow(null),

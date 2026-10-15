@@ -1,5 +1,5 @@
 import { AppError } from "../utils/AppError.js";
-import { getAssetBalance } from "./assets.service.js";
+import { ACCOUNT_RULES, assertAccountCategory, assertCanReceive, assertCanSpend } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
@@ -110,12 +110,15 @@ export const postTransfer = async (userId, data, file) => {
 
   const category = await validateCategory(categoryId);
 
-  if (fromAssetId) {
-    const asset = await getAssetBalance(userId, fromAssetId);
+  if (fromAssetId) await assertAccountCategory(userId, fromAssetId, ACCOUNT_RULES.transferFrom);
+  if (toAssetId) await assertAccountCategory(userId, toAssetId, ACCOUNT_RULES.transferTo);
 
-    if (asset.balance < amount) {
-      throw new AppError("Insufficient balance", 400);
-    }
+  if (fromAssetId && new Date(data.date) <= new Date()) {
+    await assertCanSpend(userId, fromAssetId, amount);
+  }
+
+  if (toAssetId && new Date(data.date) <= new Date()) {
+    await assertCanReceive(userId, toAssetId, amount);
   }
 
   const image = file ? await uploadFileToS3(file, "Transfer", userId) : null;
@@ -166,20 +169,27 @@ export const updateTransfer = async (userId, data, file, id) => {
 
   await validateCategory(categoryId);
 
+  if (fromAssetId) await assertAccountCategory(userId, fromAssetId, ACCOUNT_RULES.transferFrom);
+  if (toAssetId) await assertAccountCategory(userId, toAssetId, ACCOUNT_RULES.transferTo);
+
   // Balance check. If this transfer already counts against the same source account
   // (Completed), its current amount is already deducted, so add it back before comparing.
-  if (fromAssetId) {
-    const result = await getAssetBalance(userId, fromAssetId);
-    const asset = result?.data?.[0] ?? result;
-    const available =
-      Number(asset?.remainingBalance ?? asset?.balance ?? 0) +
-      (transfer.status === "Completed" && transfer.fromAssetId === fromAssetId
-        ? Number(transfer.amount)
-        : 0);
+  if (fromAssetId && new Date(data.date) <= new Date()) {
+    await assertCanSpend(userId, fromAssetId, amount, {
+      restore:
+        transfer.status === "Completed" && transfer.fromAssetId === fromAssetId
+          ? Number(transfer.amount)
+          : 0,
+    });
+  }
 
-    if (available < amount) {
-      throw new AppError("Insufficient balance", 400);
-    }
+  if (toAssetId && new Date(data.date) <= new Date()) {
+    await assertCanReceive(userId, toAssetId, amount, {
+      restore:
+        transfer.status === "Completed" && transfer.toAssetId === toAssetId
+          ? Number(transfer.amount)
+          : 0,
+    });
   }
 
   let image = transfer.image;

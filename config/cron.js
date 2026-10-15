@@ -167,8 +167,14 @@ cron.schedule("0 * * * *", async () => {
             const result = await getAssetBalance(userId, item.fromAssetId);
             const asset = result?.data?.[0];
 
-            if (!asset || Number(asset.remainingBalance) < Number(item.amount)) {
-              const errorMessage = `Insufficient balance in ${asset?.name ?? "linked account"}`;
+            // Credit accounts are limited by available credit, not by their owed balance.
+            const available = asset?.category === "CREDIT" ? asset.remainingCredit : asset?.remainingBalance;
+
+            if (!asset || Number(available) < Number(item.amount)) {
+              const errorMessage =
+                asset?.category === "CREDIT"
+                  ? `Credit limit exceeded on ${asset.name}`
+                  : `Insufficient balance in ${asset?.name ?? "linked account"}`;
 
               // NOTE: upsert (RecurringLog is unique on [recurringId, firedAt]) so hourly retries
               // update the same row instead of throwing a unique-constraint error.
