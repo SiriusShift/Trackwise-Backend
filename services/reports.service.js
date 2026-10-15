@@ -9,7 +9,7 @@ export const getTransactionStatement = async ({ userId, assetId, from: fromDate,
     const from = moment.tz(fromDate, timezone).startOf("day").toDate();
     const to = moment.tz(toDate, timezone).endOf("day").toDate();
     // Opening balance = everything before the first moment of the statement
-    const openingResult = await getAssetBalance(userId, assetId, { asOf: new Date(from.getTime() - 1) }); console.log(openingResult)
+    const openingResult = await getAssetBalance(userId, assetId, { asOf: new Date(from.getTime() - 1) });
     const openingBalance = openingResult?.data?.[0]?.remainingBalance ?? 0;
     const filters = {
         isActive: true,
