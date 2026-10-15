@@ -6,7 +6,6 @@ import * as recurringService from "../services/recurring.service.js";
 */
 export const postRecurring = async (req, res) => {
   try {
-    console.log(req.body, "body")
     const response = await recurringService.postRecurring(
       req.user.id,
       req.body

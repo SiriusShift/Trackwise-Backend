@@ -79,7 +79,6 @@ export const getGraph = async (req, res, next) => {
       req.user.id,
       req.query,
     );
-    console.log("response!: ", response);
 
     return res.status(200).json({
       success: true,

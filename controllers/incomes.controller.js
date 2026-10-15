@@ -2,7 +2,6 @@ import { asyncHandler } from "../middleware/asyncHandler.js";
 import * as incomeService from "../services/incomes.service.js";
 export const postIncome = asyncHandler(async (req, res) => {
   const response = await incomeService.postIncome(req.user.id, req.body, req.file);
-  console.log("response", response);
   res.status(200).json({
     success: true,
     message: "Income successfully created",
@@ -13,7 +12,6 @@ export const postIncome = asyncHandler(async (req, res) => {
 export const getIncome = asyncHandler(async (req, res) => {
 
   const response = await incomeService.getIncome(req.user.id, req.query);
-  console.log(response);
   res.status(200).json({
     success: true,
     message: "Income fetched successfully",
