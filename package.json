@@ -16,6 +16,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.669.0",
     "@aws-sdk/client-ses": "^3.669.0",
+    "@google/genai": "^2.30.0",
     "@prisma/client": "^6.2.1",
     "bcrypt": "^6.0.0",
     "body-parser": "^1.20.3",

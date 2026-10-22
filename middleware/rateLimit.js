@@ -79,3 +79,10 @@ export const authLimiter = build({
   limit: 30,
   message: "Too many requests. Please try again later.",
 });
+
+
+export const scanImageLimiter = build({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  message: "Too many requests. Please try again later.",
+});
