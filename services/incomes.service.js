@@ -7,6 +7,7 @@ import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 import { prisma } from "../config/prisma.js";
 import { getPeriodRange, getUserTimezone } from "../utils/userTimezone.js";
 import { units } from "../schema/transaction.js";
+import { buildGraphFilters } from "../utils/graphFilters.js";
 
 /* =========================
    VALIDATION
@@ -69,6 +70,7 @@ export const getIncome = async (userId, query) => {
     startDate,
     endDate,
     status,
+    isActive,
   } = query;
 
   const page = Number(pageIndex) >= 0 ? Number(pageIndex) + 1 : 1;
@@ -77,7 +79,8 @@ export const getIncome = async (userId, query) => {
 
   const filters = {
     userId: Number(userId),
-    isActive: true,
+    // Defaults to active; the "Inactive" tab sends isActive=false
+    isActive: String(isActive) !== "false",
     ...(startDate &&
       endDate && {
       date: {
@@ -195,9 +198,14 @@ export const getGraph = async (userId, query) => {
   const timezone = await getUserTimezone(userIdNum);
   const { start, end, prevStart } = getPeriodRange(startDate, endDate, mode, timezone);
 
+  const { where: tableFilters, sql: trendFilters } = buildGraphFilters(
+    query,
+    undefined,
+  );
+
   const filters = {
     userId: userIdNum,
-    isActive: true,
+    ...tableFilters,
     date: {
       gte: start,
       lte: end,
@@ -219,8 +227,8 @@ export const getGraph = async (userId, query) => {
     WHERE
       "date" >= ${rangeStart}::timestamp
       AND "date" <= ${rangeEnd}::timestamp
-      AND "isActive" = true
       AND "userId" = ${userIdNum}
+      ${trendFilters}
     GROUP BY period
     ORDER BY period
   `;

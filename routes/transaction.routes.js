@@ -3,7 +3,8 @@ import { Router } from "express";
 import {
   archiveTransaction,
   getHistory,
-  getStatistics
+  getStatistics,
+  restoreTransaction,
 } from "../controllers/transactions.controller.js";
 import catchAsync from "../utils/catchAsync.js";
 
@@ -42,6 +43,14 @@ router.route("/statistics").get(requireAuth, catchAsync(getStatistics));
 
 // Mounted before "/:id" so "schedules" isn't captured as a transaction id.
 router.use("/schedules", SchedulesRouter);
+
+router
+  .route("/:id/restore")
+  .patch(
+    requireAuth,
+    validate({ params: idParams, query: archiveTransactionQuery }),
+    catchAsync(restoreTransaction),
+  );
 
 router
   .route("/:id")

@@ -3,7 +3,9 @@ import { Router } from "express";
 import catchAsync from "../utils/catchAsync.js";
 
 import {
+  cancelInstallmentPlan,
   getCreditStatementSchedule,
+  getProjectedCreditStatement,
   getRecurringSchedule,
   getRecurringScheduleHistory,
   getSchedules,
@@ -55,6 +57,11 @@ router
   .patch(requireAuth, validate({ params: idParams }), catchAsync(skipRecurringSchedule));
 
 /* ---------------- Credit statements ---------------- */
+// :id is the card's asset id (projected items have no statement id).
+router
+  .route("/credit/card/:id/upcoming")
+  .get(requireAuth, validate({ params: idParams }), catchAsync(getProjectedCreditStatement));
+
 router
   .route("/credit/:id")
   .get(requireAuth, validate({ params: idParams }), catchAsync(getCreditStatementSchedule));
@@ -66,5 +73,10 @@ router
     validate({ params: idParams, body: payCreditStatementSchema }),
     catchAsync(payCreditStatement),
   );
+
+/* ---------------- Installment plans ---------------- */
+router
+  .route("/credit/installments/:id/cancel")
+  .patch(requireAuth, validate({ params: idParams }), catchAsync(cancelInstallmentPlan));
 
 export default router;

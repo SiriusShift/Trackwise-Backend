@@ -1,11 +1,22 @@
 import moment from "moment-timezone";
 
 import { AppError } from "../utils/AppError.js";
-import { assertCanReceive, assertCanSpend, getAssetBalance, validateAsset } from "./assets.service.js";
+import {
+  assertCanReceive,
+  assertCanSpend,
+  getAssetBalance,
+  validateAsset,
+} from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { transactBill } from "./recurring.service.js";
 
 import { prisma } from "../config/prisma.js";
+import {
+  billedInstallmentCount,
+  creditDueDate,
+  dayInMonth,
+  lastStatementClose,
+} from "../utils/creditCycle.js";
 
 /*
 |--------------------------------------------------------------------------
@@ -26,6 +37,13 @@ import { prisma } from "../config/prisma.js";
 */
 
 const OPEN_STATEMENT_STATUSES = ["PENDING", "PARTIAL", "OVERDUE"];
+
+// A card can bill statements once it has a statement day and a due rule: a
+// day of the month, or a number of days after the statement date.
+const CREDIT_DETAIL_READY = {
+  statementDate: { not: null },
+  OR: [{ dueDate: { not: null } }, { dueDaysAfterStatement: { not: null } }],
+};
 
 // Accounts a card bill can be paid from (not another card or a loan).
 const PAYMENT_SOURCE_CATEGORIES = ["CASH", "BANK"];
@@ -65,26 +83,10 @@ const getRecurringAccount = (item) =>
 
 // Same anchoring rule as the cron: occurrence k = startDate + k * interval.
 const occurrence = (item, k, timezone) =>
-  moment.tz(item.startDate, timezone).startOf("day").add(k * item.interval, item.unit);
-
-// Day-of-month clamped to the month length (31 -> Feb 28/29).
-const dayInMonth = (monthMoment, day) =>
-  monthMoment.clone().date(Math.min(day, monthMoment.daysInMonth())).startOf("day");
-
-// Due date for a cycle closing on `closeDate`: same month when the due day
-// comes after the statement day, otherwise the following month.
-const creditDueDate = (closeDate, dueDay, statementDay) => {
-  const month = dueDay > statementDay ? closeDate.clone() : closeDate.clone().add(1, "month");
-  return dayInMonth(month.startOf("month"), dueDay);
-};
-
-// Most recent statement close on or before `today`.
-const lastStatementClose = (today, statementDay) => {
-  const thisMonth = dayInMonth(today.clone().startOf("month"), statementDay);
-  return thisMonth.isAfter(today)
-    ? dayInMonth(today.clone().subtract(1, "month").startOf("month"), statementDay)
-    : thisMonth;
-};
+  moment
+    .tz(item.startDate, timezone)
+    .startOf("day")
+    .add(k * item.interval, item.unit);
 
 const inRange = (date, from, to) =>
   (!from || !moment(date).isBefore(from)) && (!to || !moment(date).isAfter(to));
@@ -111,7 +113,8 @@ const resolveTransferCategory = async (userId, categoryId) => {
     select: { id: true },
   });
 
-  if (!category) throw new AppError("No transfer category available for this payment", 400);
+  if (!category)
+    throw new AppError("No transfer category available for this payment", 400);
   return category.id;
 };
 
@@ -130,15 +133,38 @@ const getStatementPayments = async (statement, assetId, timezone) =>
       toAssetId: assetId,
       isActive: true,
       status: "Completed",
-      date: { gt: moment(statement.statementDate).tz(timezone).endOf("day").toDate() },
+      date: {
+        gt: moment(statement.statementDate).tz(timezone).endOf("day").toDate(),
+      },
     },
-    select: { id: true, amount: true, date: true, description: true, fromAsset: { select: assetSelect } },
+    select: {
+      id: true,
+      amount: true,
+      date: true,
+      description: true,
+      fromAsset: { select: assetSelect },
+    },
     orderBy: { date: "desc" },
   });
 
-const statementStatus = (statement, amountPaid, today) => {
-  const balance = Number(statement.statementBalance);
-  if (amountPaid >= balance) return "PAID";
+// Interest and fees entered from the bank statement; they're owed on top of
+// the statement balance.
+const statementFees = (statement) =>
+  Number(statement.interestCharged ?? 0) +
+  Number(statement.lateFeeCharged ?? 0) +
+  Number(statement.otherFees ?? 0);
+
+// What a statement still asks for: its fixed balance and fees less payments,
+// but never more than the card actually owes for billed charges. This is what
+// settles a bill after a refund or an archived purchase, without touching the
+// statement's own balance.
+const statementRemaining = (statement, amountPaid, owedCap = Infinity) => {
+  const balance = Number(statement.statementBalance) + statementFees(statement);
+  return Math.max(Math.min(balance - amountPaid, owedCap), 0);
+};
+
+const statementStatus = (statement, amountPaid, today, owedCap) => {
+  if (statementRemaining(statement, amountPaid, owedCap) <= 0) return "PAID";
   if (moment(statement.dueDate).isBefore(today, "day")) return "OVERDUE";
   if (amountPaid > 0) return "PARTIAL";
   return "PENDING";
@@ -158,23 +184,37 @@ export const syncCreditStatements = async (userId, timezone) => {
       userId: Number(userId),
       isActive: true,
       category: "CREDIT",
-      creditDetail: { statementDate: { not: null }, dueDate: { not: null } },
+      creditDetail: CREDIT_DETAIL_READY,
     },
-    select: { id: true, name: true, createdAt: true, openedAt: true, creditDetail: true },
+    select: {
+      id: true,
+      name: true,
+      createdAt: true,
+      openedAt: true,
+      creditDetail: true,
+    },
   });
 
   for (const card of cards) {
     const { creditDetail } = card;
-    const openedOn = moment(card.openedAt ?? card.createdAt).tz(tz).startOf("day");
+    const openedOn = moment(card.openedAt ?? card.createdAt)
+      .tz(tz)
+      .startOf("day");
 
     // Every cycle that closed since the card existed (newest first), so a
     // cycle missed while the app/cron was off is still billed. A card didn't
     // exist yet for cycles that closed before it was opened.
     const closeDates = [];
     let close = lastStatementClose(today, creditDetail.statementDate);
-    while (!close.isBefore(openedOn) && closeDates.length < MAX_STATEMENT_BACKFILL) {
+    while (
+      !close.isBefore(openedOn) &&
+      closeDates.length < MAX_STATEMENT_BACKFILL
+    ) {
       closeDates.push(close);
-      close = lastStatementClose(close.clone().subtract(1, "day"), creditDetail.statementDate);
+      close = lastStatementClose(
+        close.clone().subtract(1, "day"),
+        creditDetail.statementDate,
+      );
     }
 
     const existing = await prisma.creditStatement.findMany({
@@ -184,20 +224,32 @@ export const syncCreditStatements = async (userId, timezone) => {
       },
       select: { statementDate: true },
     });
-    const existingTimes = new Set(existing.map((e) => e.statementDate.getTime()));
+    const existingTimes = new Set(
+      existing.map((e) => e.statementDate.getTime()),
+    );
 
-    for (const closeDate of closeDates.filter((d) => !existingTimes.has(d.toDate().getTime()))) {
+    for (const closeDate of closeDates.filter(
+      (d) => !existingTimes.has(d.toDate().getTime()),
+    )) {
       const asset = await getAssetRemainingBalance(userId, card.id, {
         asOf: closeDate.clone().endOf("day").toDate(),
       });
-      const statementBalance = Math.max(Number(asset?.remainingBalance ?? 0), 0);
+      const unbilled = await getUnbilledPrincipal(
+        creditDetail.id,
+        closeDate,
+        tz,
+      );
+      const statementBalance = Math.max(
+        Number(asset?.remainingBalance ?? 0) - unbilled,
+        0,
+      );
 
       await prisma.creditStatement.createMany({
         data: [
           {
             creditDetailId: creditDetail.id,
             statementDate: closeDate.toDate(),
-            dueDate: creditDueDate(closeDate, creditDetail.dueDate, creditDetail.statementDate).toDate(),
+            dueDate: creditDueDate(closeDate, creditDetail).toDate(),
             statementBalance,
             status: statementBalance > 0 ? "PENDING" : "PAID",
           },
@@ -206,18 +258,55 @@ export const syncCreditStatements = async (userId, timezone) => {
       });
     }
 
+    const unattached = await prisma.creditInstallment.findMany({
+      where: {
+        statementId: null,
+        plan: { creditDetailId: creditDetail.id, status: { not: "CANCELLED" } },
+      },
+    });
+
+    for (const item of unattached) {
+      const dueMonth = moment.tz(item.dueDate, tz).startOf("month");
+
+      const statement = await prisma.creditStatement.findFirst({
+        where: {
+          creditDetailId: creditDetail.id,
+          dueDate: {
+            gte: dueMonth.toDate(),
+            lt: dueMonth.clone().add(1, "month").toDate(),
+          },
+        },
+      });
+      if (statement) {
+        await prisma.creditInstallment.update({
+          where: { id: item.id },
+          data: { statementId: statement.id },
+        });
+      }
+    }
+
     // Refresh status of open statements from actual payments.
     const openStatements = await prisma.creditStatement.findMany({
-      where: { creditDetailId: creditDetail.id, status: { in: OPEN_STATEMENT_STATUSES } },
+      where: {
+        creditDetailId: creditDetail.id,
+        status: { in: OPEN_STATEMENT_STATUSES },
+      },
     });
+
+    const owedCap = openStatements.length
+      ? await getBilledOwed(userId, card.id, creditDetail.id, tz)
+      : Infinity;
 
     for (const statement of openStatements) {
       const payments = await getStatementPayments(statement, card.id, tz);
       const amountPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-      const status = statementStatus(statement, amountPaid, today);
+      const status = statementStatus(statement, amountPaid, today, owedCap);
 
       if (status !== statement.status) {
-        await prisma.creditStatement.update({ where: { id: statement.id }, data: { status } });
+        await prisma.creditStatement.update({
+          where: { id: statement.id },
+          data: { status },
+        });
       }
     }
 
@@ -239,14 +328,51 @@ export const syncCreditStatements = async (userId, timezone) => {
         data: { status: "PAID" },
       });
     }
+    const activePlans = await prisma.creditInstallmentPlan.findMany({
+      where: { creditDetailId: creditDetail.id, status: "ACTIVE" },
+      include: {
+        installments: { include: { statement: { select: { status: true } } } },
+      },
+    });
+    for (const plan of activePlans) {
+      const isComplete = plan.installments.every(
+        (i) => i.statement?.status === "PAID",
+      );
+
+      if (isComplete) {
+        await prisma.creditInstallmentPlan.update({
+          where: { id: plan.id },
+          data: { status: "PAID_OFF" },
+        });
+      }
+    }
   }
 };
 
-const toCreditItem = (statement, asset, amountPaid) => {
+// One installment as shown on a statement: which plan, and which payment of it.
+const toInstallmentLine = (installment, plan) => ({
+  planId: plan.id,
+  description: plan.description,
+  installmentNo: installment.installmentNo,
+  termMonths: plan.termMonths,
+  planStatus: plan.status ?? "ACTIVE",
+  amount: Number(installment.amount),
+  dueDate: installment.dueDate,
+});
+
+const toCreditItem = (
+  statement,
+  asset,
+  amountPaid,
+  installments = [],
+  owedCap,
+) => {
   const statementBalance = Number(statement.statementBalance);
-  const remaining = Math.max(statementBalance - amountPaid, 0);
+  const feesCharged = statementFees(statement);
+  const remaining = statementRemaining(statement, amountPaid, owedCap);
 
   return {
+    installments,
     key: `credit-${statement.id}`,
     source: "CREDIT_STATEMENT",
     sourceId: statement.id,
@@ -254,13 +380,19 @@ const toCreditItem = (statement, asset, amountPaid) => {
     description: `${asset.name} bill`,
     amount: remaining,
     statementBalance,
+    feesCharged,
     amountPaid,
     statementDate: statement.statementDate,
     dueDate: statement.dueDate,
     status: statement.status,
     category: null,
     fromAsset: null,
-    toAsset: { id: asset.id, name: asset.name, category: asset.category, color: asset.color },
+    toAsset: {
+      id: asset.id,
+      name: asset.name,
+      category: asset.category,
+      color: asset.color,
+    },
     behaviour: "REMIND",
     projected: false,
     actionable: true,
@@ -269,15 +401,92 @@ const toCreditItem = (statement, asset, amountPaid) => {
   };
 };
 
+// Principal of installment plans that hasn't reached a statement yet as of
+// `closeDate`. The card's balance already holds the whole purchase, so this is
+// subtracted to leave only what has been billed. PAID_OFF plans still count:
+// when backfilling an older cycle they were unbilled then.
+const getUnbilledPrincipal = async (creditDetailId, closeDate, timezone) => {
+  const plans = await prisma.creditInstallmentPlan.findMany({
+    where: { creditDetailId, status: { not: "CANCELLED" } },
+    select: { totalAmount: true, termMonths: true, startDate: true },
+  });
+
+  return plans.reduce((sum, plan) => {
+    const billed = billedInstallmentCount(
+      plan.startDate,
+      closeDate,
+      plan.termMonths,
+      timezone,
+    );
+    const unbilled =
+      (Number(plan.totalAmount) * (plan.termMonths - billed)) / plan.termMonths;
+    return sum + Math.round(unbilled * 100) / 100;
+  }, 0);
+};
+
+// What the card owes today for charges that have already been billed: the
+// balance less installment principal still to come. Zero or a credit when a
+// purchase was archived or refunded.
+const getBilledOwed = async (userId, assetId, creditDetailId, timezone) => {
+  const asOf = moment().tz(timezone).endOf("day");
+  const [asset, unbilled] = await Promise.all([
+    getAssetRemainingBalance(userId, assetId),
+    getUnbilledPrincipal(creditDetailId, asOf, timezone),
+  ]);
+  return Math.max(Number(asset?.remainingBalance ?? 0) - unbilled, 0);
+};
+
+// Installments the upcoming statement will include: plans whose billed count
+// goes up between the last close and `nextClose` (one installment each).
+const getUpcomingInstallments = async (
+  creditDetail,
+  lastClose,
+  nextClose,
+  timezone,
+) => {
+  const plans = await prisma.creditInstallmentPlan.findMany({
+    where: { creditDetailId: creditDetail.id, status: "ACTIVE" },
+  });
+
+  return plans.flatMap((plan) => {
+    const next = billedInstallmentCount(
+      plan.startDate,
+      nextClose,
+      plan.termMonths,
+      timezone,
+    );
+    const last = billedInstallmentCount(
+      plan.startDate,
+      lastClose,
+      plan.termMonths,
+      timezone,
+    );
+    if (next <= last) return [];
+
+    return [
+      {
+        planId: plan.id,
+        description: plan.description,
+        installmentNo: next,
+        termMonths: plan.termMonths,
+        planStatus: plan.status,
+        amount: Number(plan.monthlyAmount),
+        dueDate: creditDueDate(nextClose, creditDetail).toDate(),
+      },
+    ];
+  });
+};
+
 const getCreditItems = async (userId, timezone, from, to) => {
   const today = moment().tz(timezone).startOf("day");
+  const tz = timezone || (await getTimezone(userId));
 
   const cards = await prisma.asset.findMany({
     where: {
       userId: Number(userId),
       isActive: true,
       category: "CREDIT",
-      creditDetail: { statementDate: { not: null }, dueDate: { not: null } },
+      creditDetail: CREDIT_DETAIL_READY,
     },
     select: {
       ...assetSelect,
@@ -286,12 +495,21 @@ const getCreditItems = async (userId, timezone, from, to) => {
           id: true,
           statementDate: true,
           dueDate: true,
+          dueDaysAfterStatement: true,
           // A newer statement already includes any unpaid older balance, so
           // only the latest open statement is billed to avoid double counting.
           statements: {
             where: { status: { in: OPEN_STATEMENT_STATUSES } },
             orderBy: { statementDate: "desc" },
             take: 1,
+            include: {
+              installments: {
+                include: {
+                  plan: { select: { id: true, description: true, termMonths: true, status: true } },
+                },
+                orderBy: [{ planId: "asc" }, { installmentNo: "asc" }],
+              },
+            },
           },
         },
       },
@@ -307,23 +525,49 @@ const getCreditItems = async (userId, timezone, from, to) => {
     if (statement) {
       const payments = await getStatementPayments(statement, card.id, timezone);
       const amountPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
-      items.push(toCreditItem(statement, card, amountPaid));
+      items.push(
+        toCreditItem(
+          statement,
+          card,
+          amountPaid,
+          statement.installments.map((i) => toInstallmentLine(i, i.plan)),
+          await getBilledOwed(userId, card.id, creditDetail.id, tz),
+        ),
+      );
     }
 
     // Projection for the cycle that hasn't closed yet (estimate = current balance).
     if (to) {
       const nextClose = dayInMonth(
-        lastStatementClose(today, creditDetail.statementDate).add(1, "month").startOf("month"),
+        lastStatementClose(today, creditDetail.statementDate)
+          .add(1, "month")
+          .startOf("month"),
         creditDetail.statementDate,
       );
-      const nextDue = creditDueDate(nextClose, creditDetail.dueDate, creditDetail.statementDate);
+      const nextDue = creditDueDate(nextClose, creditDetail);
 
       if (inRange(nextDue, from, to)) {
         const asset = await getAssetRemainingBalance(userId, card.id);
-        const estimate = Math.max(Number(asset?.remainingBalance ?? 0), 0);
+        const unbilled = await getUnbilledPrincipal(
+          creditDetail.id,
+          nextClose,
+          tz,
+        );
+        const estimate = Math.max(
+          Number(asset?.remainingBalance ?? 0) - unbilled,
+          0,
+        );
 
         if (estimate > 0) {
+          const installments = await getUpcomingInstallments(
+            creditDetail,
+            lastStatementClose(today, creditDetail.statementDate),
+            nextClose,
+            tz,
+          );
+
           items.push({
+            installments,
             key: `credit-${card.id}-${nextDue.format("YYYYMMDD")}`,
             source: "CREDIT_STATEMENT",
             sourceId: null,
@@ -337,7 +581,12 @@ const getCreditItems = async (userId, timezone, from, to) => {
             status: "UPCOMING",
             category: null,
             fromAsset: null,
-            toAsset: { id: card.id, name: card.name, category: card.category, color: card.color },
+            toAsset: {
+              id: card.id,
+              name: card.name,
+              category: card.category,
+              color: card.color,
+            },
             behaviour: "REMIND",
             projected: true,
             actionable: false,
@@ -383,7 +632,9 @@ const getRecurringItems = async (userId, timezone, { from, to, type }) => {
 
   for (const item of recurringList) {
     const nextDue = moment(item.nextDueDate).tz(timezone).startOf("day");
-    const endDate = item.endDate ? moment(item.endDate).tz(timezone).endOf("day") : null;
+    const endDate = item.endDate
+      ? moment(item.endDate).tz(timezone).endOf("day")
+      : null;
 
     // A FAILED log only matters for the cycle that is currently due.
     const failedLog = item.logs[0];
@@ -416,9 +667,13 @@ const getRecurringItems = async (userId, timezone, { from, to, type }) => {
         key: `recurring-${item.id}-${dueDate.format("YYYYMMDD")}`,
         dueDate: dueDate.toDate(),
         projected: !isCurrent,
-        actionable: isCurrent && (item.behaviour === "REMIND" || needsAttention),
+        actionable:
+          isCurrent && (item.behaviour === "REMIND" || needsAttention),
         needsAttention: isCurrent && needsAttention,
-        failureReason: isCurrent && needsAttention ? failedLog.errorMessage ?? "Auto-log failed" : null,
+        failureReason:
+          isCurrent && needsAttention
+            ? (failedLog.errorMessage ?? "Auto-log failed")
+            : null,
       });
     };
 
@@ -432,7 +687,11 @@ const getRecurringItems = async (userId, timezone, { from, to, type }) => {
     while (!next.isAfter(nextDue)) next = occurrence(item, ++k, timezone);
 
     let count = 0;
-    while (!next.isAfter(to) && (!endDate || !next.isAfter(endDate)) && count < MAX_OCCURRENCES_PER_ITEM) {
+    while (
+      !next.isAfter(to) &&
+      (!endDate || !next.isAfter(endDate)) &&
+      count < MAX_OCCURRENCES_PER_ITEM
+    ) {
       if (inRange(next, from, to)) pushCycle(next, false);
       next = occurrence(item, ++k, timezone);
       count++;
@@ -459,19 +718,29 @@ export const getSchedules = async (userId, query = {}) => {
   const from = query.dateFrom ? moment(query.dateFrom) : null;
   const to = query.dateTo ? moment(query.dateTo) : null;
   const { type, source } = query;
-  const actionableOnly = query.actionable === "true" || query.actionable === true;
+  const actionableOnly =
+    query.actionable === "true" || query.actionable === true;
 
   const wantsRecurring = !source || source === "RECURRING";
-  const wantsCredit = (!source || source === "CREDIT_STATEMENT") && (!type || type === "Transfer");
+  const wantsCredit =
+    (!source || source === "CREDIT_STATEMENT") &&
+    (!type || type === "Transfer");
 
   if (wantsCredit) await syncCreditStatements(userId, timezone);
 
   const [recurring, credit] = await Promise.all([
-    wantsRecurring ? getRecurringItems(userId, timezone, { from, to, type }) : [],
+    wantsRecurring
+      ? getRecurringItems(userId, timezone, { from, to, type })
+      : [],
     wantsCredit ? getCreditItems(userId, timezone, from, to) : [],
   ]);
 
-  return [...recurring, ...credit.filter((item) => item.projected || inRange(item.dueDate, from, to))]
+  return [
+    ...recurring,
+    ...credit.filter(
+      (item) => item.projected || inRange(item.dueDate, from, to),
+    ),
+  ]
     .filter((item) => !actionableOnly || item.actionable)
     .sort((a, b) => {
       const rankDiff = priorityRank(a, today) - priorityRank(b, today);
@@ -519,7 +788,10 @@ export const getRecurringSchedule = async (userId, id) => {
     behaviour: recurring.behaviour,
     category: recurring.category,
     // `account` is the one money moves out of (Expense/Transfer) or into (Income).
-    account: account && { ...account, remainingBalance: balance?.remainingBalance ?? null },
+    account: account && {
+      ...account,
+      remainingBalance: balance?.remainingBalance ?? null,
+    },
     fromAsset: recurring.type === "Income" ? null : recurring.fromAsset,
     toAsset: recurring.type === "Income" ? account : recurring.toAsset,
   };
@@ -527,11 +799,17 @@ export const getRecurringSchedule = async (userId, id) => {
 
 export const getRecurringScheduleHistory = async (userId, id) => {
   const recurring = await findRecurring(userId, id);
-  const where = { recurringId: recurring.id, status: { in: ["Completed", "Skipped"] } };
+  const where = {
+    recurringId: recurring.id,
+    status: { in: ["Completed", "Skipped"] },
+  };
   const select = { id: true, amount: true, date: true, status: true };
 
   const [expenses, incomes, transfers, skippedLogs] = await Promise.all([
-    prisma.expense.findMany({ where, select: { ...select, recurringDueDate: true } }),
+    prisma.expense.findMany({
+      where,
+      select: { ...select, recurringDueDate: true },
+    }),
     prisma.income.findMany({ where, select }),
     prisma.transfer.findMany({ where, select }),
     prisma.recurringLog.findMany({
@@ -557,7 +835,9 @@ export const getRecurringScheduleHistory = async (userId, id) => {
       status: "Skipped",
       dueDate: log.firedAt,
     })),
-  ].sort((a, b) => new Date(b.dueDate ?? b.date) - new Date(a.dueDate ?? a.date));
+  ].sort(
+    (a, b) => new Date(b.dueDate ?? b.date) - new Date(a.dueDate ?? a.date),
+  );
 };
 
 export const payRecurringSchedule = async (userId, id, data) => {
@@ -578,7 +858,10 @@ export const payRecurringSchedule = async (userId, id, data) => {
   }
 
   if (recurring.type === "Transfer" && !recurring.toAssetId) {
-    throw new AppError("This scheduled transfer has no destination account", 400);
+    throw new AppError(
+      "This scheduled transfer has no destination account",
+      400,
+    );
   }
 
   const common = {
@@ -595,13 +878,23 @@ export const payRecurringSchedule = async (userId, id, data) => {
     let entry;
     if (recurring.type === "Expense") {
       entry = await tx.expense.create({
-        data: { ...common, assetId: accountId, recurringDueDate: recurring.nextDueDate },
+        data: {
+          ...common,
+          assetId: accountId,
+          recurringDueDate: recurring.nextDueDate,
+        },
       });
     } else if (recurring.type === "Income") {
-      entry = await tx.income.create({ data: { ...common, assetId: accountId } });
+      entry = await tx.income.create({
+        data: { ...common, assetId: accountId },
+      });
     } else {
       entry = await tx.transfer.create({
-        data: { ...common, fromAssetId: accountId, toAssetId: recurring.toAssetId },
+        data: {
+          ...common,
+          fromAssetId: accountId,
+          toAssetId: recurring.toAssetId,
+        },
       });
     }
 
@@ -609,16 +902,26 @@ export const payRecurringSchedule = async (userId, id, data) => {
       where: {
         recurringId_firedAt: {
           recurringId: recurring.id,
-          firedAt: moment(recurring.nextDueDate).tz(timezone).startOf("day").toDate(),
+          firedAt: moment(recurring.nextDueDate)
+            .tz(timezone)
+            .startOf("day")
+            .toDate(),
         },
       },
       create: {
         recurringId: recurring.id,
-        firedAt: moment(recurring.nextDueDate).tz(timezone).startOf("day").toDate(),
+        firedAt: moment(recurring.nextDueDate)
+          .tz(timezone)
+          .startOf("day")
+          .toDate(),
         result: "CREATED",
         [`generated${recurring.type}Id`]: entry.id,
       },
-      update: { result: "CREATED", errorMessage: null, [`generated${recurring.type}Id`]: entry.id },
+      update: {
+        result: "CREATED",
+        errorMessage: null,
+        [`generated${recurring.type}Id`]: entry.id,
+      },
     });
 
     await transactBill(recurring.id, userId, tx);
@@ -631,7 +934,10 @@ export const payRecurringSchedule = async (userId, id, data) => {
 export const skipRecurringSchedule = async (userId, id) => {
   const recurring = await findRecurring(userId, id);
   const timezone = await getTimezone(userId);
-  const firedAt = moment(recurring.nextDueDate).tz(timezone).startOf("day").toDate();
+  const firedAt = moment(recurring.nextDueDate)
+    .tz(timezone)
+    .startOf("day")
+    .toDate();
 
   return prisma.$transaction(async (tx) => {
     const log = await tx.recurringLog.upsert({
@@ -652,7 +958,10 @@ export const skipRecurringSchedule = async (userId, id) => {
 */
 const findStatement = async (userId, id) => {
   const statement = await prisma.creditStatement.findFirst({
-    where: { id: Number(id), creditDetail: { asset: { userId: Number(userId) } } },
+    where: {
+      id: Number(id),
+      creditDetail: { asset: { userId: Number(userId) } },
+    },
     include: {
       creditDetail: { include: { asset: { select: assetSelect } } },
     },
@@ -667,19 +976,161 @@ export const getCreditStatementSchedule = async (userId, id) => {
   const statement = await findStatement(userId, id);
   const card = statement.creditDetail.asset;
 
-  const [payments, balance] = await Promise.all([
+  const [payments, balance, installments] = await Promise.all([
     getStatementPayments(statement, card.id, timezone),
     getAssetRemainingBalance(userId, card.id),
+    // Installments billed on this statement, for its line items.
+    prisma.creditInstallment.findMany({
+      where: { statementId: statement.id },
+      orderBy: [{ planId: "asc" }, { installmentNo: "asc" }],
+      include: {
+        plan: { select: { id: true, description: true, termMonths: true, status: true } },
+      },
+    }),
   ]);
   const amountPaid = payments.reduce((sum, p) => sum + Number(p.amount), 0);
+  const owedCap = await getBilledOwed(
+    userId,
+    card.id,
+    statement.creditDetailId,
+    timezone,
+  );
 
   return {
-    ...toCreditItem(statement, card, amountPaid),
+    ...toCreditItem(statement, card, amountPaid, [], owedCap),
     id: statement.id,
     currentBalance: balance?.remainingBalance ?? null,
     creditLimit: Number(statement.creditDetail.creditLimit),
     payments: payments.map((p) => ({ ...p, amount: Number(p.amount) })),
+    // Copied from the bank statement when the bill was paid; 0 until then.
+    interestCharged: Number(statement.interestCharged),
+    lateFeeCharged: Number(statement.lateFeeCharged),
+    otherFees: Number(statement.otherFees),
+    installments: installments.map((i) => toInstallmentLine(i, i.plan)),
   };
+};
+
+/**
+ * Breakdown of the projected (not yet closed) statement of a card: every
+ * completed transaction on the card since the last statement closed, plus what
+ * was carried over from before. `id` is the card's asset id (projected items
+ * have no statement id).
+ */
+export const getProjectedCreditStatement = async (userId, id) => {
+  const timezone = await getTimezone(userId);
+  const today = moment().tz(timezone).startOf("day");
+
+  const card = await prisma.asset.findFirst({
+    where: {
+      id: Number(id),
+      userId: Number(userId),
+      isActive: true,
+      category: "CREDIT",
+      creditDetail: CREDIT_DETAIL_READY,
+    },
+    select: { ...assetSelect, creditDetail: true },
+  });
+  if (!card) throw new AppError("Credit card not found", 404);
+
+  const { creditDetail } = card;
+  const lastClose = lastStatementClose(today, creditDetail.statementDate);
+  const nextClose = dayInMonth(
+    lastClose.clone().add(1, "month").startOf("month"),
+    creditDetail.statementDate,
+  );
+  const nextDue = creditDueDate(nextClose, creditDetail);
+
+  const dateFilter = { gt: lastClose.clone().endOf("day").toDate() };
+  const base = { isActive: true, status: "Completed", date: dateFilter };
+  const select = {
+    id: true,
+    amount: true,
+    date: true,
+    description: true,
+    category: { select: categorySelect },
+  };
+
+  const [expenses, incomes, transfersOut, transfersIn] = await Promise.all([
+    prisma.expense.findMany({
+      where: { ...base, assetId: card.id },
+      select,
+    }),
+    prisma.income.findMany({ where: { ...base, assetId: card.id }, select }),
+    prisma.transfer.findMany({
+      where: { ...base, fromAssetId: card.id },
+      select: { ...select, toAsset: { select: assetSelect } },
+    }),
+    prisma.transfer.findMany({
+      where: { ...base, toAssetId: card.id },
+      select: { ...select, fromAsset: { select: assetSelect } },
+    }),
+  ]);
+
+  // `effect` is how the entry moves the amount owed: charges and cash
+  // advances raise it, payments and refunds lower it.
+  const entry = (type, row, effect) => ({
+    key: `${type.toLowerCase()}-${row.id}`,
+    id: row.id,
+    type,
+    description: row.description,
+    date: row.date,
+    category: row.category ?? null,
+    amount: Number(row.amount),
+    effect: effect * Number(row.amount),
+    counterAsset: row.toAsset ?? row.fromAsset ?? null,
+  });
+
+  const transactions = [
+    ...expenses.map((r) => entry("Expense", r, 1)),
+    ...incomes.map((r) => entry("Income", r, -1)),
+    ...transfersOut.map((r) => entry("Transfer", r, 1)),
+    ...transfersIn.map((r) => entry("Transfer", r, -1)),
+  ].sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const [asset, unbilled] = await Promise.all([
+    getAssetRemainingBalance(userId, card.id),
+    getUnbilledPrincipal(creditDetail.id, nextClose, timezone),
+  ]);
+
+  const cycleTotal = transactions.reduce((sum, t) => sum + t.effect, 0);
+  const estimate = Math.max(Number(asset?.remainingBalance ?? 0) - unbilled, 0);
+
+  return {
+    card: { id: card.id, name: card.name, color: card.color },
+    periodStart: lastClose.clone().add(1, "day").toDate(),
+    statementDate: nextClose.toDate(),
+    dueDate: nextDue.toDate(),
+    estimate,
+    cycleTotal,
+    // Unpaid from earlier cycles that rolls into this statement.
+    carriedOver: estimate - cycleTotal,
+    unbilledInstallments: unbilled,
+    transactions,
+  };
+};
+
+const FEE_CATEGORY_NAME = "Fees & Charges";
+
+// Expense category the card's interest and fees are recorded under; created
+// on first use so users don't have to set it up.
+const resolveFeeCategory = async (tx, userId) => {
+  const existing = await tx.categories.findFirst({
+    where: {
+      isActive: true,
+      name: { equals: FEE_CATEGORY_NAME, mode: "insensitive" },
+      type: { equals: "Expense", mode: "insensitive" },
+      OR: [{ userId: null }, { userId: Number(userId) }],
+    },
+    orderBy: { id: "asc" },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+
+  const created = await tx.categories.create({
+    data: { name: FEE_CATEGORY_NAME, type: "Expense", userId: Number(userId) },
+    select: { id: true },
+  });
+  return created.id;
 };
 
 export const payCreditStatement = async (userId, id, data) => {
@@ -690,34 +1141,121 @@ export const payCreditStatement = async (userId, id, data) => {
   const date = new Date(data.date);
   const fromAssetId = Number(data.account);
 
-  if (fromAssetId === card.id) throw new AppError("Pay from a different account than the card", 400);
+  const interest = Number(data.interestCharged) || 0;
+  const lateFee = Number(data.lateFeeCharged) || 0;
+  const otherFees = Number(data.otherFees) || 0;
+  const totalFees = interest + lateFee + otherFees;
+
+  // Fees already recorded on this statement (an earlier partial payment), so
+  // entering them again doesn't charge the card twice. Only an increase is new.
+  const recordedFees = statementFees(statement);
+  const newFees = Math.max(totalFees - recordedFees, 0);
+
+  if (fromAssetId === card.id)
+    throw new AppError("Pay from a different account than the card", 400);
 
   const fromAsset = await validateAsset(fromAssetId, userId);
   if (!PAYMENT_SOURCE_CATEGORIES.includes(fromAsset.category)) {
     throw new AppError("Pay the bill from a cash or bank account", 400);
   }
 
+  // The new fees are recorded as a card expense in the transaction below, so
+  // they count as owed even though that expense doesn't exist yet.
   if (date <= new Date()) {
     await assertCanSpend(userId, fromAssetId, amount);
-    await assertCanReceive(userId, card.id, amount);
+    await assertCanReceive(userId, card.id, amount, { restore: newFees });
   }
 
   const categoryId = await resolveTransferCategory(userId, data.category);
+  const isFuture = date > new Date();
 
-  const transfer = await prisma.transfer.create({
-    data: {
-      amount,
-      date,
-      description: data.description || `${card.name} bill payment`,
-      status: date > new Date() ? "Pending" : "Completed",
-      userId: Number(userId),
-      categoryId,
-      fromAssetId,
-      toAssetId: card.id,
-      creditStatementId: statement.id,
-    },
+  const transfer = await prisma.$transaction(async (tx) => {
+    if (totalFees > recordedFees) {
+      await tx.creditStatement.update({
+        where: { id: statement.id },
+        data: { interestCharged: interest, lateFeeCharged: lateFee, otherFees },
+      });
+    }
+
+    if (newFees > 0) {
+      const parts = [
+        interest && `interest ${interest.toFixed(2)}`,
+        lateFee && `late fee ${lateFee.toFixed(2)}`,
+        otherFees && `other fees ${otherFees.toFixed(2)}`,
+      ].filter(Boolean);
+
+      await tx.expense.create({
+        data: {
+          amount: newFees,
+          description: `${card.name} statement: ${parts.join(", ")}`,
+          status: isFuture ? "Pending" : "Completed",
+          date,
+          category: { connect: { id: await resolveFeeCategory(tx, userId) } },
+          asset: { connect: { id: card.id } },
+          user: { connect: { id: Number(userId) } },
+        },
+      });
+    }
+
+    return tx.transfer.create({
+      data: {
+        amount,
+        date,
+        description: data.description || `${card.name} bill payment`,
+        status: isFuture ? "Pending" : "Completed",
+        userId: Number(userId),
+        categoryId,
+        fromAssetId,
+        toAssetId: card.id,
+        creditStatementId: statement.id,
+      },
+    });
   });
 
   await syncCreditStatements(userId);
   return transfer;
+};
+
+/*
+|--------------------------------------------------------------------------
+| Installment plans: cancel
+|--------------------------------------------------------------------------
+| Removes the plan as if it never happened: every installment (billed or not)
+| is dropped, the plan is marked CANCELLED and its original purchase is
+| archived. Payments already made are separate transfers and are not reversed.
+*/
+export const cancelInstallmentPlan = async (userId, id) => {
+  const planId = Number(id);
+
+  const plan = await prisma.creditInstallmentPlan.findFirst({
+    where: {
+      id: planId,
+      creditDetail: { asset: { userId: Number(userId) } },
+    },
+  });
+
+  if (!plan) throw new AppError("Installment plan not found", 404);
+  if (plan.status === "CANCELLED") {
+    throw new AppError("This installment plan is already cancelled", 400);
+  }
+
+  await prisma.$transaction([
+      prisma.creditInstallment.deleteMany({
+        where: { statementId: null, plan: { expenseId } },
+      }),    prisma.creditInstallmentPlan.update({
+      where: { id: planId },
+      data: { status: "CANCELLED" },
+    }),
+    ...(plan.expenseId
+      ? [
+          prisma.expense.update({
+            where: { id: plan.expenseId },
+            data: { isActive: false },
+          }),
+        ]
+      : []),
+  ]);
+
+  await syncCreditStatements(userId);
+  return { id: planId, status: "CANCELLED" };
 };

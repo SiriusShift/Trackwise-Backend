@@ -112,6 +112,12 @@ enum CreditStatementStatus {
   OVERDUE // past dueDate, still not fully paid
 }
 
+enum CreditInstallmentPlanStatus {
+  ACTIVE
+  PAID_OFF
+  CANCELLED
+}
+
 model User {
   id              Int     @id @default(autoincrement())
   firstName       String? @map("first_name")
@@ -303,13 +309,65 @@ model CreditDetail {
   assetId Int   @unique
   asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
 
-  creditLimit   Decimal           @db.Decimal(20, 2)
-  statementDate Int? // day of month (1-31), validate in app layer
-  dueDate       Int? // day of month (1-31), validate in app layer
-  statements    CreditStatement[]
+  creditLimit           Decimal                 @db.Decimal(20, 2)
+  statementDate         Int? // day of month (1-31), validate in app layer
+  dueDate               Int? // day of month (1-31), validate in app layer
+  // Alternative to dueDate for banks that set the due date a fixed number of
+  // days after the statement date. Takes precedence when set; a due date that
+  // lands on a weekend moves to the nearest weekday.
+  dueDaysAfterStatement Int?
+  statements            CreditStatement[]
+  installmentPlans      CreditInstallmentPlan[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// A purchase converted to installments on a card. The original purchase is
+// already counted as an Expense — installments must NOT create new expenses.
+model CreditInstallmentPlan {
+  id Int @id @default(autoincrement())
+
+  creditDetailId Int
+  creditDetail   CreditDetail @relation(fields: [creditDetailId], references: [id], onDelete: Cascade)
+
+  expenseId Int?     @unique // the original purchase
+  expense   Expense? @relation(fields: [expenseId], references: [id], onDelete: SetNull)
+
+  description   String
+  totalAmount   Decimal  @db.Decimal(20, 2) // original purchase amount, for display
+  monthlyAmount Decimal  @db.Decimal(20, 2) // what the bank bills per month, as entered by the user
+  termMonths    Int
+  startDate     DateTime
+
+  status CreditInstallmentPlanStatus @default(ACTIVE)
+
+  installments CreditInstallment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([creditDetailId])
+}
+
+model CreditInstallment {
+  id Int @id @default(autoincrement())
+
+  planId Int
+  plan   CreditInstallmentPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  installmentNo Int
+  dueDate       DateTime
+  amount        Decimal  @db.Decimal(20, 2)
+
+  // set when the cycle closes and this installment is rolled into a statement
+  statementId Int?
+  statement   CreditStatement? @relation(fields: [statementId], references: [id], onDelete: SetNull)
+
+  @@unique([planId, installmentNo])
+  @@index([planId])
+  @@index([statementId])
+  @@index([dueDate])
 }
 
 // One row per billing cycle. CreditDetail.statementDate/dueDate are just the
@@ -328,33 +386,20 @@ model CreditStatement {
 
   interestCharged Decimal               @default(0) @db.Decimal(20, 2) // filled in at confirmation from the real statement, not computed
   lateFeeCharged  Decimal               @default(0) @db.Decimal(20, 2) // filled in at confirmation from the real statement, not computed
+  otherFees       Decimal               @default(0) @db.Decimal(20, 2) // annual fee, FX fee, etc. — filled in at confirmation from the real statement
   status          CreditStatementStatus @default(PENDING)
 
   // 1:many, unlike LoanInstallment <-> Expense — a statement can be paid off
   // across several partial payments.
-  payments Transfer[]
+  payments     Transfer[]
+  installments CreditInstallment[]
 
-  createdAt           DateTime             @default(now())
-  updatedAt           DateTime             @updatedAt
-  creditStatementFees CreditStatementFee[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([creditDetailId, statementDate]) // one statement per cycle
   @@index([creditDetailId])
   @@index([dueDate])
-}
-
-model CreditStatementFee {
-  id Int @id @default(autoincrement())
-
-  creditStatementId Int
-  creditStatement   CreditStatement @relation(fields: [creditStatementId], references: [id], onDelete: Cascade)
-
-  label  String // e.g. "Annual Fee", "Foreign Transaction Fee" — free text or app-layer enum
-  amount Decimal @db.Decimal(20, 2)
-
-  createdAt DateTime @default(now())
-
-  @@index([creditStatementId])
 }
 
 model InvestmentPosition {
@@ -393,12 +438,12 @@ model Expense {
   recurringId      Int?
   recurringDueDate DateTime?
 
-  loanInstallment LoanInstallment? // back-relation only — FK lives on LoanInstallment.expenseId
-
-  user              User                  @relation(fields: [userId], references: [id])
-  category          Categories            @relation(fields: [categoryId], references: [id])
-  asset             Asset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
-  recurringTemplate RecurringTransaction? @relation("RecurringExpenses", fields: [recurringId], references: [id])
+  loanInstallment       LoanInstallment? // back-relation only — FK lives on LoanInstallment.expenseId
+  creditInstallmentPlan CreditInstallmentPlan? // back-relation only — FK lives on CreditInstallmentPlan.expenseId
+  user                  User                   @relation(fields: [userId], references: [id])
+  category              Categories             @relation(fields: [categoryId], references: [id])
+  asset                 Asset?                 @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  recurringTemplate     RecurringTransaction?  @relation("RecurringExpenses", fields: [recurringId], references: [id])
 
   @@index([userId])
   @@index([recurringId])

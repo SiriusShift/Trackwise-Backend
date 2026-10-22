@@ -64,12 +64,32 @@ export const getCreditStatementSchedule = asyncHandler(async (req, res) => {
   });
 });
 
-export const payCreditStatement = asyncHandler(async (req, res) => {
+export const getProjectedCreditStatement = asyncHandler(async (req, res) => {
+  const response = await schedulesService.getProjectedCreditStatement(req.user.id, req.params.id);
+
+  return res.status(200).json({
+    success: true,
+    message: "Projected credit statement fetched successfully",
+    data: response,
+  });
+});
+
+export const payCreditStatement =asyncHandler(async (req, res) => {
   const response = await schedulesService.payCreditStatement(req.user.id, req.params.id, req.body);
 
   return res.status(200).json({
     success: true,
     message: "Credit statement payment recorded successfully",
+    data: response,
+  });
+});
+
+export const cancelInstallmentPlan = asyncHandler(async (req, res) => {
+  const response = await schedulesService.cancelInstallmentPlan(req.user.id, req.params.id);
+
+  return res.status(200).json({
+    success: true,
+    message: "Installment plan cancelled successfully",
     data: response,
   });
 });

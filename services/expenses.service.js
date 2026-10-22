@@ -1,12 +1,17 @@
-
 import { AppError } from "../utils/AppError.js";
-import { ACCOUNT_RULES, assertAccountCategory, assertCanSpend } from "./assets.service.js";
+import {
+  ACCOUNT_RULES,
+  assertAccountCategory,
+  assertCanSpend,
+} from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
 import { prisma } from "../config/prisma.js";
 import { getPeriodRange, getUserTimezone } from "../utils/userTimezone.js";
 import { units } from "../schema/transaction.js";
+import { buildGraphFilters } from "../utils/graphFilters.js";
+import { buildInstallmentSchedule, hasDueRule } from "../utils/creditCycle.js";
 
 /*
 |--------------------------------------------------------------------------
@@ -38,6 +43,7 @@ export const getExpenses = async (userId, query) => {
     startDate,
     endDate,
     status,
+    isActive,
   } = query;
 
   const page = Number(pageIndex) >= 0 ? Number(pageIndex) + 1 : 1;
@@ -46,7 +52,8 @@ export const getExpenses = async (userId, query) => {
 
   const filters = {
     userId: Number(userId),
-    isActive: true,
+    // Defaults to active; the "Inactive" tab sends isActive=false
+    isActive: String(isActive) !== "false",
     ...(startDate &&
       endDate && {
         date: {
@@ -108,6 +115,7 @@ export const getExpenses = async (userId, query) => {
 */
 export const postExpense = async (userId, data, file, id) => {
   const amount = Number(data.amount);
+
   const categoryId = Number(data.category);
   const assetId = Number(data.account);
   const date = new Date(data.date);
@@ -115,31 +123,107 @@ export const postExpense = async (userId, data, file, id) => {
 
   await validateCategory(categoryId);
 
-  if (assetId) await assertAccountCategory(userId, assetId, ACCOUNT_RULES.expense);
+  const asset = await assertAccountCategory(
+    userId,
+    assetId,
+    ACCOUNT_RULES.expense,
+  );
 
   if (assetId && date <= new Date()) {
     await assertCanSpend(userId, assetId, amount);
   }
 
+  // Multipart bodies arrive as strings, so "false" must not read as truthy.
+  const isInstallment = data.installment === true || data.installment === "true";
+  const plan = isInstallment
+    ? await buildInstallmentPlan(userId, asset, data, date)
+    : null;
+
   const image = file ? await uploadFileToS3(file, "Expense", userId) : null;
 
-  const expense = await prisma.expense.create({
-    data: {
-      amount,
-      description: data.description,
-      status: "Completed",
-      date: data.date,
-      category: { connect: { id: categoryId } },
-      ...(assetId && { asset: { connect: { id: assetId } } }),
-      user: { connect: { id: userId } },
-      ...(image && { image }),
-      ...(recurringId && {
-        recurringTemplate: { connect: { id: recurringId } },
-      }),
-    },
+  // The expense and its plan are saved together so a failure can't leave a
+  // card purchase without its installments.
+  return prisma.$transaction(async (tx) => {
+    const expense = await tx.expense.create({
+      data: {
+        amount,
+        description: data.description,
+        status: "Completed",
+        date: data.date,
+        category: { connect: { id: categoryId } },
+        ...(assetId && { asset: { connect: { id: assetId } } }),
+        user: { connect: { id: userId } },
+        ...(image && { image }),
+        ...(recurringId && {
+          recurringTemplate: { connect: { id: recurringId } },
+        }),
+      },
+    });
+
+    if (plan) {
+      await tx.creditInstallmentPlan.create({
+        data: {
+          creditDetailId: plan.creditDetailId,
+          expenseId: expense.id,
+          description: data.description,
+          totalAmount: amount,
+          monthlyAmount: plan.monthlyAmount,
+          termMonths: plan.termMonths,
+          startDate: plan.startDate,
+          installments: { create: plan.installments },
+        },
+      });
+    }
+
+    return expense;
+  });
+};
+
+// Validates the installment inputs and lays the plan out on the card's cycles.
+const buildInstallmentPlan = async (userId, asset, data, date) => {
+  const termMonths = Number(data.termMonths);
+  const monthlyAmount = Number(data.monthlyAmount);
+  const skip = Number(data.installmentSkip ?? 0);
+
+  if (asset.category !== "CREDIT") {
+    throw new AppError("Installments are only available on credit cards", 400);
+  }
+  if (!Number.isInteger(termMonths) || termMonths < 2 || termMonths > 60) {
+    throw new AppError("Term must be 2 to 60 months", 400);
+  }
+  if (!(monthlyAmount > 0)) {
+    throw new AppError("Monthly amount must be greater than 0", 400);
+  }
+  if (!Number.isInteger(skip) || skip < 0 || skip > 12) {
+    throw new AppError("Deferred start must be 0 to 12 months", 400);
+  }
+
+  const creditDetail = await prisma.creditDetail.findUnique({
+    where: { assetId: asset.id },
+  });
+  if (!hasDueRule(creditDetail)) {
+    throw new AppError(
+      "Set the card's statement date and due date before using installments",
+      400,
+    );
+  }
+
+  const { startDate, installments } = buildInstallmentSchedule({
+    purchaseDate: date,
+    timezone: await getUserTimezone(userId),
+    creditDetail,
+    termMonths,
+    monthlyAmount,
+    skip,
   });
 
-  return expense;
+  return {
+    creditDetailId: creditDetail.id,
+    monthlyAmount,
+    termMonths,
+    startDate,
+    installments,
+  };
 };
 
 /*
@@ -154,7 +238,8 @@ export const updateExpense = async (userId, data, file, id) => {
   const categoryId = Number(data.category);
   const assetId = Number(data.account);
 
-  if (assetId) await assertAccountCategory(userId, assetId, ACCOUNT_RULES.expense);
+  if (assetId)
+    await assertAccountCategory(userId, assetId, ACCOUNT_RULES.expense);
 
   // The expense's current amount is already counted against its account when
   // it is Completed on the same one, so add it back before checking.
@@ -204,16 +289,25 @@ export const getGraph = async (userId, query) => {
   const userIdNum = Number(userId);
 
   const timezone = await getUserTimezone(userIdNum);
-  const { start, end, prevStart } = getPeriodRange(startDate, endDate, mode, timezone);
+  const { start, end, prevStart } = getPeriodRange(
+    startDate,
+    endDate,
+    mode,
+    timezone,
+  );
+
+  const { where: tableFilters, sql: trendFilters } = buildGraphFilters(
+    query,
+    "Completed",
+  );
 
   const filters = {
     userId: userIdNum,
-    isActive: true,
+    ...tableFilters,
     date: {
       gte: start,
       lte: end,
     },
-    status: "Completed",
   };
 
   /* ------------------ TREND DATA ------------------ */
@@ -230,8 +324,8 @@ export const getGraph = async (userId, query) => {
     WHERE
       "date" >= ${rangeStart}::timestamp
       AND "date" <= ${rangeEnd}::timestamp
-      AND "isActive" = true
       AND "userId" = ${userIdNum}
+      ${trendFilters}
     GROUP BY period
     ORDER BY period
   `;

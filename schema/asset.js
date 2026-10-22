@@ -23,6 +23,8 @@ const creditDetailSchema = Joi.object({
   creditLimit: Joi.number().positive().required(),
   statementDate: Joi.number().integer().min(1).max(31).allow(null),
   dueDate: Joi.number().integer().min(1).max(31).allow(null),
+  // Alternative to dueDate: due this many days after the statement date
+  dueDaysAfterStatement: Joi.number().integer().min(1).max(60).allow(null),
 });
 
 const savingDetailSchema = Joi.object({
@@ -30,12 +32,21 @@ const savingDetailSchema = Joi.object({
   targetDate: Joi.date().allow(null),
 });
 
-// Statements and bill reminders are generated from these two days, so a new
+// Statements and bill reminders are generated from the statement day plus one
+// due rule (a day of the month, or days after the statement date), so a new
 // card needs them (existing cards without them can still be edited).
-const newCreditDetailSchema = creditDetailSchema.keys({
-  statementDate: Joi.number().integer().min(1).max(31).required(),
-  dueDate: Joi.number().integer().min(1).max(31).required(),
-});
+const newCreditDetailSchema = creditDetailSchema
+  .keys({
+    statementDate: Joi.number().integer().min(1).max(31).required(),
+  })
+  .custom((value, helpers) => {
+    if (!value.dueDate && !value.dueDaysAfterStatement) {
+      return helpers.message(
+        "Set a due day or the number of days after the statement date",
+      );
+    }
+    return value;
+  });
 
 export const createAssetSchema = Joi.object({
   name: Joi.string().trim().max(100).required(),

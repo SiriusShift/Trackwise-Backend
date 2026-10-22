@@ -24,17 +24,39 @@ export const validateCategory = async (categoryId) => {
   return category;
 };
 
-export const createCategory = async (
-  userId,
-  categories,
-  isAdminMode,
-) => {
+export const createCategory = async (userId, categories, isAdminMode) => {
   if (!Array.isArray(categories) || categories.length === 0) {
     throw new AppError("Categories should be a non-empty array.", 400);
   }
 
+  const names = [...new Set(categories.map((c) => c.name.trim()))];
+
+  const existing = await prisma.categories.findMany({
+    where: {
+      name: { in: names },
+      OR: [{ userId: null }, { userId }],
+    },
+    select: { name: true, type: true },
+  });
+
+  const taken = new Set(
+    existing.map((c) => `${c.type}:${c.name.toLowerCase()}`),
+  );
+
+  // Drops categories that already exist, and duplicates within the request
+  const unique = categories.filter((c) => {
+    const key = `${c.type}:${c.name.trim().toLowerCase()}`;
+    if (taken.has(key)) return false;
+    taken.add(key);
+    return true;
+  });
+
+  if (unique.length === 0) {
+    throw new AppError("Category already exists.", 409);
+  }
+
   const result = await prisma.categories.createMany({
-    data: categories.map((category) => ({
+    data: unique.map((category) => ({
       ...category,
       ...(isAdminMode ? {} : { userId }),
     })),
@@ -49,14 +71,11 @@ export const getCategories = async (userId, type) => {
     where: {
       isActive: true,
       ...(type?.trim() && { type }),
-      OR: [
-        { userId: null },
-        { userId: userId },
-      ],
+      OR: [{ userId: null }, { userId: userId }],
     },
     include: {
       categoriesTracker: {
-    where: { userId, isActive: true }, // add this
+        where: { userId, isActive: true }, // add this
 
         select: {
           id: true,
@@ -64,18 +83,15 @@ export const getCategories = async (userId, type) => {
         },
       },
     },
-    orderBy: [
-      { userId: "asc" },
-      { name: "asc" },
-    ],
+    orderBy: [{ userId: "asc" }, { name: "asc" }],
   });
 
   const formattedCategories = categories.map(
     ({ categoriesTracker, ...category }) => ({
       ...category,
       hasTracker: categoriesTracker.length > 0,
-    })
+    }),
   );
 
-  return formattedCategories
-}
+  return formattedCategories;
+};

@@ -72,6 +72,22 @@ export const archiveTransaction = async (req, res) => {
   }
 };
 
+/* ---------------- RESTORE ---------------- */
+// Errors bubble to the error handler (via catchAsync) so the client gets the
+// real status and message, e.g. why an installment purchase can't be restored.
+export const restoreTransaction = async (req, res) => {
+  await transactionService.restoreTransaction(
+    req.query.type,
+    req.params.id,
+    req.user.id,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Transaction restored successfully",
+  });
+};
+
 /* ---------------- DUE ---------------- */
 
 // export const dueTransactions = async (req, res) => {

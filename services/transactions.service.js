@@ -5,7 +5,13 @@ import { validateIncome } from "./incomes.service.js";
 import { validateTransfers } from "./transfers.service.js";
 
 import { prisma } from "../config/prisma.js";
-import { getAssetBalance } from "./assets.service.js";
+import { AppError } from "../utils/AppError.js";
+import {
+  assertCanReceive,
+  assertCanSpend,
+  getAssetBalance,
+} from "./assets.service.js";
+import { syncCreditStatements } from "./schedules.service.js";
 import { getUserTimezone } from "../utils/userTimezone.js";
 /*
 |--------------------------------------------------------------------------
@@ -477,8 +483,32 @@ export const archiveTransaction = async (type, id, userId) => {
       break;
   }
 
+  // Archiving a card purchase also stops its installment plan: drop the
+  // installments not yet billed and cancel the plan, keeping billed ones as history.
+  if (type === "expense") {
+    const expenseId = Number(id);
+
+    await prisma.$transaction([
+      prisma.creditInstallment.deleteMany({
+        where: { statementId: null, plan: { expenseId } },
+      }),
+      prisma.creditInstallmentPlan.updateMany({
+        where: { expenseId },
+        data: { status: "CANCELLED" },
+      }),
+      prisma.expense.update({
+        where: { id: expenseId },
+        data: { isActive: false },
+      }),
+    ]);
+
+    // Settle any open card bill the archived purchase was part of.
+    await syncCreditStatements(userId);
+
+    return;
+  }
+
   const modelMap = {
-    expense: prisma.expense,
     income: prisma.income,
     transfer: prisma.transfer,
   };
@@ -491,6 +521,57 @@ export const archiveTransaction = async (type, id, userId) => {
   });
 
   return;
+};
+
+/*
+|--------------------------------------------------------------------------
+| Restore Transaction
+|--------------------------------------------------------------------------
+| Undoes archiveTransaction. A card purchase with an installment plan can't
+| be restored: archiving it cancelled the plan and removed its unbilled
+| installments, so it has to be recreated.
+*/
+export const restoreTransaction = async (type, id, userId) => {
+  const where = { id: Number(id), userId: Number(userId) };
+
+  const row =
+    type === "expense"
+      ? await prisma.expense.findFirst({
+          where,
+          include: { creditInstallmentPlan: { select: { id: true } } },
+        })
+      : await prisma[type].findFirst({ where });
+
+  if (!row) throw new AppError("Transaction not found", 404);
+  if (row.isActive) throw new AppError("Transaction is not archived", 400);
+
+  if (type === "expense" && row.creditInstallmentPlan) {
+    throw new AppError(
+      "This purchase had an installment plan and can't be restored. Create the purchase again with its installment plan.",
+      400,
+    );
+  }
+
+  // Restoring puts the amount back on the account, so apply the same
+  // balance and limit rules as creating it (only once it has taken effect).
+  const amount = Number(row.amount);
+  const takesEffect = row.status === "Completed" && row.date <= new Date();
+
+  if (takesEffect) {
+    if (type === "expense" && row.assetId) {
+      await assertCanSpend(userId, row.assetId, amount);
+    } else if (type === "transfer") {
+      await assertCanSpend(userId, row.fromAssetId, amount);
+      await assertCanReceive(userId, row.toAssetId, amount);
+    }
+  }
+
+  await prisma[type].update({
+    where: { id: row.id },
+    data: { isActive: true },
+  });
+
+  await syncCreditStatements(userId);
 };
 
 /*

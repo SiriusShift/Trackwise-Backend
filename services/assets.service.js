@@ -49,6 +49,33 @@ export const assertAccountCategory = async (userId, assetId, rule) => {
 | Create Asset
 |--------------------------------------------------------------------------
 */
+// The due date is either a day of the month (dueDate) or a number of days
+// after the statement date (dueDaysAfterStatement), never both.
+const DUE_DAYS_AFTER_MAX = 60;
+
+const assertDueRule = (creditDetail) => {
+  const { dueDate, dueDaysAfterStatement } = creditDetail ?? {};
+  if (dueDate && dueDaysAfterStatement) {
+    throw new AppError("Use either a due day or days after the statement date, not both", 400);
+  }
+  if (dueDaysAfterStatement) {
+    const days = Number(dueDaysAfterStatement);
+    if (!Number.isInteger(days) || days < 1 || days > DUE_DAYS_AFTER_MAX) {
+      throw new AppError(
+        `dueDaysAfterStatement must be between 1 and ${DUE_DAYS_AFTER_MAX} days`,
+        400,
+      );
+    }
+  }
+};
+
+const dueRuleData = (creditDetail) => ({
+  dueDate: creditDetail?.dueDate ? Number(creditDetail.dueDate) : null,
+  dueDaysAfterStatement: creditDetail?.dueDaysAfterStatement
+    ? Number(creditDetail.dueDaysAfterStatement)
+    : null,
+});
+
 export const createAsset = async (
   name,
   balance,
@@ -65,6 +92,7 @@ export const createAsset = async (
     if (!creditDetail?.creditLimit) {
       throw new AppError("creditLimit is required for CREDIT assets", 400);
     }
+    assertDueRule(creditDetail);
     for (const [label, val] of [
       ["statementDate", creditDetail?.statementDate],
       ["dueDate", creditDetail?.dueDate],
@@ -100,9 +128,7 @@ export const createAsset = async (
             statementDate: creditDetail?.statementDate
               ? Number(creditDetail?.statementDate)
               : null,
-            dueDate: creditDetail?.dueDate
-              ? Number(creditDetail?.dueDate)
-              : null,
+            ...dueRuleData(creditDetail),
           },
         },
       }),
@@ -180,6 +206,7 @@ export const updateAsset = async (
     if (!creditDetail.creditLimit) {
       throw new AppError("creditLimit is required for CREDIT assets", 400);
     }
+    assertDueRule(creditDetail);
     for (const [label, val] of [
       ["statementDate", creditDetail.statementDate],
       ["dueDate", creditDetail.dueDate],
@@ -203,7 +230,7 @@ export const updateAsset = async (
       statementDate: creditDetail.statementDate
         ? Number(creditDetail.statementDate)
         : null,
-      dueDate: creditDetail.dueDate ? Number(creditDetail.dueDate) : null,
+      ...dueRuleData(creditDetail),
     };
 
   const savingData = isSavings &&
@@ -327,6 +354,7 @@ export const getAssetBalance = async (
           creditLimit: true,
           statementDate: true,
           dueDate: true,
+          dueDaysAfterStatement: true,
         },
       },
 
@@ -489,7 +517,12 @@ export const getAssetBalance = async (
         remainingCredit:
           Number(asset.creditDetail.creditLimit) - remainingBalance,
         openStatements: openStatementsForAsset,
-        pendingDue: openStatementsForAsset[0]?.remainingOnStatement ?? 0,
+        // Never more than the card owes, so an archived purchase can't leave a
+        // bill that payments are already refused for.
+        pendingDue: Math.min(
+          openStatementsForAsset[0]?.remainingOnStatement ?? 0,
+          Math.max(remainingBalance, 0),
+        ),
       }),
       ...(rangeFilter && {
         rangeIncome: sumFor(rangeIncomes, "assetId", asset.id),

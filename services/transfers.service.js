@@ -32,7 +32,8 @@ export const getTransfers = async (userId, query) => {
     startDate,
     endDate,
     status,
-    Assets
+    Assets,
+    isActive,
   } = query;
 
   const page = parseInt(pageIndex) >= 0 ? parseInt(pageIndex) + 1 : 1;
@@ -41,7 +42,8 @@ export const getTransfers = async (userId, query) => {
 
   const filters = {
     userId: parseInt(userId),
-    isActive: true,
+    // Defaults to active; the "Inactive" tab sends isActive=false
+    isActive: String(isActive) !== "false",
     ...(startDate &&
       endDate && {
       date: {
