@@ -4,8 +4,9 @@ import UserRouter from "./auth.routes.js";
 import CategoryRouter from "./categories.routes.js";
 // import InstallmentRouter from "./installments.routes.js";
 import { app } from "../app.js";
-import ReportsRouter from "./reports.routes.js";
 import NotificationRouter from "./notification.routes.js";
+import ReportsRouter from "./reports.routes.js";
+import SavingsGoalRouter from "./savingsGoals.routes.js";
 import SettingsRouter from "./settings.routes.js";
 import TransactionRouter from "./transaction.routes.js";
 
@@ -15,6 +16,7 @@ export const runRouters = () => {
   app.use("/categories", CategoryRouter);
   app.use("/transactions", TransactionRouter);
   app.use("/reports", ReportsRouter)
+  app.use("/savings-goals", SavingsGoalRouter);
   app.use("/settings", SettingsRouter);
   app.use("/notifications", NotificationRouter);
 };

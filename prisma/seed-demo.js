@@ -130,8 +130,7 @@ const SPENDING = [
 
 const ACCOUNTS = [
   { name: "Cash Wallet", category: "CASH", subtype: null, balance: 25000, color: "#16A34A", institution: null },
-  { name: "BDO Savings", category: "BANK", subtype: "SAVINGS", balance: 85000, color: "#2563EB", institution: "BDO",
-    savingDetail: { targetAmount: 200000, targetDate: new Date(Date.UTC(2027, 5, 30, 4)) } },
+  { name: "BDO Savings", category: "BANK", subtype: "SAVINGS", balance: 85000, color: "#2563EB", institution: "BDO" },
   { name: "BPI Checking", category: "BANK", subtype: "CHECKING", balance: 65000, color: "#DC2626", institution: "BPI" },
   { name: "GCash", category: "BANK", subtype: "E_WALLET", balance: 20000, color: "#0EA5E9", institution: "GCash" },
   { name: "Metrobank Credit Card", category: "CREDIT", subtype: "CREDIT_CARD", balance: 0, color: "#7C3AED", institution: "Metrobank",
@@ -211,7 +210,7 @@ const resetUser = async () => {
     prisma.recurringTransaction.deleteMany({ where: { userId } }),
     prisma.categoryTracker.deleteMany({ where: { userId } }),
     prisma.savingsGoal.deleteMany({ where: { userId } }),
-    prisma.asset.deleteMany({ where: { userId } }), // cascades credit/loan/saving/investment details
+    prisma.asset.deleteMany({ where: { userId } }), // cascades credit/loan/investment details
     prisma.categories.deleteMany({ where: { userId } }),
     prisma.user.update({
       where: { id: userId },
@@ -262,7 +261,6 @@ const main = async () => {
         openedAt: dayOf(MONTHS_BACK + 2, 1),
         userId,
         ...(a.creditDetail && { creditDetail: { create: a.creditDetail } }),
-        ...(a.savingDetail && { savingDetail: { create: a.savingDetail } }),
       },
       include: { creditDetail: true },
     });
@@ -572,8 +570,8 @@ const main = async () => {
   await prisma.savingsGoal.createMany({
     data: [
       { name: "Emergency Fund", targetAmount: 200000, targetDate: new Date(Date.UTC(2027, 5, 30, 4)), assetId: A("BDO Savings"), userId },
-      { name: "Japan Trip", targetAmount: 150000, targetDate: new Date(Date.UTC(2027, 3, 1, 4)), userId },
-      { name: "New Laptop", targetAmount: 65000, targetDate: new Date(Date.UTC(2026, 11, 20, 4)), userId },
+      { name: "Japan Trip", targetAmount: 150000, targetDate: new Date(Date.UTC(2027, 3, 1, 4)), currentAmount: 42000, userId },
+      { name: "New Laptop", targetAmount: 65000, targetDate: new Date(Date.UTC(2026, 11, 20, 4)), currentAmount: 30000, userId },
     ],
   });
 

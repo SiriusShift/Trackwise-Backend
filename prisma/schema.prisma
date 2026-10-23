@@ -198,7 +198,6 @@ model Asset {
   loanDetail         LoanDetail?
   investmentPosition InvestmentPosition?
   creditDetail       CreditDetail?
-  savingDetail       SavingDetail?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -215,6 +214,10 @@ model SavingsGoal {
   targetDate   DateTime?
   isActive     Boolean   @default(true)
 
+  // Saved so far, entered by hand. Only used when the goal has no asset;
+  // a linked goal's progress is the asset's balance.
+  currentAmount Decimal @default(0) @db.Decimal(20, 2)
+
   userId Int
   user   User @relation(fields: [userId], references: [id])
 
@@ -228,18 +231,6 @@ model SavingsGoal {
   @@index([userId])
 }
 
-model SavingDetail {
-  id Int @id @default(autoincrement())
-
-  assetId Int   @unique
-  asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
-
-  targetAmount Decimal   @db.Decimal(20, 2)
-  targetDate   DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
 
 model LoanDetail {
   id Int @id @default(autoincrement())

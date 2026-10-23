@@ -4,13 +4,13 @@ import * as assetService from "../services/assets.service.js";
 
 /* ---------------- CREATE ASSET ---------------- */
 export const createAsset = asyncHandler(async (req, res) => {
-  const { name, balance, type, sub_type, currency, color, includeNetWorth, creditDetail, savingDetail } = req.body;
+  const { name, balance, type, sub_type, currency, color, includeNetWorth, creditDetail, savingsGoal } = req.body;
 
   const response = await assetService.createAsset(
     name,
     balance, currency,
     type, sub_type, color,
-    req.user.id, includeNetWorth, creditDetail, savingDetail
+    req.user.id, includeNetWorth, creditDetail, savingsGoal
   );
 
   return res.status(200).json({
@@ -24,7 +24,7 @@ export const createAsset = asyncHandler(async (req, res) => {
 /* ---------------- UPDATE ASSET ---------------- */
 export const updateAsset = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { name, color, institution, includeNetWorth, creditDetail, savingDetail } = req.body;
+  const { name, color, institution, includeNetWorth, creditDetail } = req.body;
 
   const response = await assetService.updateAsset(req.user.id, id, {
     name,
@@ -32,7 +32,6 @@ export const updateAsset = asyncHandler(async (req, res) => {
     institution,
     includeNetWorth,
     creditDetail,
-    savingDetail,
   });
 
   return res.status(200).json({

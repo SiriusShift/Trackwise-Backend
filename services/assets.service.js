@@ -86,7 +86,7 @@ export const createAsset = async (
   userId,
   includeNetWorth,
   creditDetail,
-  savingDetail,
+  savingsGoal,
 ) => {
   if (type === "CREDIT") {
     if (!creditDetail?.creditLimit) {
@@ -132,17 +132,18 @@ export const createAsset = async (
           },
         },
       }),
-      ...(subtype === "SAVINGS" &&
-        savingDetail && {
-          savingDetail: {
-            create: {
-              targetAmount: parseFloat(savingDetail.targetAmount),
-              targetDate: savingDetail.targetDate
-                ? new Date(savingDetail.targetDate)
-                : null,
-            },
+      // Created with the asset so both are saved or neither is
+      ...((subtype === "SAVINGS" &&
+        savingsGoal?.targetAmount != null) && {
+        savingsGoals: {
+          create: {
+            name,
+            targetAmount: parseFloat(savingsGoal.targetAmount),
+            targetDate: new Date(savingsGoal.targetDate),
+            user: { connect: { id: Number(userId) } },
           },
-        }),
+        },
+      }),
       color,
 
       user: {
@@ -151,7 +152,7 @@ export const createAsset = async (
     },
     include: {
       creditDetail: true,
-      savingDetail: true,
+      savingsGoals: { where: { isActive: true } },
     },
   });
 
@@ -180,7 +181,7 @@ export const archiveAsset = async (userId, id, archived = true) => {
     },
     include: {
       creditDetail: true,
-      savingDetail: true,
+      savingsGoals: { where: { isActive: true } },
     },
   });
 };
@@ -192,15 +193,15 @@ export const archiveAsset = async (userId, id, archived = true) => {
 | Category, subtype, currency and balance are immutable after creation (the
 | edit dialog locks them) since changing them would corrupt the transaction
 | history. Only descriptive fields and credit card details can change.
+| Savings goals are edited through the savings goals API.
 */
 export const updateAsset = async (
   userId,
   id,
-  { name, color, institution, includeNetWorth, creditDetail, savingDetail },
+  { name, color, institution, includeNetWorth, creditDetail },
 ) => {
   const existing = await validateAsset(id, userId);
   const isCredit = existing.category === "CREDIT";
-  const isSavings = existing.subtype === "SAVINGS";
 
   if (isCredit && creditDetail) {
     if (!creditDetail.creditLimit) {
@@ -226,20 +227,12 @@ export const updateAsset = async (
 
   const creditData = isCredit &&
     creditDetail && {
-      creditLimit: parseFloat(creditDetail.creditLimit),
-      statementDate: creditDetail.statementDate
-        ? Number(creditDetail.statementDate)
-        : null,
-      ...dueRuleData(creditDetail),
-    };
-
-  const savingData = isSavings &&
-    savingDetail && {
-      targetAmount: parseFloat(savingDetail.targetAmount),
-      targetDate: savingDetail.targetDate
-        ? new Date(savingDetail.targetDate)
-        : null,
-    };
+    creditLimit: parseFloat(creditDetail.creditLimit),
+    statementDate: creditDetail.statementDate
+      ? Number(creditDetail.statementDate)
+      : null,
+    ...dueRuleData(creditDetail),
+  };
 
   return prisma.asset.update({
     where: { id: existing.id },
@@ -253,13 +246,10 @@ export const updateAsset = async (
       ...(creditData && {
         creditDetail: { upsert: { create: creditData, update: creditData } },
       }),
-      ...(savingData && {
-        savingDetail: { upsert: { create: savingData, update: savingData } },
-      }),
     },
     include: {
       creditDetail: true,
-      savingDetail: true,
+      savingsGoals: { where: { isActive: true } },
     },
   });
 };
@@ -301,11 +291,11 @@ export const getAssetBalance = async (
   const rangeFilter =
     from || to
       ? {
-          date: {
-            ...(from && { gte: new Date(from) }),
-            ...(to && { lte: new Date(to) }),
-          },
-        }
+        date: {
+          ...(from && { gte: new Date(from) }),
+          ...(to && { lte: new Date(to) }),
+        },
+      }
       : null;
 
   const whereFor = (relationField, extra = {}) => ({
@@ -358,8 +348,11 @@ export const getAssetBalance = async (
         },
       },
 
-      savingDetail: {
+      savingsGoals: {
+        where: { isActive: true },
         select: {
+          id: true,
+          name: true,
           targetAmount: true,
           targetDate: true,
         },
@@ -403,17 +396,17 @@ export const getAssetBalance = async (
 
   const [rangeIncomes, rangeExpenses] = rangeFilter
     ? await Promise.all([
-        prisma.income.groupBy({
-          by: ["assetId"],
-          where: whereFor("asset", rangeFilter),
-          _sum: { amount: true },
-        }),
-        prisma.expense.groupBy({
-          by: ["assetId"],
-          where: whereFor("asset", rangeFilter),
-          _sum: { amount: true },
-        }),
-      ])
+      prisma.income.groupBy({
+        by: ["assetId"],
+        where: whereFor("asset", rangeFilter),
+        _sum: { amount: true },
+      }),
+      prisma.expense.groupBy({
+        by: ["assetId"],
+        where: whereFor("asset", rangeFilter),
+        _sum: { amount: true },
+      }),
+    ])
     : [[], []];
 
   const creditDetailIds = assets
@@ -422,19 +415,19 @@ export const getAssetBalance = async (
 
   const openStatements = creditDetailIds.length
     ? await prisma.creditStatement.findMany({
-        where: {
-          creditDetailId: { in: creditDetailIds },
-          status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
-        },
-        select: {
-          id: true,
-          creditDetailId: true,
-          statementBalance: true,
-          dueDate: true,
-          payments: { select: { amount: true } },
-        },
-        orderBy: { dueDate: "asc" },
-      })
+      where: {
+        creditDetailId: { in: creditDetailIds },
+        status: { in: ["PENDING", "PARTIAL", "OVERDUE"] },
+      },
+      select: {
+        id: true,
+        creditDetailId: true,
+        statementBalance: true,
+        dueDate: true,
+        payments: { select: { amount: true } },
+      },
+      orderBy: { dueDate: "asc" },
+    })
     : [];
 
   const statementsByDetailId = new Map();
@@ -459,10 +452,10 @@ export const getAssetBalance = async (
 
   const uniqueForeignCurrencies = baseCurrency
     ? [
-        ...new Set(
-          assets.map((a) => a.currency).filter((c) => c && c !== baseCurrency),
-        ),
-      ]
+      ...new Set(
+        assets.map((a) => a.currency).filter((c) => c && c !== baseCurrency),
+      ),
+    ]
     : [];
 
   const rateEntries = await Promise.all(
@@ -485,15 +478,15 @@ export const getAssetBalance = async (
     // CREDIT: charges increase what's owed, payments (transferIn) decrease it — inverse.
     const remainingBalance = isCredit
       ? Number(asset.balance) +
-        totalExpenses -
-        totalIncomes +
-        totalTransferOut -
-        totalTransferIn
+      totalExpenses -
+      totalIncomes +
+      totalTransferOut -
+      totalTransferIn
       : Number(asset.balance) +
-        totalIncomes -
-        totalExpenses -
-        totalTransferOut +
-        totalTransferIn;
+      totalIncomes -
+      totalExpenses -
+      totalTransferOut +
+      totalTransferIn;
 
     const rate =
       baseCurrency && asset.currency !== baseCurrency

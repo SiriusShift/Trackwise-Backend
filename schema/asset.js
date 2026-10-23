@@ -27,9 +27,21 @@ const creditDetailSchema = Joi.object({
   dueDaysAfterStatement: Joi.number().integer().min(1).max(60).allow(null),
 });
 
-const savingDetailSchema = Joi.object({
-  targetAmount: Joi.number().positive().required(),
+// Optional goal set while creating a savings account. Goals are managed in
+// the savings goals API afterwards; the amount and date only make sense
+// together.
+const accountSavingsGoalSchema = Joi.object({
+  targetAmount: Joi.number().positive().allow(null),
   targetDate: Joi.date().allow(null),
+}).custom((value, helpers) => {
+  const hasAmount = value.targetAmount != null;
+  const hasDate = value.targetDate != null;
+  if (hasAmount !== hasDate) {
+    return helpers.message(
+      "Set both a target amount and a target date, or leave both empty",
+    );
+  }
+  return value;
 });
 
 // Statements and bill reminders are generated from the statement day plus one
@@ -61,7 +73,7 @@ export const createAssetSchema = Joi.object({
     then: newCreditDetailSchema.required(),
     otherwise: Joi.optional().allow(null),
   }),
-  savingDetail: savingDetailSchema.allow(null),
+  savingsGoal: accountSavingsGoalSchema.allow(null),
 });
 
 export const updateAssetSchema = Joi.object({
@@ -70,5 +82,4 @@ export const updateAssetSchema = Joi.object({
   institution: Joi.string().trim().max(100).allow(null, ""),
   includeNetWorth: Joi.boolean(),
   creditDetail: creditDetailSchema.allow(null),
-  savingDetail: savingDetailSchema.allow(null),
 });
