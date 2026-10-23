@@ -6,13 +6,16 @@ import { validateTransfers } from "./transfers.service.js";
 
 import { prisma } from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
+import { getUserTimezone } from "../utils/userTimezone.js";
 import {
   assertCanReceive,
   assertCanSpend,
   getAssetBalance,
 } from "./assets.service.js";
-import { syncCreditStatements } from "./schedules.service.js";
-import { getUserTimezone } from "../utils/userTimezone.js";
+import {
+  buildBilledInstallmentRefund,
+  syncCreditStatements,
+} from "./schedules.service.js";
 /*
 |--------------------------------------------------------------------------
 | Get History (Paginated)
@@ -488,7 +491,25 @@ export const archiveTransaction = async (type, id, userId) => {
   if (type === "expense") {
     const expenseId = Number(id);
 
+    const plan = await prisma.creditInstallmentPlan.findUnique({
+      where: { expenseId },
+      select: { id: true },
+    });
+
+    // Not a card installment purchase: just archive the expense.
+    if (!plan) {
+      await prisma.expense.update({
+        where: { id: expenseId },
+        data: { isActive: false },
+      });
+      await syncCreditStatements(userId);
+      return;
+    }
+
+    const refund = await buildBilledInstallmentRefund(userId, plan.id);
+
     await prisma.$transaction([
+      ...(refund ? [prisma.transfer.create({ data: refund })] : []),
       prisma.creditInstallment.deleteMany({
         where: { statementId: null, plan: { expenseId } },
       }),
@@ -519,8 +540,6 @@ export const archiveTransaction = async (type, id, userId) => {
     where: { id: Number(id) },
     data: { isActive: false },
   });
-
-  return;
 };
 
 /*
@@ -537,9 +556,9 @@ export const restoreTransaction = async (type, id, userId) => {
   const row =
     type === "expense"
       ? await prisma.expense.findFirst({
-          where,
-          include: { creditInstallmentPlan: { select: { id: true } } },
-        })
+        where,
+        include: { creditInstallmentPlan: { select: { id: true } } },
+      })
       : await prisma[type].findFirst({ where });
 
   if (!row) throw new AppError("Transaction not found", 404);
@@ -637,9 +656,9 @@ export const getRunway = async (userId) => {
     .sort((a, b) => a - b)[0];
   const daysOfData = oldest
     ? Math.min(
-        RUNWAY_WINDOW_DAYS,
-        Math.max(1, now.diff(moment.tz(oldest, tz).startOf("day"), "days") + 1),
-      )
+      RUNWAY_WINDOW_DAYS,
+      Math.max(1, now.diff(moment.tz(oldest, tz).startOf("day"), "days") + 1),
+    )
     : 0;
 
   const avgDailyExpense = daysOfData
