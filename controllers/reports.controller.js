@@ -81,6 +81,79 @@ export const getTransactionStatement = asyncHandler(
     }
 );
 
+export const getCreditStatementList = asyncHandler(
+    async (req, res) => {
+        const assetId = Number(req.query.assetId);
+        if (!req.query.assetId || Number.isNaN(assetId)) {
+            throw new AppError("assetId must be a valid number", 400);
+        }
+
+        const userId = req.user.id;
+        const timezone = await getUserTimezone(userId);
+        const statements = await reportsService.getCreditStatementList({ userId, assetId, timezone });
+
+        return res.status(200).json({
+            success: true,
+            data: statements,
+        });
+    }
+);
+
+export const getCreditCardStatement = asyncHandler(
+    async (req, res) => {
+        const { statementId, format = "json" } = req.query;
+
+        const parsedStatementId = Number(statementId);
+        if (!statementId || Number.isNaN(parsedStatementId)) {
+            throw new AppError("statementId must be a valid number", 400);
+        }
+
+        if (!VALID_FORMATS.includes(format)) {
+            throw new AppError(
+                `format must be one of: ${VALID_FORMATS.join(", ")}`,
+                400
+            );
+        }
+
+        const userId = req.user.id;
+        const timezone = await getUserTimezone(userId);
+
+        const statement = await reportsService.getCreditCardStatement({
+            userId,
+            statementId: parsedStatementId,
+            format,
+            timezone,
+        });
+
+        const filenameBase = `Credit-Card-Statement_${parsedStatementId}`;
+        if (format === "excel") {
+            res.setHeader(
+                "Content-Type",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            );
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${filenameBase}.xlsx"`
+            );
+            return res.send(statement);
+        }
+
+        if (format === "csv") {
+            res.setHeader("Content-Type", "text/csv");
+            res.setHeader(
+                "Content-Disposition",
+                `attachment; filename="${filenameBase}.csv"`
+            );
+            return res.send(statement);
+        }
+
+        return res.status(200).json({
+            success: true,
+            data: statement,
+        });
+    }
+);
+
 export const getMoneyFlowStatement = asyncHandler(
     async (req, res) => {
         const { from, to, format = "json" } = req.query;
