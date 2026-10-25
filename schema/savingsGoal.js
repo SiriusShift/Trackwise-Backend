@@ -1,5 +1,5 @@
 import Joi from "joi";
-import { amount, id } from "./common.js";
+import { amount, description, id } from "./common.js";
 
 export const createSavingsGoalSchema = Joi.object({
   name: Joi.string().trim().max(100).required(),
@@ -19,6 +19,15 @@ export const updateSavingsGoalSchema = Joi.object({
   isActive: Joi.boolean(),
 }).min(1);
 
+// Destination is the goal's linked account, so only the source is sent
+export const contributeSavingsSchema = Joi.object({
+  amount: amount.required(),
+  account: id.required(),
+  category: id.required(),
+  date: Joi.date(),
+  description: description.allow(""),
+});
+
 export const getSavingsGoalsQuery = Joi.object({
-  includeInactive: Joi.boolean(),
+  isActive: Joi.boolean(),
 });

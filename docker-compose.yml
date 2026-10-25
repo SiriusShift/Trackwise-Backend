@@ -4,5 +4,29 @@ services:
     ports:
       - "5001:5000"
     env_file:
-      - .env.aws
+      - .env.render
+    environment:
+      DATABASE_URL: postgresql://dev:dev@db:5432/app
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
+
+  db:
+    image: postgres:16
+    ports:
+      - "5433:5432"   # optional: lets you connect from your host with psql or Prisma Studio
+    environment:
+      POSTGRES_USER: dev
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: app
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U dev -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

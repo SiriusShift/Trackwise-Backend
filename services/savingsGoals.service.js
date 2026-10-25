@@ -1,10 +1,16 @@
 import { prisma } from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
+import { getUserTimezone } from "../utils/userTimezone.js";
 import {
+  ACCOUNT_RULES,
+  assertAccountCategory,
+  assertCanSpend,
   getAssetBalance,
   isLiabilityCategory,
   validateAsset,
 } from "./assets.service.js";
+import { validateCategory } from "./categories.service.js";
+import moment from "moment-timezone"; // NOTE: must be moment-timezone — plain "moment" has no .tz()
 
 /*
 |--------------------------------------------------------------------------
@@ -30,7 +36,10 @@ const assertGoalAsset = async (userId, assetId) => {
     throw new AppError("Archived accounts can't be linked to a goal", 400);
   }
   if (isLiabilityCategory(asset.category)) {
-    throw new AppError("Goals can't be linked to a credit or loan account", 400);
+    throw new AppError(
+      "Goals can't be linked to a credit or loan account",
+      400,
+    );
   }
   return asset;
 };
@@ -51,18 +60,50 @@ const goalSelect = {
 // Saved amount is the linked asset's balance, or the hand-entered amount
 // for goals without one (or whose asset is archived).
 const withProgress = (goal, balanceByAssetId) => {
-  const assetBalance = goal.assetId != null
-    ? balanceByAssetId.get(goal.assetId)
-    : undefined;
+  const assetBalance =
+    goal.assetId != null ? balanceByAssetId.get(goal.assetId) : undefined;
   const savedAmount = assetBalance ?? Number(goal.currentAmount);
   const targetAmount = Number(goal.targetAmount);
+  const isCompleted = targetAmount > 0 && savedAmount >= targetAmount;
 
   return {
     ...goal,
     savedAmount,
     remainingAmount: Math.max(targetAmount - savedAmount, 0),
     progress: targetAmount > 0 ? savedAmount / targetAmount : 0,
+    isCompleted,
+    isOnTrack: isCompleted || isOnPace(goal, savedAmount, targetAmount),
   };
+};
+
+// On track when saved >= where a straight line from createdAt to targetDate
+// says it should be by now. Goals without a deadline are always on track.
+const isOnPace = (goal, savedAmount, targetAmount) => {
+  if (!goal.targetDate) return true;
+
+  const start = new Date(goal.createdAt).getTime();
+  const end = new Date(goal.targetDate).getTime();
+  const now = Date.now();
+  if (now >= end) return false;
+
+  const elapsed = end > start ? (now - start) / (end - start) : 1;
+  const expected = targetAmount * Math.min(Math.max(elapsed, 0), 1);
+  return savedAmount >= expected;
+};
+
+// Sum of completed goal contributions dated within [start, end]
+const contributionsBetween = async (userId, start, end) => {
+  const { _sum } = await prisma.transfer.aggregate({
+    _sum: { amount: true },
+    where: {
+      userId: Number(userId),
+      goalId: { not: null },
+      isActive: true,
+      status: "Completed",
+      date: { gte: start.toDate(), lte: end.toDate() },
+    },
+  });
+  return Number(_sum.amount ?? 0);
 };
 
 const balancesFor = async (userId, goals) => {
@@ -76,18 +117,55 @@ const balancesFor = async (userId, goals) => {
 | Get Savings Goals
 |--------------------------------------------------------------------------
 */
-export const getSavingsGoals = async (userId, { includeInactive = false } = {}) => {
+export const getSavingsGoals = async (
+  userId,
+  { isActive = false } = {},
+) => {
+  const timezone = await getUserTimezone(userId);
+  const now = moment().tz(timezone);
+  const lastMonth = now.clone().subtract(1, "month");
+
   const goals = await prisma.savingsGoal.findMany({
     where: {
       userId: Number(userId),
-      ...(!includeInactive && { isActive: true }),
+      ...(isActive && { isActive: true }),
     },
     select: goalSelect,
-    orderBy: [{ targetDate: { sort: "asc", nulls: "last" } }, { createdAt: "asc" }],
+    orderBy: [
+      { targetDate: { sort: "asc", nulls: "last" } },
+      { createdAt: "asc" },
+    ],
   });
 
   const balanceByAssetId = await balancesFor(userId, goals);
-  return goals.map((g) => withProgress(g, balanceByAssetId));
+  const goalsWithProgress = goals.map((g) => withProgress(g, balanceByAssetId));
+  const [savedThisMonth, savedLastMonth] = await Promise.all([
+    contributionsBetween(userId, now.clone().startOf("month"), now.clone().endOf("month")),
+    contributionsBetween(userId, lastMonth.clone().startOf("month"), lastMonth.clone().endOf("month")),
+  ]);
+
+  // Summary cards only count active goals, even when archived ones are listed
+  const active = goalsWithProgress.filter((g) => g.isActive);
+  const totalSaved = active.reduce((sum, g) => sum + g.savedAmount, 0);
+  const totalTarget = active.reduce((sum, g) => sum + Number(g.targetAmount), 0);
+  const onTrack = active.filter((g) => g.isOnTrack).length;
+
+  return {
+    data: goalsWithProgress,
+    summary: {
+      totalSaved,
+      activeGoals: active.length,
+      savedThisMonth,
+      savedLastMonth,
+      // null when there's nothing last month to compare against
+      monthOverMonthChange:
+        savedLastMonth > 0 ? (savedThisMonth - savedLastMonth) / savedLastMonth : null,
+      totalTarget,
+      overallProgress: totalTarget > 0 ? Math.min(totalSaved / totalTarget, 1) : 0,
+      onTrack,
+      behindSchedule: active.length - onTrack,
+    },
+  };
 };
 
 /*
@@ -167,4 +245,72 @@ export const updateSavingsGoal = async (
 export const deleteSavingsGoal = async (userId, id) => {
   const goal = await findGoal(userId, id);
   await prisma.savingsGoal.delete({ where: { id: goal.id } });
+};
+
+/*
+|--------------------------------------------------------------------------
+| Contribute to Savings Goal
+|--------------------------------------------------------------------------
+| Creates a transfer from `account` into the goal's linked account, tagged
+| with the goal. The destination always comes from the goal, never the client.
+*/
+export const contributeSavings = async (
+  userId,
+  id,
+  { amount, account, category, date, description },
+) => {
+  const goal = await findGoal(userId, id);
+
+  if (!goal.isActive) {
+    throw new AppError("Archived goals can't receive contributions", 400);
+  }
+  if (goal.assetId == null) {
+    throw new AppError(
+      "Link this goal to an account to contribute, or update its saved amount instead",
+      400,
+    );
+  }
+
+  const fromAssetId = Number(account);
+  const toAssetId = goal.assetId;
+  if (fromAssetId === toAssetId) {
+    throw new AppError(
+      "Source account must be different from the goal's account",
+      400,
+    );
+  }
+
+  const txDate = date ? new Date(date) : new Date();
+  const isPending = txDate > new Date();
+
+  await validateCategory(category);
+  await assertGoalAsset(userId, toAssetId);
+  await assertAccountCategory(userId, fromAssetId, ACCOUNT_RULES.transferFrom);
+  if (!isPending) {
+    await assertCanSpend(userId, fromAssetId, amount);
+  }
+
+  const transfer = await prisma.transfer.create({
+    data: {
+      amount: Number(amount),
+      description: description || `Contribution to ${goal.name}`,
+      date: txDate,
+      status: isPending ? "Pending" : "Completed",
+      userId: Number(userId),
+      categoryId: Number(category),
+      fromAssetId,
+      toAssetId,
+      goalId: goal.id,
+    },
+  });
+
+  const updated = await prisma.savingsGoal.findUnique({
+    where: { id: goal.id },
+    select: goalSelect,
+  });
+
+  return {
+    transfer,
+    goal: withProgress(updated, await balancesFor(userId, [updated])),
+  };
 };

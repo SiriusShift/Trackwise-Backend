@@ -3,6 +3,7 @@ import { Router } from "express";
 import catchAsync from "../utils/catchAsync.js";
 
 import {
+  contributeSavings,
   createSavingsGoal,
   deleteSavingsGoal,
   getSavingsGoals,
@@ -13,6 +14,7 @@ import { requireAuth } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
 import { idParams } from "../schema/common.js";
 import {
+  contributeSavingsSchema,
   createSavingsGoalSchema,
   getSavingsGoalsQuery,
   updateSavingsGoalSchema,
@@ -51,5 +53,12 @@ router
     validate({ params: idParams }),
     catchAsync(deleteSavingsGoal),
   );
+
+router.post(
+  "/:id/contribute",
+  requireAuth,
+  validate({ params: idParams, body: contributeSavingsSchema }),
+  catchAsync(contributeSavings),
+);
 
 export default router;

@@ -3,13 +3,13 @@ import * as savingsGoalsService from "../services/savingsGoals.service.js";
 
 export const getSavingsGoals = asyncHandler(async (req, res) => {
   const data = await savingsGoalsService.getSavingsGoals(req.user.id, {
-    includeInactive: req.query.includeInactive,
+    isActive: req.query.isActive,
   });
 
   res.status(200).json({
     success: true,
     message: "Savings goals fetched successfully",
-    data,
+    ...data,
   });
 });
 
@@ -43,5 +43,20 @@ export const deleteSavingsGoal = asyncHandler(async (req, res) => {
   res.status(200).json({
     success: true,
     message: "Savings goal deleted successfully",
+  });
+});
+
+
+export const contributeSavings = asyncHandler(async (req, res) => {
+  const data = await savingsGoalsService.contributeSavings(
+    req.user.id,
+    req.params.id,
+    req.body,
+  );
+
+  res.status(201).json({
+    success: true,
+    message: "Contribution added successfully",
+    data,
   });
 });

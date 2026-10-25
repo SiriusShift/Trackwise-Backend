@@ -225,6 +225,8 @@ model SavingsGoal {
   assetId Int?
   asset   Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
 
+  transfers Transfer[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -481,7 +483,8 @@ model Transfer {
   fromAssetId       Int
   toAssetId         Int?
   recurringId       Int?
-  creditStatementId Int? // set when this expense is a payment toward a credit statement
+  creditStatementId Int? // set when this transfer is a payment toward a credit statement
+  goalId            Int? // set when this transfer is a contribution toward a savings goal
 
   user              User                  @relation(fields: [userId], references: [id])
   category          Categories            @relation(fields: [categoryId], references: [id])
@@ -489,8 +492,10 @@ model Transfer {
   toAsset           Asset?                @relation("ToAsset", fields: [toAssetId], references: [id], onDelete: SetNull)
   recurringTemplate RecurringTransaction? @relation("RecurringTransfers", fields: [recurringId], references: [id])
   creditStatement   CreditStatement?      @relation(fields: [creditStatementId], references: [id], onDelete: SetNull)
+  goal              SavingsGoal?          @relation(fields: [goalId], references: [id], onDelete: SetNull)
 
   @@index([userId])
+  @@index([goalId])
   @@index([recurringId])
 }
 
