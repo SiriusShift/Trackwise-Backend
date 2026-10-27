@@ -29,8 +29,11 @@ const findGoal = async (userId, id) => {
   return goal;
 };
 
-// A goal can only track an active account the user owns that holds money
-const assertGoalAsset = async (userId, assetId) => {
+// A goal can only track an active account the user owns that holds money,
+// and no other goal may track it: a goal's saved amount is the account's
+// whole balance, so sharing one would count that balance twice.
+// goalId is the goal being edited, which may keep its own account.
+const assertGoalAsset = async (userId, assetId, goalId = null) => {
   const asset = await validateAsset(assetId, userId);
   if (!asset.isActive) {
     throw new AppError("Archived accounts can't be linked to a goal", 400);
@@ -41,6 +44,23 @@ const assertGoalAsset = async (userId, assetId) => {
       400,
     );
   }
+
+  // Archived goals count too, so restoring one can't create a duplicate
+  const linkedGoal = await prisma.savingsGoal.findFirst({
+    where: {
+      userId: Number(userId),
+      assetId: Number(assetId),
+      ...(goalId != null && { id: { not: Number(goalId) } }),
+    },
+    select: { name: true, isActive: true },
+  });
+  if (linkedGoal) {
+    throw new AppError(
+      `This account is already linked to the ${linkedGoal.isActive ? "" : "archived "}goal "${linkedGoal.name}"`,
+      400,
+    );
+  }
+
   return asset;
 };
 
@@ -212,7 +232,7 @@ export const updateSavingsGoal = async (
   const existing = await findGoal(userId, id);
 
   if (assetId != null && assetId !== existing.assetId) {
-    await assertGoalAsset(userId, assetId);
+    await assertGoalAsset(userId, assetId, existing.id);
   }
 
   const goal = await prisma.savingsGoal.update({
@@ -287,7 +307,7 @@ export const contributeSavings = async (
   const isPending = txDate > new Date();
 
   await validateCategory(category);
-  await assertGoalAsset(userId, toAssetId);
+  await assertGoalAsset(userId, toAssetId, goal.id);
   await assertAccountCategory(userId, fromAssetId, ACCOUNT_RULES.transferFrom);
   if (!isPending) {
     await assertCanSpend(userId, fromAssetId, amount);
