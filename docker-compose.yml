@@ -4,7 +4,8 @@ services:
     ports:
       - "5001:5000"
     env_file:
-      - .env.render
+      # - .env.render
+      - .env
     environment:
       DATABASE_URL: postgresql://dev:dev@db:5432/app
     depends_on:
@@ -15,7 +16,7 @@ services:
   db:
     image: postgres:16
     ports:
-      - "5433:5432"   # optional: lets you connect from your host with psql or Prisma Studio
+      - "5433:5432" # optional: lets you connect from your host with psql or Prisma Studio
     environment:
       POSTGRES_USER: dev
       POSTGRES_PASSWORD: dev
@@ -27,6 +28,21 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+
+  studio:
+    image: node:20-alpine
+    working_dir: /app
+    profiles: ["tools"] # only starts with: docker compose --profile tools up studio
+    volumes:
+      - ./prisma:/app/prisma
+    environment:
+      DATABASE_URL: postgresql://dev:dev@db:5432/app
+    command: npx -y prisma@6 studio --port 5555 --hostname 0.0.0.0 --browser none
+    ports:
+      - "5555:5555"
+    depends_on:
+      db:
+        condition: service_healthy
 
 volumes:
   pgdata:
