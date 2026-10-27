@@ -1,3 +1,4 @@
+import moment from "moment-timezone"; // NOTE: must be moment-timezone — plain "moment" has no .tz()
 import { prisma } from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
 import { getUserTimezone } from "../utils/userTimezone.js";
@@ -10,7 +11,6 @@ import {
   validateAsset,
 } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
-import moment from "moment-timezone"; // NOTE: must be moment-timezone — plain "moment" has no .tz()
 
 /*
 |--------------------------------------------------------------------------
@@ -86,14 +86,33 @@ const withProgress = (goal, balanceByAssetId) => {
   const savedAmount = assetBalance ?? Number(goal.currentAmount);
   const targetAmount = Number(goal.targetAmount);
   const isCompleted = targetAmount > 0 && savedAmount >= targetAmount;
+  const remainingAmount = Math.max(targetAmount - savedAmount, 0);
 
   return {
     ...goal,
     savedAmount,
-    remainingAmount: Math.max(targetAmount - savedAmount, 0),
+    remainingAmount,
     progress: targetAmount > 0 ? savedAmount / targetAmount : 0,
     isCompleted,
     isOnTrack: isCompleted || isOnPace(goal, savedAmount, targetAmount),
+    ...monthlyPace(goal, savedAmount, remainingAmount),
+  };
+};
+
+// requiredMonthlyPace: what must be saved per month from now to hit the target
+// on time (null without a deadline). currentMonthlyPace: average saved per
+// month since the goal was created. Both floor the month count at 1 so the
+// first and last few days don't produce huge numbers.
+const monthlyPace = (goal, savedAmount, remainingAmount) => {
+  const now = moment();
+  const monthsElapsed = Math.max(now.diff(moment(goal.createdAt), "months", true), 1);
+  const monthsLeft = goal.targetDate
+    ? Math.max(moment(goal.targetDate).diff(now, "months", true), 1)
+    : null;
+
+  return {
+    requiredMonthlyPace: monthsLeft != null ? remainingAmount / monthsLeft : null,
+    currentMonthlyPace: savedAmount / monthsElapsed,
   };
 };
 
@@ -112,20 +131,44 @@ const isOnPace = (goal, savedAmount, targetAmount) => {
   return savedAmount >= expected;
 };
 
-// Sum of completed goal contributions dated within [start, end]
-const contributionsBetween = async (userId, start, end) => {
-  const { _sum } = await prisma.transfer.aggregate({
-    _sum: { amount: true },
+// Number of monthly points in the summary card sparklines
+const TREND_MONTHS = 6;
+// Months averaged for the actual pace compared against the pace needed
+const PACE_MONTHS = 3;
+
+const sum = (values) => values.reduce((total, v) => total + v, 0);
+
+// Completed goal contributions per calendar month in the user's timezone,
+// oldest first, ending with the current month. `all` covers every goal;
+// `dated` only the goals in datedGoalIds.
+const monthlyContributions = async (userId, now, months, datedGoalIds) => {
+  const start = now.clone().subtract(months - 1, "months").startOf("month");
+  const transfers = await prisma.transfer.findMany({
+    select: { amount: true, date: true, goalId: true },
     where: {
       userId: Number(userId),
       goalId: { not: null },
       isActive: true,
       status: "Completed",
-      date: { gte: start.toDate(), lte: end.toDate() },
+      date: { gte: start.toDate(), lte: now.clone().endOf("month").toDate() },
     },
   });
-  return Number(_sum.amount ?? 0);
+
+  const all = Array(months).fill(0);
+  const dated = Array(months).fill(0);
+  for (const t of transfers) {
+    const i = moment(t.date).tz(now.tz()).diff(start, "months");
+    if (i < 0 || i >= months) continue;
+    all[i] += Number(t.amount);
+    if (datedGoalIds.has(t.goalId)) dated[i] += Number(t.amount);
+  }
+  return { all, dated };
 };
+
+// Saved total at the end of each month, estimated by taking later
+// contributions back out of today's total (no balance history is stored).
+const savedHistoryOf = (savedNow, contributions) =>
+  contributions.map((_, i) => savedNow - sum(contributions.slice(i + 1)));
 
 const balancesFor = async (userId, goals) => {
   if (!goals.some((g) => g.assetId != null)) return new Map();
@@ -144,7 +187,6 @@ export const getSavingsGoals = async (
 ) => {
   const timezone = await getUserTimezone(userId);
   const now = moment().tz(timezone);
-  const lastMonth = now.clone().subtract(1, "month");
 
   const goals = await prisma.savingsGoal.findMany({
     where: {
@@ -160,31 +202,70 @@ export const getSavingsGoals = async (
 
   const balanceByAssetId = await balancesFor(userId, goals);
   const goalsWithProgress = goals.map((g) => withProgress(g, balanceByAssetId));
-  const [savedThisMonth, savedLastMonth] = await Promise.all([
-    contributionsBetween(userId, now.clone().startOf("month"), now.clone().endOf("month")),
-    contributionsBetween(userId, lastMonth.clone().startOf("month"), lastMonth.clone().endOf("month")),
-  ]);
-
-  // Summary cards only count active goals, even when archived ones are listed
+  // Summary cards only count active goals, even when archived ones are listed.
+  // Total saved covers every goal; pace, progress and health only cover goals
+  // with a target date, since the others have no schedule to measure against.
   const active = goalsWithProgress.filter((g) => g.isActive);
-  const totalSaved = active.reduce((sum, g) => sum + g.savedAmount, 0);
-  const totalTarget = active.reduce((sum, g) => sum + Number(g.targetAmount), 0);
-  const onTrack = active.filter((g) => g.isOnTrack).length;
+  const dated = active.filter((g) => g.targetDate);
+
+  const contributions = await monthlyContributions(
+    userId,
+    now,
+    TREND_MONTHS,
+    new Set(dated.map((g) => g.id)),
+  );
+  const savedThisMonth = contributions.all[TREND_MONTHS - 1];
+  const savedLastMonth = contributions.all[TREND_MONTHS - 2];
+
+  const totalSaved = sum(active.map((g) => g.savedAmount));
+  const savedHistory = savedHistoryOf(totalSaved, contributions.all);
+
+  const datedSaved = sum(dated.map((g) => g.savedAmount));
+  const totalTarget = sum(dated.map((g) => Number(g.targetAmount)));
+  const onTrack = dated.filter((g) => g.isOnTrack).length;
+  const neededPace = sum(dated.map((g) => g.requiredMonthlyPace));
+  // Average of recent months rather than since each goal was created, so a
+  // linked account's opening balance doesn't count as pace
+  const currentPace = sum(contributions.dated.slice(-PACE_MONTHS)) / PACE_MONTHS;
+
+  const progressOf = (saved) => (totalTarget > 0 ? Math.min(Math.max(saved, 0) / totalTarget, 1) : 0);
+  const progressHistory = savedHistoryOf(datedSaved, contributions.dated).map(progressOf);
+  const overallProgress = progressHistory[TREND_MONTHS - 1];
+  const progressLastMonth = progressHistory[TREND_MONTHS - 2];
 
   return {
     data: goalsWithProgress,
     summary: {
       totalSaved,
       activeGoals: active.length,
+      // Active goals with a target date: the ones pace, progress and health cover
+      datedGoals: dated.length,
       savedThisMonth,
       savedLastMonth,
       // null when there's nothing last month to compare against
-      monthOverMonthChange:
-        savedLastMonth > 0 ? (savedThisMonth - savedLastMonth) / savedLastMonth : null,
+      monthOverMonthChange: savedLastMonth > 0 ? (savedThisMonth - savedLastMonth) / savedLastMonth : null,
+      neededPace,
+      currentPace,
       totalTarget,
-      overallProgress: totalTarget > 0 ? Math.min(totalSaved / totalTarget, 1) : 0,
+      overallProgress,
+      // Percentage points gained this month, e.g. 0.08 = +8 pts
+      progressChange: overallProgress - progressLastMonth,
       onTrack,
-      behindSchedule: active.length - onTrack,
+      behindSchedule: dated.length - onTrack,
+      // Last TREND_MONTHS months, oldest first, for the card sparklines
+      trend: {
+        saved: savedHistory,
+        // Contributions to goals with a target date only
+        pace: contributions.dated,
+        progress: progressHistory,
+        // One entry per active goal for the goal health dots. Goals without a
+        // deadline are shown but not counted as on track or behind.
+        health: active.map((g) => ({
+          id: g.id,
+          name: g.name,
+          status: !g.targetDate ? "noDeadline" : g.isOnTrack ? "onTrack" : "behind",
+        })),
+      },
     },
   };
 };
