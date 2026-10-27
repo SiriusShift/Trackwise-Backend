@@ -5,6 +5,7 @@ export const createSavingsGoalSchema = Joi.object({
   name: Joi.string().trim().max(100).required(),
   targetAmount: amount.required(),
   targetDate: Joi.date().allow(null),
+  icon: Joi.string().trim().max(50),
   // Linked goals track the asset's balance; unlinked ones use currentAmount
   assetId: id.allow(null),
   currentAmount: Joi.number().min(0),
@@ -14,6 +15,7 @@ export const updateSavingsGoalSchema = Joi.object({
   name: Joi.string().trim().max(100),
   targetAmount: amount,
   targetDate: Joi.date().allow(null),
+  icon: Joi.string().trim().max(50),
   assetId: id.allow(null),
   currentAmount: Joi.number().min(0),
   isActive: Joi.boolean(),

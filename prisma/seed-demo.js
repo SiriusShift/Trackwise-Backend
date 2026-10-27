@@ -569,9 +569,9 @@ const main = async () => {
   // ---- Savings goals -------------------------------------------------------
   await prisma.savingsGoal.createMany({
     data: [
-      { name: "Emergency Fund", targetAmount: 200000, targetDate: new Date(Date.UTC(2027, 5, 30, 4)), assetId: A("BDO Savings"), userId },
-      { name: "Japan Trip", targetAmount: 150000, targetDate: new Date(Date.UTC(2027, 3, 1, 4)), currentAmount: 42000, userId },
-      { name: "New Laptop", targetAmount: 65000, targetDate: new Date(Date.UTC(2026, 11, 20, 4)), currentAmount: 30000, userId },
+      { name: "Emergency Fund", targetAmount: 200000, targetDate: new Date(Date.UTC(2027, 5, 30, 4)), assetId: A("BDO Savings"), icon: "ShieldCheck", userId },
+      { name: "Japan Trip", targetAmount: 150000, targetDate: new Date(Date.UTC(2027, 3, 1, 4)), currentAmount: 42000, icon: "Plane", userId },
+      { name: "New Laptop", targetAmount: 65000, targetDate: new Date(Date.UTC(2026, 11, 20, 4)), currentAmount: 30000, icon: "Laptop", userId },
     ],
   });
 

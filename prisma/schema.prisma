@@ -213,6 +213,8 @@ model SavingsGoal {
   targetAmount Decimal   @db.Decimal(20, 2)
   targetDate   DateTime?
   isActive     Boolean   @default(true)
+  // Lucide icon name, e.g. "Plane"
+  icon         String    @default("PiggyBank")
 
   // Saved so far, entered by hand. Only used when the goal has no asset;
   // a linked goal's progress is the asset's balance.
@@ -232,7 +234,6 @@ model SavingsGoal {
 
   @@index([userId])
 }
-
 
 model LoanDetail {
   id Int @id @default(autoincrement())

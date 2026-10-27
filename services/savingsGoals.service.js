@@ -51,6 +51,7 @@ const goalSelect = {
   targetDate: true,
   currentAmount: true,
   isActive: true,
+  icon: true,
   assetId: true,
   asset: { select: { id: true, name: true, currency: true, isActive: true } },
   createdAt: true,
@@ -175,7 +176,7 @@ export const getSavingsGoals = async (
 */
 export const createSavingsGoal = async (
   userId,
-  { name, targetAmount, targetDate, assetId, currentAmount },
+  { name, targetAmount, targetDate, icon, assetId, currentAmount },
 ) => {
   if (assetId != null) {
     await assertGoalAsset(userId, assetId);
@@ -186,6 +187,7 @@ export const createSavingsGoal = async (
       name,
       targetAmount: parseFloat(targetAmount),
       targetDate: targetDate ? new Date(targetDate) : null,
+      ...(icon !== undefined && { icon }),
       currentAmount: currentAmount != null ? parseFloat(currentAmount) : 0,
       userId: Number(userId),
       assetId: assetId != null ? Number(assetId) : null,
@@ -205,7 +207,7 @@ export const createSavingsGoal = async (
 export const updateSavingsGoal = async (
   userId,
   id,
-  { name, targetAmount, targetDate, assetId, currentAmount, isActive },
+  { name, targetAmount, targetDate, icon, assetId, currentAmount, isActive },
 ) => {
   const existing = await findGoal(userId, id);
 
@@ -223,6 +225,7 @@ export const updateSavingsGoal = async (
       ...(targetDate !== undefined && {
         targetDate: targetDate ? new Date(targetDate) : null,
       }),
+      ...(icon !== undefined && { icon }),
       ...(assetId !== undefined && {
         assetId: assetId != null ? Number(assetId) : null,
       }),
