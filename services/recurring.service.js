@@ -198,10 +198,17 @@ export const editRecurring = async (userId, id, data) => {
 | Cancel Recurring
 |--------------------------------------------------------------------------
 */
-export const cancelRecurring = async (id) => {
+export const cancelRecurring = async (userId, id) => {
+  const existing = await prisma.recurringTransaction.findFirst({
+    where: { id: Number(id), userId: Number(userId) },
+    select: { id: true },
+  });
+
+  if (!existing) throw new AppError("Recurring transaction not found", 404);
+
   await prisma.recurringTransaction.update({
     where: {
-      id: Number(id),
+      id: existing.id,
     },
     data: {
       isActive: false,
