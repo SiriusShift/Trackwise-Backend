@@ -114,6 +114,7 @@ export const createRecurringSchema = Joi.object({
   endDate: Joi.date().min(Joi.ref("date")).allow(null),
   every: Joi.number().integer().positive().required(),
   frequency: Joi.string().valid(...units).required(),
+  daysOfMonth: Joi.array().items(Joi.number().integer().min(1).max(31)).min(1).unique(),
   behaviour: Joi.string().valid(...behaviours).required(),
   account: id.when("type", {
     is: Joi.valid("Expense", "Income", "Transfer"),
