@@ -5,6 +5,7 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
+    "test": "node --test tests/",
     "start": "node server.js",
     "serve": "nodemon server.js",
     "serve:aws": "node --env-file=.env.aws server.js",

@@ -17,6 +17,7 @@ import {
   dayInMonth,
   lastStatementClose,
 } from "../utils/creditCycle.js";
+import { nextOccurrenceAfter } from "../utils/recurringSchedule.js";
 
 /*
 |--------------------------------------------------------------------------
@@ -80,13 +81,6 @@ const getAssetRemainingBalance = async (userId, assetId, options) => {
 // toAsset before, fromAsset now), so resolve it in one place.
 const getRecurringAccount = (item) =>
   item.type === "Income" ? (item.fromAsset ?? item.toAsset) : item.fromAsset;
-
-// Same anchoring rule as the cron: occurrence k = startDate + k * interval.
-const occurrence = (item, k, timezone) =>
-  moment
-    .tz(item.startDate, timezone)
-    .startOf("day")
-    .add(k * item.interval, item.unit);
 
 const inRange = (date, from, to) =>
   (!from || !moment(date).isBefore(from)) && (!to || !moment(date).isAfter(to));
@@ -653,6 +647,8 @@ const getRecurringItems = async (userId, timezone, { from, to, type }) => {
       behaviour: item.behaviour,
       interval: item.interval,
       unit: item.unit,
+      daysOfMonth: item.daysOfMonth,
+      startDate: item.startDate,
       category: item.category,
       fromAsset: item.type === "Income" ? null : item.fromAsset,
       toAsset: item.type === "Income" ? account : item.toAsset,
@@ -682,9 +678,7 @@ const getRecurringItems = async (userId, timezone, { from, to, type }) => {
     // Projections only make sense for a bounded range (calendar views).
     if (!to) continue;
 
-    let k = 0;
-    let next = occurrence(item, k, timezone);
-    while (!next.isAfter(nextDue)) next = occurrence(item, ++k, timezone);
+    let next = nextOccurrenceAfter(item, nextDue, timezone);
 
     let count = 0;
     while (
@@ -693,7 +687,7 @@ const getRecurringItems = async (userId, timezone, { from, to, type }) => {
       count < MAX_OCCURRENCES_PER_ITEM
     ) {
       if (inRange(next, from, to)) pushCycle(next, false);
-      next = occurrence(item, ++k, timezone);
+      next = nextOccurrenceAfter(item, next, timezone);
       count++;
     }
   }
@@ -785,6 +779,7 @@ export const getRecurringSchedule = async (userId, id) => {
     endDate: recurring.endDate,
     interval: recurring.interval,
     unit: recurring.unit,
+    daysOfMonth: recurring.daysOfMonth,
     behaviour: recurring.behaviour,
     category: recurring.category,
     // `account` is the one money moves out of (Expense/Transfer) or into (Income).

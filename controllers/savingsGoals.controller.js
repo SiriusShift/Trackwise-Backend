@@ -60,3 +60,31 @@ export const contributeSavings = asyncHandler(async (req, res) => {
     data,
   });
 });
+
+export const withdrawSavings = asyncHandler(async (req, res) => {
+  const data = await savingsGoalsService.withdrawSavings(
+    req.user.id,
+    req.params.id,
+    req.body,
+  );
+
+  res.status(201).json({
+    success: true,
+    message: "Withdrawal recorded successfully",
+    data,
+  });
+});
+
+export const getGoalContributions = asyncHandler(async (req, res) => {
+  const data = await savingsGoalsService.getGoalContributions(
+    req.user.id,
+    req.params.id,
+    { limit: req.query.limit },
+  );
+
+  res.status(200).json({
+    success: true,
+    message: "Goal contributions fetched successfully",
+    data,
+  });
+});

@@ -5,6 +5,7 @@ import { getUserTimezone } from "../utils/userTimezone.js";
 import {
   ACCOUNT_RULES,
   assertAccountCategory,
+  assertCanReceive,
   assertCanSpend,
   getAssetBalance,
   isLiabilityCategory,
@@ -80,7 +81,14 @@ const goalSelect = {
 
 // Saved amount is the linked asset's balance, or the hand-entered amount
 // for goals without one (or whose asset is archived).
-const withProgress = (goal, balanceByAssetId) => {
+// monthlyByGoalId holds each goal's contributions for the last TREND_MONTHS
+// calendar months, oldest first (see monthlyContributions).
+const withProgress = (
+  goal,
+  balanceByAssetId,
+  monthlyByGoalId = new Map(),
+  now = moment(),
+) => {
   const assetBalance =
     goal.assetId != null ? balanceByAssetId.get(goal.assetId) : undefined;
   const savedAmount = assetBalance ?? Number(goal.currentAmount);
@@ -88,15 +96,54 @@ const withProgress = (goal, balanceByAssetId) => {
   const isCompleted = targetAmount > 0 && savedAmount >= targetAmount;
   const remainingAmount = Math.max(targetAmount - savedAmount, 0);
 
+  const monthlyContributions =
+    monthlyByGoalId.get(goal.id) ?? Array(TREND_MONTHS).fill(0);
+  const recentMonthlyPace = recentPaceOf(goal, monthlyContributions, now);
+  const pace = monthlyPace(goal, savedAmount, remainingAmount);
+
   return {
     ...goal,
     savedAmount,
     remainingAmount,
     progress: targetAmount > 0 ? savedAmount / targetAmount : 0,
     isCompleted,
-    isOnTrack: isCompleted || isOnPace(goal, savedAmount, targetAmount),
-    ...monthlyPace(goal, savedAmount, remainingAmount),
+    isOnTrack:
+      isCompleted ||
+      isOnTrackFor(goal, savedAmount, targetAmount, pace.requiredMonthlyPace, recentMonthlyPace, now),
+    ...pace,
+    // Average contributed per month over the last PACE_MONTHS months (fewer
+    // for younger goals). Unlike currentMonthlyPace it ignores an opening balance
+    recentMonthlyPace,
+    monthlyContributions,
   };
+};
+
+// The goal's age in calendar months, counting the current one
+const ageInMonths = (goal, now) => {
+  const created = moment(goal.createdAt).tz(now.tz() ?? moment.tz.guess());
+  return now.clone().startOf("month").diff(created.startOf("month"), "months") + 1;
+};
+
+// Months in the pace window: PACE_MONTHS, or the goal's age in calendar months
+// so a new goal isn't averaged over months it didn't exist
+const recentPaceOf = (goal, monthly, now) => {
+  const window = Math.min(PACE_MONTHS, Math.max(ageInMonths(goal, now), 1));
+  return sum(monthly.slice(-window)) / window;
+};
+
+// Linked goals past their first month are judged by pace: on track only when
+// recent contributions would finish in time, so the projected finish and the
+// status always agree. The straight-line schedule counts a linked account's
+// opening balance as progress, so it's only the fallback where there's no
+// pace to go on: manual goals and linked goals created this month.
+// Past-due unfinished goals are never on track.
+const isOnTrackFor = (goal, savedAmount, targetAmount, required, recent, now) => {
+  if (!goal.targetDate) return true;
+  if (Date.now() >= new Date(goal.targetDate).getTime()) return false;
+  if (goal.assetId != null && ageInMonths(goal, now) > 1) {
+    return required != null && recent >= required;
+  }
+  return isOnPace(goal, savedAmount, targetAmount) || (required != null && recent >= required);
 };
 
 // requiredMonthlyPace: what must be saved per month from now to hit the target
@@ -138,13 +185,25 @@ const PACE_MONTHS = 3;
 
 const sum = (values) => values.reduce((total, v) => total + v, 0);
 
-// Completed goal contributions per calendar month in the user's timezone,
+// A goal's tagged transfers either go into its account (contributions) or
+// out of it (withdrawals). Checked against the goal's current account, so
+// withdrawals made before a relink read as contributions.
+const isWithdrawal = (transfer, goalAssetId) =>
+  goalAssetId != null && transfer.fromAssetId === goalAssetId;
+
+// Net goal contributions (contributions minus withdrawals) per calendar month in the user's timezone,
 // oldest first, ending with the current month. `all` covers every goal;
 // `dated` only the goals in datedGoalIds.
 const monthlyContributions = async (userId, now, months, datedGoalIds) => {
   const start = now.clone().subtract(months - 1, "months").startOf("month");
   const transfers = await prisma.transfer.findMany({
-    select: { amount: true, date: true, goalId: true },
+    select: {
+      amount: true,
+      date: true,
+      goalId: true,
+      fromAssetId: true,
+      goal: { select: { assetId: true } },
+    },
     where: {
       userId: Number(userId),
       goalId: { not: null },
@@ -156,13 +215,21 @@ const monthlyContributions = async (userId, now, months, datedGoalIds) => {
 
   const all = Array(months).fill(0);
   const dated = Array(months).fill(0);
+  // Same series per goal, for the goal details chart and recent pace
+  const byGoal = new Map();
   for (const t of transfers) {
     const i = moment(t.date).tz(now.tz()).diff(start, "months");
     if (i < 0 || i >= months) continue;
-    all[i] += Number(t.amount);
-    if (datedGoalIds.has(t.goalId)) dated[i] += Number(t.amount);
+    // Withdrawals are tagged too and count against the month
+    const amount = isWithdrawal(t, t.goal?.assetId)
+      ? -Number(t.amount)
+      : Number(t.amount);
+    all[i] += amount;
+    if (datedGoalIds.has(t.goalId)) dated[i] += amount;
+    if (!byGoal.has(t.goalId)) byGoal.set(t.goalId, Array(months).fill(0));
+    byGoal.get(t.goalId)[i] += amount;
   }
-  return { all, dated };
+  return { all, dated, byGoal };
 };
 
 // Saved total at the end of each month, estimated by taking later
@@ -174,6 +241,16 @@ const balancesFor = async (userId, goals) => {
   if (!goals.some((g) => g.assetId != null)) return new Map();
   const { data } = await getAssetBalance(userId, null);
   return new Map(data.map((a) => [a.id, a.remainingBalance]));
+};
+
+// withProgress for goals returned on their own (create, update, contribute)
+const progressFor = async (userId, goal) => {
+  const now = moment().tz(await getUserTimezone(userId));
+  const [balances, contributions] = await Promise.all([
+    balancesFor(userId, [goal]),
+    monthlyContributions(userId, now, TREND_MONTHS, new Set()),
+  ]);
+  return withProgress(goal, balances, contributions.byGoal, now);
 };
 
 /*
@@ -200,20 +277,22 @@ export const getSavingsGoals = async (
     ],
   });
 
-  const balanceByAssetId = await balancesFor(userId, goals);
-  const goalsWithProgress = goals.map((g) => withProgress(g, balanceByAssetId));
   // Summary cards only count active goals, even when archived ones are listed.
   // Total saved covers every goal; pace, progress and health only cover goals
   // with a target date, since the others have no schedule to measure against.
+  const datedIds = new Set(
+    goals.filter((g) => g.isActive && g.targetDate).map((g) => g.id),
+  );
+  const [balanceByAssetId, contributions] = await Promise.all([
+    balancesFor(userId, goals),
+    monthlyContributions(userId, now, TREND_MONTHS, datedIds),
+  ]);
+  const goalsWithProgress = goals.map((g) =>
+    withProgress(g, balanceByAssetId, contributions.byGoal, now),
+  );
   const active = goalsWithProgress.filter((g) => g.isActive);
   const dated = active.filter((g) => g.targetDate);
 
-  const contributions = await monthlyContributions(
-    userId,
-    now,
-    TREND_MONTHS,
-    new Set(dated.map((g) => g.id)),
-  );
   const savedThisMonth = contributions.all[TREND_MONTHS - 1];
   const savedLastMonth = contributions.all[TREND_MONTHS - 2];
 
@@ -222,11 +301,15 @@ export const getSavingsGoals = async (
 
   const datedSaved = sum(dated.map((g) => g.savedAmount));
   const totalTarget = sum(dated.map((g) => Number(g.targetAmount)));
-  const onTrack = dated.filter((g) => g.isOnTrack).length;
+  // Health only covers goals still being saved for; completed ones have no
+  // schedule left to keep
+  const pending = dated.filter((g) => !g.isCompleted);
+  const onTrack = pending.filter((g) => g.isOnTrack).length;
   const neededPace = sum(dated.map((g) => g.requiredMonthlyPace));
-  // Average of recent months rather than since each goal was created, so a
-  // linked account's opening balance doesn't count as pace
-  const currentPace = sum(contributions.dated.slice(-PACE_MONTHS)) / PACE_MONTHS;
+  // Sum of each goal's recent pace, so the card matches the goal details.
+  // Recent contributions rather than since creation, so a linked account's
+  // opening balance doesn't count as pace
+  const currentPace = sum(dated.map((g) => g.recentMonthlyPace));
 
   const progressOf = (saved) => (totalTarget > 0 ? Math.min(Math.max(saved, 0) / totalTarget, 1) : 0);
   const progressHistory = savedHistoryOf(datedSaved, contributions.dated).map(progressOf);
@@ -251,16 +334,16 @@ export const getSavingsGoals = async (
       // Percentage points gained this month, e.g. 0.08 = +8 pts
       progressChange: overallProgress - progressLastMonth,
       onTrack,
-      behindSchedule: dated.length - onTrack,
+      behindSchedule: pending.length - onTrack,
       // Last TREND_MONTHS months, oldest first, for the card sparklines
       trend: {
         saved: savedHistory,
         // Contributions to goals with a target date only
         pace: contributions.dated,
         progress: progressHistory,
-        // One entry per active goal for the goal health dots. Goals without a
-        // deadline are shown but not counted as on track or behind.
-        health: active.map((g) => ({
+        // One entry per unfinished active goal for the goal health dots. Goals
+        // without a deadline are shown but not counted as on track or behind.
+        health: active.filter((g) => !g.isCompleted).map((g) => ({
           id: g.id,
           name: g.name,
           status: !g.targetDate ? "noDeadline" : g.isOnTrack ? "onTrack" : "behind",
@@ -296,7 +379,7 @@ export const createSavingsGoal = async (
     select: goalSelect,
   });
 
-  return withProgress(goal, await balancesFor(userId, [goal]));
+  return progressFor(userId, goal);
 };
 
 /*
@@ -338,7 +421,7 @@ export const updateSavingsGoal = async (
     select: goalSelect,
   });
 
-  return withProgress(goal, await balancesFor(userId, [goal]));
+  return progressFor(userId, goal);
 };
 
 /*
@@ -353,51 +436,72 @@ export const deleteSavingsGoal = async (userId, id) => {
 
 /*
 |--------------------------------------------------------------------------
-| Contribute to Savings Goal
+| Contribute to / Withdraw from Savings Goal
 |--------------------------------------------------------------------------
-| Creates a transfer from `account` into the goal's linked account, tagged
-| with the goal. The destination always comes from the goal, never the client.
+| Both create a transfer tagged with the goal. A contribution moves money from
+| `account` into the goal's linked account; a withdrawal moves it from the
+| goal's account into `account`. The goal's side always comes from the goal,
+| never the client.
 */
-export const contributeSavings = async (
+const GOAL_TRANSFER = {
+  contribute: {
+    verb: "contribute",
+    archived: "Archived goals can't receive contributions",
+    sameAccount: "Source account must be different from the goal's account",
+    description: (goal) => `Contribution to ${goal.name}`,
+  },
+  withdraw: {
+    verb: "withdraw",
+    archived: "Archived goals can't be withdrawn from",
+    sameAccount: "Destination account must be different from the goal's account",
+    description: (goal) => `Withdrawal from ${goal.name}`,
+  },
+};
+
+const goalTransfer = async (
   userId,
   id,
   { amount, account, category, date, description },
+  direction,
 ) => {
+  const rules = GOAL_TRANSFER[direction];
   const goal = await findGoal(userId, id);
 
   if (!goal.isActive) {
-    throw new AppError("Archived goals can't receive contributions", 400);
+    throw new AppError(rules.archived, 400);
   }
   if (goal.assetId == null) {
     throw new AppError(
-      "Link this goal to an account to contribute, or update its saved amount instead",
+      `Link this goal to an account to ${rules.verb}, or update its saved amount instead`,
       400,
     );
   }
 
-  const fromAssetId = Number(account);
-  const toAssetId = goal.assetId;
-  if (fromAssetId === toAssetId) {
-    throw new AppError(
-      "Source account must be different from the goal's account",
-      400,
-    );
+  const otherAssetId = Number(account);
+  if (otherAssetId === goal.assetId) {
+    throw new AppError(rules.sameAccount, 400);
   }
+
+  const isContribution = direction === "contribute";
+  const fromAssetId = isContribution ? otherAssetId : goal.assetId;
+  const toAssetId = isContribution ? goal.assetId : otherAssetId;
 
   const txDate = date ? new Date(date) : new Date();
   const isPending = txDate > new Date();
 
   await validateCategory(category);
-  await assertGoalAsset(userId, toAssetId, goal.id);
+  await assertGoalAsset(userId, goal.assetId, goal.id);
   await assertAccountCategory(userId, fromAssetId, ACCOUNT_RULES.transferFrom);
+  await assertAccountCategory(userId, toAssetId, ACCOUNT_RULES.transferTo);
   if (!isPending) {
     await assertCanSpend(userId, fromAssetId, amount);
+    await assertCanReceive(userId, toAssetId, amount);
   }
 
   const transfer = await prisma.transfer.create({
     data: {
       amount: Number(amount),
-      description: description || `Contribution to ${goal.name}`,
+      description: description || rules.description(goal),
       date: txDate,
       status: isPending ? "Pending" : "Completed",
       userId: Number(userId),
@@ -415,6 +519,48 @@ export const contributeSavings = async (
 
   return {
     transfer,
-    goal: withProgress(updated, await balancesFor(userId, [updated])),
+    goal: await progressFor(userId, updated),
   };
+};
+
+export const contributeSavings = (userId, id, data) =>
+  goalTransfer(userId, id, data, "contribute");
+
+export const withdrawSavings = (userId, id, data) =>
+  goalTransfer(userId, id, data, "withdraw");
+
+/*
+|--------------------------------------------------------------------------
+| Get Goal Contributions
+|--------------------------------------------------------------------------
+| Latest transfers tagged with the goal, newest first. Includes scheduled
+| (Pending) ones so upcoming contributions show up too, and withdrawals,
+| marked by `type`.
+*/
+export const getGoalContributions = async (userId, id, { limit = 5 } = {}) => {
+  const goal = await findGoal(userId, id);
+
+  const transfers = await prisma.transfer.findMany({
+    where: { userId: Number(userId), goalId: goal.id, isActive: true },
+    select: {
+      id: true,
+      date: true,
+      amount: true,
+      description: true,
+      status: true,
+      recurringId: true,
+      fromAsset: { select: { id: true, name: true } },
+      toAsset: { select: { id: true, name: true } },
+    },
+    orderBy: [{ date: "desc" }, { id: "desc" }],
+    take: Math.min(Math.max(Number(limit) || 5, 1), 50),
+  });
+
+  return transfers.map((t) => ({
+    ...t,
+    amount: Number(t.amount),
+    type: isWithdrawal({ fromAssetId: t.fromAsset.id }, goal.assetId)
+      ? "withdrawal"
+      : "contribution",
+  }));
 };
