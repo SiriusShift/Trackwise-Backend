@@ -798,12 +798,12 @@ export const getRecurringScheduleHistory = async (userId, id) => {
     recurringId: recurring.id,
     status: { in: ["Completed", "Skipped"] },
   };
-  const select = { id: true, amount: true, date: true, status: true };
+  const select = { id: true, amount: true, date: true, status: true, recurringDueDate: true };
 
   const [expenses, incomes, transfers, skippedLogs] = await Promise.all([
     prisma.expense.findMany({
       where,
-      select: { ...select, recurringDueDate: true },
+      select
     }),
     prisma.income.findMany({ where, select }),
     prisma.transfer.findMany({ where, select }),
@@ -1317,11 +1317,11 @@ export const cancelInstallmentPlan = async (userId, id) => {
     }),
     ...(plan.expenseId
       ? [
-          prisma.expense.update({
-            where: { id: plan.expenseId },
-            data: { isActive: false },
-          }),
-        ]
+        prisma.expense.update({
+          where: { id: plan.expenseId },
+          data: { isActive: false },
+        }),
+      ]
       : []),
   ]);
 
