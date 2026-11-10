@@ -3,6 +3,7 @@ import cron from "node-cron";
 import { getAssetBalance } from "../services/assets.service.js";
 import { syncCreditStatements } from "../services/schedules.service.js";
 import { sendNotificationEmail } from "../services/email.service.js";
+import { nextOccurrenceAfter } from "../utils/recurringSchedule.js";
 
 import { prisma } from "../config/prisma.js";
 
@@ -11,20 +12,6 @@ import { prisma } from "../config/prisma.js";
 | Helpers
 |--------------------------------------------------------------------------
 */
-
-// NOTE: Next due date is computed from startDate + k * interval instead of
-// "previous due + interval". Chaining month additions drifts at month end
-// (Jan 31 -> Feb 28 -> Mar 28). Anchoring on startDate gives Jan 31 -> Feb 28 -> Mar 31.
-const computeNextDue = (item, currentDueLocal, timezone) => {
-  const anchor = moment.tz(item.startDate, timezone).startOf("day");
-  let k = 1;
-  let next = anchor.clone().add(k * item.interval, item.unit);
-  while (!next.isAfter(currentDueLocal)) {
-    k++;
-    next = anchor.clone().add(k * item.interval, item.unit);
-  }
-  return next;
-};
 
 // Per-type Prisma delegate name + the RecurringLog column that stores the generated id.
 const TYPE_CONFIG = {
@@ -222,7 +209,7 @@ cron.schedule("0 * * * *", async () => {
             }),
           };
 
-          const newNextDue = computeNextDue(item, nextDueLocal, timezone).toDate();
+          const newNextDue = nextOccurrenceAfter(item, nextDueLocal, timezone).toDate();
 
           // NOTE: one missed cycle is processed per item per hourly run; after downtime the
           // backlog catches up one cycle per hour.
