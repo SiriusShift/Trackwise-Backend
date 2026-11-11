@@ -82,10 +82,10 @@ const getAssetRemainingBalance = async (userId, assetId, options) => {
 const getRecurringAccount = (item) =>
   item.type === "Income" ? (item.fromAsset ?? item.toAsset) : item.fromAsset;
 
-const inRange = (date, from, to) =>
+export const inRange = (date, from, to) =>
   (!from || !moment(date).isBefore(from)) && (!to || !moment(date).isAfter(to));
 
-const priorityRank = (item, today) => {
+export const priorityRank = (item, today) => {
   if (item.needsAttention) return 0; // failed auto-log
   if (moment(item.dueDate).isBefore(today, "day")) return 1; // overdue
   return 2; // due today / upcoming
@@ -430,6 +430,42 @@ const getBilledOwed = async (userId, assetId, creditDetailId, timezone) => {
   return Math.max(Number(asset?.remainingBalance ?? 0) - unbilled, 0);
 };
 
+const getCycleEstimate = async (userId, card, lastClose, nextClose, tz) => {
+  const [charges, installments, recurring] = await Promise.all([
+    prisma.expense.aggregate({
+      _sum: { amount: true },
+      where: {
+        userId: Number(userId),
+        assetId: card.id,
+        isActive: true,
+        status: "Completed",
+        creditInstallmentPlan: { is: null }, // billed monthly via installments instead
+        date: {
+          gt: lastClose.clone().endOf("day").toDate(),
+          lte: nextClose.clone().endOf("day").toDate(),
+        },
+      },
+    }),
+    getUpcomingInstallments(card.creditDetail, lastClose, nextClose, tz),
+    getRecurringItems(userId, tz, { from: null, to: nextClose.clone().endOf("day"), type: "Expense" }),
+  ]);
+
+  const today = moment().tz(tz).startOf("day");
+  const upcoming = recurring
+    .filter((r) => r.fromAsset?.id === card.id && moment(r.dueDate).isAfter(today, "day"))
+    .reduce((s, r) => s + r.amount, 0);
+
+  const total =
+    Number(charges._sum.amount ?? 0) +
+    installments.reduce((s, i) => s + Number(i.amount), 0) +
+    upcoming;
+
+  return { total: Math.round(total * 100) / 100, installments };
+};
+
+
+
+
 // Installments the upcoming statement will include: plans whose billed count
 // goes up between the last close and `nextClose` (one installment each).
 const getUpcomingInstallments = async (
@@ -471,7 +507,7 @@ const getUpcomingInstallments = async (
   });
 };
 
-const getCreditItems = async (userId, timezone, from, to) => {
+export const getCreditItems = async (userId, timezone, from, to) => {
   const today = moment().tz(timezone).startOf("day");
   const tz = timezone || (await getTimezone(userId));
 
@@ -532,62 +568,45 @@ const getCreditItems = async (userId, timezone, from, to) => {
 
     // Projection for the cycle that hasn't closed yet (estimate = current balance).
     if (to) {
+      const lastClose = lastStatementClose(today, creditDetail.statementDate);
       const nextClose = dayInMonth(
-        lastStatementClose(today, creditDetail.statementDate)
-          .add(1, "month")
-          .startOf("month"),
+        lastClose.clone().add(1, "month").startOf("month"),
         creditDetail.statementDate,
       );
       const nextDue = creditDueDate(nextClose, creditDetail);
 
       if (inRange(nextDue, from, to)) {
-        const asset = await getAssetRemainingBalance(userId, card.id);
-        const unbilled = await getUnbilledPrincipal(
-          creditDetail.id,
-          nextClose,
-          tz,
-        );
-        const estimate = Math.max(
-          Number(asset?.remainingBalance ?? 0) - unbilled,
-          0,
+        const { total: estimate, installments } = await getCycleEstimate(
+          userId, card, lastClose, nextClose, tz,
         );
 
-        if (estimate > 0) {
-          const installments = await getUpcomingInstallments(
-            creditDetail,
-            lastStatementClose(today, creditDetail.statementDate),
-            nextClose,
-            tz,
-          );
-
-          items.push({
-            installments,
-            key: `credit-${card.id}-${nextDue.format("YYYYMMDD")}`,
-            source: "CREDIT_STATEMENT",
-            sourceId: null,
-            type: "Transfer",
-            description: `${card.name} bill`,
-            amount: estimate,
-            statementBalance: estimate,
-            amountPaid: 0,
-            statementDate: nextClose.toDate(),
-            dueDate: nextDue.toDate(),
-            status: "UPCOMING",
-            category: null,
-            fromAsset: null,
-            toAsset: {
-              id: card.id,
-              name: card.name,
-              category: card.category,
-              color: card.color,
-            },
-            behaviour: "REMIND",
-            projected: true,
-            actionable: false,
-            needsAttention: false,
-            failureReason: null,
-          });
-        }
+        items.push({
+          installments,
+          key: `credit-${card.id}-${nextDue.format("YYYYMMDD")}`,
+          source: "CREDIT_STATEMENT",
+          sourceId: null,
+          type: "Transfer",
+          description: `${card.name} bill`,
+          amount: estimate,
+          statementBalance: estimate,
+          amountPaid: 0,
+          statementDate: nextClose.toDate(),
+          dueDate: nextDue.toDate(),
+          status: "UPCOMING",
+          category: null,
+          fromAsset: null,
+          toAsset: {
+            id: card.id,
+            name: card.name,
+            category: card.category,
+            color: card.color,
+          },
+          behaviour: "REMIND",
+          projected: true,
+          actionable: false,
+          needsAttention: false,
+          failureReason: null,
+        });
       }
     }
   }
@@ -600,7 +619,7 @@ const getCreditItems = async (userId, timezone, from, to) => {
 | Recurring
 |--------------------------------------------------------------------------
 */
-const getRecurringItems = async (userId, timezone, { from, to, type }) => {
+export const getRecurringItems = async (userId, timezone, { from, to, type }) => {
   const recurringList = await prisma.recurringTransaction.findMany({
     where: {
       userId: Number(userId),
@@ -798,12 +817,12 @@ export const getRecurringScheduleHistory = async (userId, id) => {
     recurringId: recurring.id,
     status: { in: ["Completed", "Skipped"] },
   };
-  const select = { id: true, amount: true, date: true, status: true };
+  const select = { id: true, amount: true, date: true, status: true, recurringDueDate: true };
 
   const [expenses, incomes, transfers, skippedLogs] = await Promise.all([
     prisma.expense.findMany({
       where,
-      select: { ...select, recurringDueDate: true },
+      select
     }),
     prisma.income.findMany({ where, select }),
     prisma.transfer.findMany({ where, select }),
@@ -1317,11 +1336,11 @@ export const cancelInstallmentPlan = async (userId, id) => {
     }),
     ...(plan.expenseId
       ? [
-          prisma.expense.update({
-            where: { id: plan.expenseId },
-            data: { isActive: false },
-          }),
-        ]
+        prisma.expense.update({
+          where: { id: plan.expenseId },
+          data: { isActive: false },
+        }),
+      ]
       : []),
   ]);
 
