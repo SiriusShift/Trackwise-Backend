@@ -677,3 +677,40 @@ export const getRunway = async (userId) => {
     hasEnoughData: daysOfData >= MIN_RUNWAY_DAYS,
   };
 };
+
+
+/*
+|--------------------------------------------------------------------------
+| Last Entry
+|--------------------------------------------------------------------------
+| The account and category of the user's most recent entry of a type, used
+| to prefill the "add" form. Only returns values that are still usable.
+*/
+export const getLastEntry = async (userId, type) => {
+  const where = {
+    userId: Number(userId),
+    isActive: true,
+    category: { isActive: true },
+  };
+
+  if (type === "transfer") {
+    // Goal contributions and statement payments are made from their own
+    // dialogs, so they shouldn't drive the regular transfer form.
+    const last = await prisma.transfer.findFirst({
+      where: { ...where, goalId: null, creditStatementId: null },
+      orderBy: { createdAt: "desc" },
+      select: { category: true, fromAsset: true },
+    });
+
+    return last ? { category: last.category, account: last.fromAsset } : null;
+  }
+
+  const model = type === "income" ? prisma.income : prisma.expense;
+  const last = await model.findFirst({
+    where,
+    orderBy: { createdAt: "desc" },
+    select: { category: true, asset: true },
+  });
+
+  return last ? { category: last.category, account: last.asset } : null;
+};

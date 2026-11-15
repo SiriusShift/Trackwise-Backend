@@ -4,8 +4,8 @@ services:
     ports:
       - "5001:5000"
     env_file:
-      # - .env.render
-      - .env
+      - .env.render
+      # - .env
     environment:
       DATABASE_URL: postgresql://dev:dev@db:5432/app
     depends_on:

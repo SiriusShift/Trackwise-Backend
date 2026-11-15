@@ -3,6 +3,7 @@ import { Router } from "express";
 import {
   archiveTransaction,
   getHistory,
+  getLastEntry,
   getStatistics,
   restoreTransaction,
 } from "../controllers/transactions.controller.js";
@@ -40,6 +41,15 @@ const router = Router();
 router.route("/history").get(requireAuth, catchAsync(getHistory));
 
 router.route("/statistics").get(requireAuth, catchAsync(getStatistics));
+
+// Account + category of the latest entry, for prefilling the add form.
+router
+  .route("/last")
+  .get(
+    requireAuth,
+    validate({ query: archiveTransactionQuery }),
+    catchAsync(getLastEntry),
+  );
 
 // Mounted before "/:id" so "schedules" isn't captured as a transaction id.
 router.use("/schedules", SchedulesRouter);

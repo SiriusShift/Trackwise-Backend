@@ -47,6 +47,20 @@ export const getStatistics = async (req, res) => {
   }
 };
 
+/* ---------------- LAST ENTRY ---------------- */
+export const getLastEntry = async (req, res) => {
+  const response = await transactionService.getLastEntry(
+    req.user.id,
+    req.query.type,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Last entry fetched successfully",
+    data: response,
+  });
+};
+
 /* ---------------- ARCHIVE ---------------- */
 export const archiveTransaction = async (req, res) => {
   const { id } = req.params;
