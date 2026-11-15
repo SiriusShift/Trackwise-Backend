@@ -30,6 +30,19 @@ export const contributeSavingsSchema = Joi.object({
   description: description.allow(""),
 });
 
+// Source is the goal's linked account, so only the destination is sent
+export const withdrawSavingsSchema = Joi.object({
+  amount: amount.required(),
+  account: id.required(),
+  category: id.required(),
+  date: Joi.date(),
+  description: description.allow(""),
+});
+
 export const getSavingsGoalsQuery = Joi.object({
   isActive: Joi.boolean(),
+});
+
+export const getGoalContributionsQuery = Joi.object({
+  limit: Joi.number().integer().min(1).max(50),
 });

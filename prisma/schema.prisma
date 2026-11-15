@@ -444,15 +444,16 @@ model Expense {
 }
 
 model Income {
-  id          Int      @id @default(autoincrement())
-  date        DateTime @default(now())
-  description String?
-  amount      Decimal
-  image       String?
-  status      Status?  @default(Pending)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               Int       @id @default(autoincrement())
+  date             DateTime  @default(now())
+  description      String?
+  amount           Decimal
+  image            String?
+  status           Status?   @default(Pending)
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  recurringDueDate DateTime?
 
   userId      Int
   categoryId  Int
@@ -469,15 +470,16 @@ model Income {
 }
 
 model Transfer {
-  id          Int      @id @default(autoincrement())
-  date        DateTime @default(now())
-  description String?
-  amount      Decimal
-  image       String?
-  status      Status   @default(Pending)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id               Int       @id @default(autoincrement())
+  date             DateTime  @default(now())
+  description      String?
+  amount           Decimal
+  image            String?
+  status           Status    @default(Pending)
+  isActive         Boolean   @default(true)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  recurringDueDate DateTime?
 
   userId            Int
   categoryId        Int
@@ -507,6 +509,7 @@ model RecurringTransaction {
   amount          Decimal
   interval        Int
   unit            String // day | week | month | year
+  daysOfMonth     Int[]              @default([]) // 1-31; empty = repeats by interval + unit
   behaviour       RecurringBehaviour
   status          RecurringStatus    @default(ACTIVE)
   startDate       DateTime

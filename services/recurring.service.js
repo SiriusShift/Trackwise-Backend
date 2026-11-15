@@ -6,6 +6,42 @@ import { AppError } from "../utils/AppError.js";
 
 import { prisma } from "../config/prisma.js";
 
+import {
+  firstOccurrenceOnOrAfter,
+  nextOccurrenceAfter,
+} from "../utils/recurringSchedule.js";
+
+const getUserTimezone = async (userId, tx = prisma) => {
+  const settings = userId
+    ? await tx.settings.findFirst({
+      where: { userId: Number(userId) },
+      select: { timezone: true },
+    })
+    : null;
+  return settings?.timezone || "UTC";
+};
+
+const sortDays = (days) => [...days].map(Number).sort((a, b) => a - b);
+
+// NOTE: the cron stops on a date it already handled and never advances, so a
+// recalculated due date has to skip those. FAILED cycles can still be retried.
+const firstUnhandledOccurrence = async (recurringId, item, date, timezone) => {
+  let candidate = firstOccurrenceOnOrAfter(item, date, timezone);
+  while (
+    await prisma.recurringLog.findFirst({
+      where: {
+        recurringId,
+        firedAt: candidate.toDate(),
+        result: { not: "FAILED" },
+      },
+      select: { id: true },
+    })
+  ) {
+    candidate = nextOccurrenceAfter(item, candidate, timezone);
+  }
+  return candidate;
+};
+
 /*
 |--------------------------------------------------------------------------
 | Create Recurring Transaction
@@ -15,7 +51,8 @@ export const postRecurring = async (userId, data) => {
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
   const assetFromId = Number(data?.account);
-  const assetToId = Number(data?.to?.id);
+  // The form sends a plain id; Joi also accepts { id }.
+  const assetToId = Number(data?.to?.id ?? data?.to);
   const type = data?.type;
 
   if (!["Expense", "Income", "Transfer"].includes(type)) {
@@ -40,6 +77,19 @@ export const postRecurring = async (userId, data) => {
     unit: data?.frequency,
     behaviour: data?.behaviour,
   };
+
+  if (data?.daysOfMonth?.length) {
+    const daysOfMonth = sortDays(data.daysOfMonth);
+    const timezone = await getUserTimezone(userId);
+    recurringData.daysOfMonth = daysOfMonth;
+    recurringData.interval = 1;
+    recurringData.unit = "month";
+    recurringData.nextDueDate = firstOccurrenceOnOrAfter(
+      { daysOfMonth },
+      data.date,
+      timezone,
+    ).toDate();
+  }
 
   if (type === "Expense" || type === "Transfer" || type === "Income") {
     recurringData.fromAsset = { connect: { id: assetFromId } };
@@ -118,6 +168,7 @@ export const getRecurring = async (userId, query) => {
       nextDueDate: true,
       interval: true,
       unit: true,
+      daysOfMonth: true,
       isActive: true,
       endDate: true,
       behaviour: true,
@@ -149,7 +200,8 @@ export const editRecurring = async (userId, id, data) => {
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
   const assetFromId = Number(data?.account);
-  const assetToId = Number(data?.to?.id);
+  // The form sends a plain id; Joi also accepts { id }.
+  const assetToId = Number(data?.to?.id ?? data?.to);
   const type = data?.type;
 
   if (!["Expense", "Income", "Transfer"].includes(type)) {
@@ -177,6 +229,35 @@ export const editRecurring = async (userId, id, data) => {
     updateData.nextDueDate = newStart;
   }
 
+  // NOTE: a schedule can't switch between interval and days, so the interval
+  // fields stay fixed here and incoming days are ignored on an interval schedule.
+  if (existing.daysOfMonth.length) {
+    delete updateData.interval;
+    delete updateData.unit;
+
+    const daysOfMonth = data?.daysOfMonth?.length
+      ? sortDays(data.daysOfMonth)
+      : existing.daysOfMonth;
+    const daysChanged =
+      daysOfMonth.join() !== sortDays(existing.daysOfMonth).join();
+
+    if (daysChanged) updateData.daysOfMonth = daysOfMonth;
+
+    if (daysChanged || updateData.startDate) {
+      const timezone = await getUserTimezone(userId);
+      const start = updateData.startDate ?? existing.startDate;
+      const today = moment().tz(timezone).startOf("day");
+      updateData.nextDueDate = (
+        await firstUnhandledOccurrence(
+          existing.id,
+          { daysOfMonth },
+          moment.max(moment(start), today),
+          timezone,
+        )
+      ).toDate();
+    }
+  }
+
   updateData.fromAsset =
     type === "Expense" || type === "Transfer"  || 
     type === "Income" 
@@ -198,10 +279,17 @@ export const editRecurring = async (userId, id, data) => {
 | Cancel Recurring
 |--------------------------------------------------------------------------
 */
-export const cancelRecurring = async (id) => {
+export const cancelRecurring = async (userId, id) => {
+  const existing = await prisma.recurringTransaction.findFirst({
+    where: { id: Number(id), userId: Number(userId) },
+    select: { id: true },
+  });
+
+  if (!existing) throw new AppError("Recurring transaction not found", 404);
+
   await prisma.recurringTransaction.update({
     where: {
-      id: Number(id),
+      id: existing.id,
     },
     data: {
       isActive: false,
@@ -221,25 +309,11 @@ export const transactBill = async (id, userId, tx = prisma) => {
 
   if (!recurring) throw new AppError("Recurring bill not found", 404);
 
-  const settings = userId
-    ? await tx.settings.findFirst({
-      where: { userId: Number(userId) },
-      select: { timezone: true },
-    })
-    : null;
-  const timezone = settings?.timezone || "UTC";
+  const timezone = await getUserTimezone(userId, tx);
 
-  // NOTE: same rule as the cron: next = startDate + k * interval (> current due).
-  // Previously this always added 1 month, ignoring interval/unit, and passed a moment
-  // object to Prisma instead of a Date.
+  // NOTE: same rule as the cron.
   const currentDue = moment(recurring.nextDueDate).tz(timezone).startOf("day");
-  const anchor = moment.tz(recurring.startDate, timezone).startOf("day");
-  let k = 1;
-  let next = anchor.clone().add(k * recurring.interval, recurring.unit);
-  while (!next.isAfter(currentDue)) {
-    k++;
-    next = anchor.clone().add(k * recurring.interval, recurring.unit);
-  }
+  const next = nextOccurrenceAfter(recurring, currentDue, timezone);
 
   const ended =
     recurring.endDate && next.isAfter(moment(recurring.endDate).tz(timezone).endOf("day"));
