@@ -77,6 +77,7 @@ const goalSelect = {
   asset: { select: { id: true, name: true, currency: true, isActive: true } },
   createdAt: true,
   updatedAt: true,
+  archivedAt: true
 };
 
 // Saved amount is the linked asset's balance, or the hand-entered amount
@@ -90,7 +91,9 @@ const withProgress = (
   now = moment(),
 ) => {
   const assetBalance =
-    goal.assetId != null ? balanceByAssetId.get(goal.assetId) : undefined;
+    goal.isActive && goal.assetId != null
+      ? balanceByAssetId.get(goal.assetId)
+      : undefined;
   const savedAmount = assetBalance ?? Number(goal.currentAmount);
   const targetAmount = Number(goal.targetAmount);
   const isCompleted = targetAmount > 0 && savedAmount >= targetAmount;
@@ -98,7 +101,7 @@ const withProgress = (
 
   const monthlyContributions =
     monthlyByGoalId.get(goal.id) ?? Array(TREND_MONTHS).fill(0);
-  const recentMonthlyPace = recentPaceOf(goal, monthlyContributions, now);
+  const recentMonthlyPace = goal.isActive ? recentPaceOf(goal, monthlyContributions, now) : null;
   const pace = monthlyPace(goal, savedAmount, remainingAmount);
 
   return {
@@ -108,8 +111,8 @@ const withProgress = (
     progress: targetAmount > 0 ? savedAmount / targetAmount : 0,
     isCompleted,
     isOnTrack:
-      isCompleted ||
-      isOnTrackFor(goal, savedAmount, targetAmount, pace.requiredMonthlyPace, recentMonthlyPace, now),
+      goal.isActive ? (isCompleted ||
+        isOnTrackFor(goal, savedAmount, targetAmount, pace.requiredMonthlyPace, recentMonthlyPace, now)) : null,
     ...pace,
     // Average contributed per month over the last PACE_MONTHS months (fewer
     // for younger goals). Unlike currentMonthlyPace it ignores an opening balance
@@ -393,6 +396,8 @@ export const updateSavingsGoal = async (
   id,
   { name, targetAmount, targetDate, icon, assetId, currentAmount, isActive },
 ) => {
+  const timezone = await getUserTimezone(userId);
+  const now = moment().tz(timezone);
   const existing = await findGoal(userId, id);
 
   if (assetId != null && assetId !== existing.assetId) {
@@ -416,7 +421,11 @@ export const updateSavingsGoal = async (
       ...(currentAmount !== undefined && {
         currentAmount: parseFloat(currentAmount),
       }),
-      ...(isActive !== undefined && { isActive }),
+      ...(isActive !== undefined && {
+        isActive,
+        archivedAt: isActive ? null : new Date(),
+      }),
+
     },
     select: goalSelect,
   });
@@ -541,7 +550,13 @@ export const getGoalContributions = async (userId, id, { limit = 5 } = {}) => {
   const goal = await findGoal(userId, id);
 
   const transfers = await prisma.transfer.findMany({
-    where: { userId: Number(userId), goalId: goal.id, isActive: true },
+    where: {
+      userId: Number(userId), isActive: true, ...(!goal.isActive && {
+        date: {
+          lte: goal.archivedAt
+        }
+      })
+    },
     select: {
       id: true,
       date: true,
