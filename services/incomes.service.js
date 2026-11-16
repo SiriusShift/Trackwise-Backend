@@ -3,6 +3,7 @@ import { AppError } from "../utils/AppError.js";
 import { ACCOUNT_RULES, assertAccountCategory, validateAsset } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
+import { rebillCardIncome } from "./schedules/creditStatements.service.js";
 
 import { prisma } from "../config/prisma.js";
 import { getPeriodRange, getUserTimezone } from "../utils/userTimezone.js";
@@ -52,6 +53,10 @@ export const postIncome = async (userId, data, file) => {
       ...(image && { image }),
     },
   });
+
+  // Cashback on a card: fix a closed statement it lands in, or count it
+  // toward the open bill right away.
+  await rebillCardIncome(userId, income.assetId, income.date);
 
   return income;
 };
@@ -156,7 +161,7 @@ export const updateIncome = async (userId, data, file, id) => {
     }
   }
 
-  return await prisma.income.update({
+  const updated = await prisma.income.update({
     where: { id: Number(id) },
     data: {
       amount,
@@ -172,6 +177,18 @@ export const updateIncome = async (userId, data, file, id) => {
       user: { connect: { id: userId } },
     },
   });
+
+  // Rebill from the earlier of the old and new dates, on both cards if the
+  // income moved between accounts.
+  if (income.assetId === updated.assetId) {
+    const from = income.date < updated.date ? income.date : updated.date;
+    await rebillCardIncome(userId, updated.assetId, from);
+  } else {
+    await rebillCardIncome(userId, income.assetId, income.date);
+    await rebillCardIncome(userId, updated.assetId, updated.date);
+  }
+
+  return updated;
 };
 
 /* =========================
@@ -179,12 +196,14 @@ export const updateIncome = async (userId, data, file, id) => {
 ========================= */
 
 export const deleteIncome = async (id) => {
-  await validateIncome(id);
+  const income = await validateIncome(id);
 
   await prisma.income.update({
     where: { id: Number(id) },
     data: { isActive: false },
   });
+
+  await rebillCardIncome(income.userId, income.assetId, income.date);
 
 };
 

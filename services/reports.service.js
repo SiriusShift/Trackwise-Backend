@@ -473,7 +473,8 @@ export const getCreditCardStatement = async ({
     incomes,
     transfersOut,
     transfersIn,
-    payments,
+    transferPayments,
+    creditPayments,
     openingResult,
     closingResult,
   ] = await Promise.all([
@@ -505,11 +506,33 @@ export const getCreditCardStatement = async ({
       },
       orderBy: { date: "asc" },
     }),
+    // Cashback / statement credits applied to this bill, after it closed.
+    prisma.income.findMany({
+      where: {
+        assetId: card.id,
+        isActive: true,
+        status: "Completed",
+        date: { gt: periodEnd.toDate() },
+        creditStatementId: statement.id,
+      },
+      select: {
+        id: true,
+        date: true,
+        amount: true,
+        description: true,
+      },
+      orderBy: { date: "asc" },
+    }),
     getAssetBalance(userId, card.id, {
       asOf: prevClose.clone().endOf("day").toDate(),
     }),
     getAssetBalance(userId, card.id, { asOf: periodEnd.toDate() }),
   ]);
+
+  const payments = [
+    ...transferPayments.map((p) => ({ ...p, type: "Transfer" })),
+    ...creditPayments.map((p) => ({ ...p, type: "Income", fromAsset: null })),
+  ].sort((a, b) => a.date - b.date);
 
   // Installment purchases reach the bill through their installments instead.
   const planExpenseIds = new Set(
@@ -709,6 +732,7 @@ export const getCreditCardStatement = async ({
       id: p.id,
       date: p.date,
       description: p.description,
+      type: p.type,
       from: p.fromAsset?.name ?? null,
       amount: Number(p.amount),
     })),

@@ -16,6 +16,7 @@ import {
   buildBilledInstallmentRefund,
   syncCreditStatements,
 } from "./schedules.service.js";
+import { rebillCardIncome } from "./schedules/creditStatements.service.js";
 /*
 |--------------------------------------------------------------------------
 | Get History (Paginated)
@@ -477,12 +478,13 @@ export const getStatistics = async (userId, data) => {
 |--------------------------------------------------------------------------
 */
 export const archiveTransaction = async (type, id, userId) => {
+  let income;
   switch (type) {
     case "expense":
       await validateExpense(id, userId);
       break;
     case "income":
-      await validateIncome(id, userId);
+      income = await validateIncome(id, userId);
       break;
     case "transfer":
       await validateTransfers(id, userId);
@@ -543,6 +545,9 @@ export const archiveTransaction = async (type, id, userId) => {
     where: { id: Number(id) },
     data: { isActive: false },
   });
+
+  // Archived cashback on a card no longer lowers its statement.
+  if (income) await rebillCardIncome(userId, income.assetId, income.date);
 };
 
 /*
@@ -593,6 +598,10 @@ export const restoreTransaction = async (type, id, userId) => {
     data: { isActive: true },
   });
 
+  if (type === "income") {
+    // Restored cashback on a card lowers its statement again.
+    await rebillCardIncome(userId, row.assetId, row.date);
+  }
   await syncCreditStatements(userId);
 };
 

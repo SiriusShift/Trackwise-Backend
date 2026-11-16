@@ -75,28 +75,37 @@ const pickAsset = (asset) => ({
   color: asset.color,
 });
 
-// Sum of payments into the card after the statement closed. Counts every
-// transfer to the card (not just ones linked via creditStatementId) so
-// payments made from the regular transfer form also settle the bill.
-export const getStatementPayments = async (statement, assetId, timezone) =>
-  prisma.transfer.findMany({
-    where: {
-      toAssetId: assetId,
-      isActive: true,
-      status: "Completed",
-      date: {
-        gt: moment(statement.statementDate).tz(timezone).endOf("day").toDate(),
-      },
+// Payments and credits into the card after the statement closed, newest
+// first. Counts every transfer to the card (not just ones linked via
+// creditStatementId) so payments made from the regular transfer form also
+// settle the bill, plus income posted to the card (cashback / statement
+// credits), which lowers what's owed the same way a payment does.
+export const getStatementPayments = async (statement, assetId, timezone) => {
+  const where = {
+    isActive: true,
+    status: "Completed",
+    date: {
+      gt: moment(statement.statementDate).tz(timezone).endOf("day").toDate(),
     },
-    select: {
-      id: true,
-      amount: true,
-      date: true,
-      description: true,
-      fromAsset: { select: assetSelect },
-    },
-    orderBy: { date: "desc" },
-  });
+  };
+  const select = { id: true, amount: true, date: true, description: true };
+
+  const [transfers, credits] = await Promise.all([
+    prisma.transfer.findMany({
+      where: { ...where, toAssetId: assetId },
+      select: { ...select, fromAsset: { select: assetSelect } },
+    }),
+    prisma.income.findMany({
+      where: { ...where, assetId },
+      select: { ...select, category: { select: { name: true } } },
+    }),
+  ]);
+
+  return [
+    ...transfers.map((t) => ({ ...t, type: "Transfer" })),
+    ...credits.map((c) => ({ ...c, type: "Income", fromAsset: null })),
+  ].sort((a, b) => b.date - a.date);
+};
 
 export const totalPaid = (payments) =>
   payments.reduce((sum, p) => sum + Number(p.amount), 0);
@@ -815,6 +824,23 @@ export const rebillStatementsFrom = async (userId, assetId, fromDate) => {
   }
 
   await syncCreditStatements(userId, timezone);
+};
+
+/**
+ * Rebills after an income (cashback / statement credit) on a credit card is
+ * created, changed or archived. A backdated credit inside a closed cycle lowers
+ * that statement's balance; one after the close counts as a payment, and the
+ * sync inside rebillStatementsFrom refreshes the status right away. Skips
+ * non-credit accounts and incomes without one.
+ */
+export const rebillCardIncome = async (userId, assetId, date) => {
+  if (!assetId || !date) return;
+  const asset = await prisma.asset.findUnique({
+    where: { id: Number(assetId) },
+    select: { category: true },
+  });
+  if (asset?.category !== "CREDIT") return;
+  await rebillStatementsFrom(userId, assetId, date);
 };
 
 // Created on first use so users don't have to set it up.

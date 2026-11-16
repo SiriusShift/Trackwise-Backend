@@ -387,6 +387,9 @@ model CreditStatement {
   // 1:many, unlike LoanInstallment <-> Expense — a statement can be paid off
   // across several partial payments.
   payments     Transfer[]
+  // Cashback / statement credits the bank applied toward this bill. Counted
+  // with `payments` when working out what's still owed.
+  credits      Income[]
   installments CreditInstallment[]
 
   createdAt DateTime @default(now())
@@ -464,18 +467,21 @@ model Income {
   updatedAt        DateTime  @updatedAt
   recurringDueDate DateTime?
 
-  userId      Int
-  categoryId  Int
-  assetId     Int?
-  recurringId Int?
+  userId            Int
+  categoryId        Int
+  assetId           Int?
+  recurringId       Int?
+  creditStatementId Int? // set when this income is cashback / a statement credit applied to a credit statement
 
   user              User                  @relation(fields: [userId], references: [id])
   category          Categories            @relation(fields: [categoryId], references: [id])
   asset             Asset?                @relation(fields: [assetId], references: [id], onDelete: SetNull)
   recurringTemplate RecurringTransaction? @relation("RecurringIncomes", fields: [recurringId], references: [id])
+  creditStatement   CreditStatement?      @relation(fields: [creditStatementId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@index([recurringId])
+  @@index([creditStatementId])
 }
 
 model Transfer {
