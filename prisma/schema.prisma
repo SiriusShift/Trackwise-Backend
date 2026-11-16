@@ -432,6 +432,13 @@ model Expense {
   recurringId      Int?
   recurringDueDate DateTime?
 
+  // A credit card purchase the bank hasn't posted yet. It still counts against
+  // the card's balance and available credit, but stays off statements until
+  // it posts. postedDate is when the bank posted it; null means it posted on
+  // `date` (every expense from before this field existed).
+  isPending  Boolean   @default(false)
+  postedDate DateTime?
+
   loanInstallment       LoanInstallment? // back-relation only — FK lives on LoanInstallment.expenseId
   creditInstallmentPlan CreditInstallmentPlan? // back-relation only — FK lives on CreditInstallmentPlan.expenseId
   user                  User                   @relation(fields: [userId], references: [id])
@@ -441,6 +448,7 @@ model Expense {
 
   @@index([userId])
   @@index([recurringId])
+  @@index([assetId, isPending])
 }
 
 model Income {

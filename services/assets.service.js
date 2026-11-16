@@ -2,6 +2,7 @@ import { AppError } from "../utils/AppError.js";
 
 import { prisma } from "../config/prisma.js";
 import { getExchangeRates } from "./exchangeRate.service.js";
+import { postedExpenseWhere } from "../utils/postedExpenses.js";
 /*
 |--------------------------------------------------------------------------
 | Validate Asset
@@ -284,9 +285,15 @@ export const getAsset = async (userId, id, from, to) => {
 export const getAssetBalance = async (
   userId,
   id,
-  { netWorthOnly = false, from, to, asOf } = {},
+  { netWorthOnly = false, from, to, asOf, postedOnly = false } = {},
 ) => {
   const asOfFilter = asOf ? { date: { lte: new Date(asOf) } } : {};
+
+  // postedOnly: the balance the bank shows, for card statements. Pending
+  // purchases are left out and the rest are dated by when they posted.
+  const expenseAsOfFilter = postedOnly
+    ? postedExpenseWhere(asOf ? { lte: new Date(asOf) } : null)
+    : asOfFilter;
 
   const rangeFilter =
     from || to
@@ -379,7 +386,7 @@ export const getAssetBalance = async (
     }),
     prisma.expense.groupBy({
       by: ["assetId"],
-      where: whereFor("asset", asOfFilter),
+      where: whereFor("asset", expenseAsOfFilter),
       _sum: { amount: true },
     }),
     prisma.transfer.groupBy({

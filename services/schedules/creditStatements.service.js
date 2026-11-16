@@ -22,6 +22,10 @@ import {
   inRange,
   resolveTransferCategory,
 } from "./shared.js";
+import {
+  businessDaysBetween,
+  postedExpenseWhere,
+} from "../../utils/postedExpenses.js";
 
 /*
 |--------------------------------------------------------------------------
@@ -164,8 +168,11 @@ const createMissingStatements = async (userId, card, today, timezone) => {
   );
 
   for (const closeDate of missing) {
+    // What the bank had posted by the cut-off; pending purchases wait for
+    // the statement after they post.
     const asset = await getAssetRemainingBalance(userId, card.id, {
       asOf: closeDate.clone().endOf("day").toDate(),
+      postedOnly: true,
     });
     const unbilled = await getUnbilledPrincipal(
       creditDetail.id,
@@ -439,7 +446,7 @@ export const getBilledOwed = async (
 ) => {
   const asOf = moment().tz(timezone).endOf("day");
   const [asset, unbilled] = await Promise.all([
-    getAssetRemainingBalance(userId, assetId),
+    getAssetRemainingBalance(userId, assetId, { postedOnly: true }),
     getUnbilledPrincipal(creditDetailId, asOf, timezone),
   ]);
   return Math.max(Number(asset?.remainingBalance ?? 0) - unbilled, 0);
@@ -543,7 +550,9 @@ export const getCreditItems = async (userId, timezone, from, to) => {
       const nextDue = creditDueDate(nextClose, creditDetail);
 
       if (inRange(nextDue, from, to)) {
-        const asset = await getAssetRemainingBalance(userId, card.id);
+        const asset = await getAssetRemainingBalance(userId, card.id, {
+          postedOnly: true,
+        });
         const unbilled = await getUnbilledPrincipal(
           creditDetail.id,
           nextClose,
@@ -668,21 +677,42 @@ export const getProjectedCreditStatement = async (userId, id) => {
     category: { select: categorySelect },
   };
 
-  const [expenses, incomes, transfersOut, transfersIn] = await Promise.all([
-    prisma.expense.findMany({
-      where: { ...base, assetId: card.id },
-      select,
-    }),
-    prisma.income.findMany({ where: { ...base, assetId: card.id }, select }),
-    prisma.transfer.findMany({
-      where: { ...base, fromAssetId: card.id },
-      select: { ...select, toAsset: { select: assetSelect } },
-    }),
-    prisma.transfer.findMany({
-      where: { ...base, toAssetId: card.id },
-      select: { ...select, fromAsset: { select: assetSelect } },
-    }),
-  ]);
+  const expenseSelect = { ...select, postedDate: true };
+
+  const [expenses, pendingExpenses, incomes, transfersOut, transfersIn] =
+    await Promise.all([
+      // Posted since the last close, by posting date (a purchase made before
+      // the close can post after it and belongs to this cycle).
+      prisma.expense.findMany({
+        where: {
+          isActive: true,
+          status: "Completed",
+          assetId: card.id,
+          ...postedExpenseWhere(dateFilter),
+        },
+        select: expenseSelect,
+      }),
+      // Not posted yet, whatever cycle they were made in.
+      prisma.expense.findMany({
+        where: {
+          isActive: true,
+          status: "Completed",
+          assetId: card.id,
+          isPending: true,
+        },
+        select: expenseSelect,
+        orderBy: { date: "asc" },
+      }),
+      prisma.income.findMany({ where: { ...base, assetId: card.id }, select }),
+      prisma.transfer.findMany({
+        where: { ...base, fromAssetId: card.id },
+        select: { ...select, toAsset: { select: assetSelect } },
+      }),
+      prisma.transfer.findMany({
+        where: { ...base, toAssetId: card.id },
+        select: { ...select, fromAsset: { select: assetSelect } },
+      }),
+    ]);
 
   // `effect` is how the entry moves the amount owed: charges and cash
   // advances raise it, payments and refunds lower it.
@@ -696,6 +726,7 @@ export const getProjectedCreditStatement = async (userId, id) => {
     amount: Number(row.amount),
     effect: effect * Number(row.amount),
     counterAsset: row.toAsset ?? row.fromAsset ?? null,
+    postedDate: row.postedDate ?? null,
   });
 
   const transactions = [
@@ -705,8 +736,14 @@ export const getProjectedCreditStatement = async (userId, id) => {
     ...transfersIn.map((r) => entry("Transfer", r, -1)),
   ].sort((a, b) => new Date(b.date) - new Date(a.date));
 
+  const pending = pendingExpenses.map((r) => ({
+    ...entry("Expense", r, 1),
+    // Business days since the purchase, for "check your bank" nudges.
+    pendingBusinessDays: businessDaysBetween(moment(r.date).tz(timezone), today),
+  }));
+
   const [asset, unbilled] = await Promise.all([
-    getAssetRemainingBalance(userId, card.id),
+    getAssetRemainingBalance(userId, card.id, { postedOnly: true }),
     getUnbilledPrincipal(creditDetail.id, nextClose, timezone),
   ]);
 
@@ -724,7 +761,60 @@ export const getProjectedCreditStatement = async (userId, id) => {
     carriedOver: estimate - cycleTotal,
     unbilledInstallments: unbilled,
     transactions,
+    // Not in the estimate until they post.
+    pending,
+    pendingTotal: pending.reduce((sum, t) => sum + t.amount, 0),
   };
+};
+
+/**
+ * Recomputes the balance of a card's statements that closed on or after
+ * `fromDate`. Used when a pending purchase posts with a date inside a cycle
+ * that already closed: the bank billed it on that statement, so ours should
+ * too. Statements store the posted balance as of their close, so redoing that
+ * sum is all it takes; the status is refreshed by syncCreditStatements.
+ */
+export const rebillStatementsFrom = async (userId, assetId, fromDate) => {
+  const timezone = await getTimezone(userId);
+  const from = moment(fromDate).tz(timezone).startOf("day");
+
+  const statements = await prisma.creditStatement.findMany({
+    where: {
+      creditDetail: { assetId: Number(assetId) },
+      statementDate: { gte: from.toDate() },
+    },
+    select: {
+      id: true,
+      creditDetailId: true,
+      statementDate: true,
+      statementBalance: true,
+    },
+  });
+
+  for (const statement of statements) {
+    const closeDate = moment(statement.statementDate).tz(timezone);
+    const [asset, unbilled] = await Promise.all([
+      getAssetRemainingBalance(userId, assetId, {
+        asOf: closeDate.clone().endOf("day").toDate(),
+        postedOnly: true,
+      }),
+      getUnbilledPrincipal(statement.creditDetailId, closeDate, timezone),
+    ]);
+    const statementBalance = Math.max(
+      Number(asset?.remainingBalance ?? 0) - unbilled,
+      0,
+    );
+    if (statementBalance === Number(statement.statementBalance)) continue;
+
+    // Reopened; refreshOpenStatementStatuses sets the real status (it may
+    // still be paid).
+    await prisma.creditStatement.update({
+      where: { id: statement.id },
+      data: { statementBalance, status: "PENDING" },
+    });
+  }
+
+  await syncCreditStatements(userId, timezone);
 };
 
 // Created on first use so users don't have to set it up.

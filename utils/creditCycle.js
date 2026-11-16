@@ -40,6 +40,15 @@ export const lastStatementClose = (today, statementDay) => {
     : thisMonth;
 };
 
+// Statement close one month after `lastClose`, clamped to short months.
+export const nextStatementClose = (lastClose, statementDay) =>
+  dayInMonth(lastClose.clone().add(1, "month").startOf("month"), statementDay);
+
+// Next bill = balance minus future installment principal (unbilled) minus
+// what's still owed on the open statement (billed already). Never negative.
+export const projectedBillEstimate = ({ balance, unbilled = 0, openUnpaid = 0 }) =>
+  Math.max(0, Number(balance ?? 0) - Number(unbilled ?? 0) - Number(openUnpaid ?? 0));
+
 /**
  * How many of a plan's installments have been billed by the statement closing
  * on `closeDate`. Statements close on the same day each month, so comparing

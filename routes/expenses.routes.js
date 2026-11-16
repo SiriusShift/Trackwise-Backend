@@ -7,6 +7,7 @@ import {
   getExpenses,
   getGraph,
   postExpense,
+  postPendingExpense,
   updateExpense
 } from "../controllers/expenses.controller.js";
 
@@ -22,6 +23,7 @@ import { idParams } from "../schema/common.js";
 import {
   createExpenseSchema,
   graphQuery,
+  postPendingExpenseSchema,
   updateExpenseSchema,
 } from "../schema/transaction.js";
 
@@ -58,6 +60,15 @@ router
     upload.single("image"),
     validate({ params: idParams, body: updateExpenseSchema }),
     catchAsync(updateExpense),
+  );
+
+// Mark a pending card purchase as posted by the bank
+router
+  .route("/:id/post")
+  .patch(
+    requireAuth,
+    validate({ params: idParams, body: postPendingExpenseSchema }),
+    catchAsync(postPendingExpense),
   );
 
 // Graph data

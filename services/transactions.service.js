@@ -61,6 +61,8 @@ export const getHistory = async (userId, request) => {
         amount: true,
         description: true,
         status: true,
+        isPending: true,
+        postedDate: true,
 
         category: {
           select: {
@@ -74,6 +76,7 @@ export const getHistory = async (userId, request) => {
             id: true,
             name: true,
             balance: true,
+            category: true,
           },
         },
       },

@@ -12,6 +12,10 @@ import { getPeriodRange, getUserTimezone } from "../utils/userTimezone.js";
 import { units } from "../schema/transaction.js";
 import { buildGraphFilters } from "../utils/graphFilters.js";
 import { buildInstallmentSchedule, hasDueRule } from "../utils/creditCycle.js";
+import { rebillStatementsFrom } from "./schedules/creditStatements.service.js";
+
+// Multipart bodies arrive as strings, so "false" must not read as truthy.
+const isTrue = (value) => value === true || value === "true";
 
 /*
 |--------------------------------------------------------------------------
@@ -133,8 +137,15 @@ export const postExpense = async (userId, data, file, id) => {
     await assertCanSpend(userId, assetId, amount);
   }
 
-  // Multipart bodies arrive as strings, so "false" must not read as truthy.
-  const isInstallment = data.installment === true || data.installment === "true";
+  const isInstallment = isTrue(data.installment);
+
+  // Only a one-off card purchase can wait for the bank to post it. Installment
+  // plans are billed by the plan, and scheduled ones post when they're logged.
+  const isPending =
+    isTrue(data.isPending) &&
+    asset?.category === "CREDIT" &&
+    !isInstallment &&
+    !recurringId;
   const plan = isInstallment
     ? await buildInstallmentPlan(userId, asset, data, date)
     : null;
@@ -150,6 +161,7 @@ export const postExpense = async (userId, data, file, id) => {
         description: data.description,
         status: "Completed",
         date: data.date,
+        isPending,
         category: { connect: { id: categoryId } },
         ...(assetId && { asset: { connect: { id: assetId } } }),
         user: { connect: { id: userId } },
@@ -396,4 +408,45 @@ export const getGraph = async (userId, query) => {
     data,
     total: totalExpense,
   };
+};
+
+/*
+|--------------------------------------------------------------------------
+| Mark a pending card purchase as posted
+|--------------------------------------------------------------------------
+| The bank may post a different amount (FX conversion, tips, a hold released
+| for less), so the posted amount replaces the logged one. A posting date
+| inside a cycle that already closed rebills that statement.
+*/
+export const postPendingExpense = async (userId, id, data) => {
+  const expense = await prisma.expense.findFirst({
+    where: { id: Number(id), userId: Number(userId), isActive: true },
+    select: { id: true, date: true, amount: true, assetId: true, isPending: true },
+  });
+  if (!expense) throw new AppError("Expense not found", 404);
+  if (!expense.isPending) throw new AppError("This purchase is already posted", 400);
+
+  const postedDate = new Date(data.postedDate);
+  if (postedDate < new Date(new Date(expense.date).setHours(0, 0, 0, 0))) {
+    throw new AppError("The posting date can't be before the purchase date", 400);
+  }
+  if (postedDate > new Date()) {
+    throw new AppError("The posting date can't be in the future", 400);
+  }
+
+  const amount = data.amount != null ? Number(data.amount) : Number(expense.amount);
+  if (amount !== Number(expense.amount)) {
+    await assertCanSpend(userId, expense.assetId, amount, {
+      restore: Number(expense.amount),
+    });
+  }
+
+  const updated = await prisma.expense.update({
+    where: { id: expense.id },
+    data: { isPending: false, postedDate, amount },
+  });
+
+  await rebillStatementsFrom(userId, expense.assetId, postedDate);
+
+  return updated;
 };

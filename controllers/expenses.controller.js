@@ -88,3 +88,18 @@ export const getGraph = asyncHandler(async (req, res) => {
     data: response,
   });
 });
+
+/* ---------------- MARK PENDING EXPENSE AS POSTED ---------------- */
+export const postPendingExpense = asyncHandler(async (req, res) => {
+  const expense = await expenseService.postPendingExpense(
+    req.user.id,
+    req.params.id,
+    req.body,
+  );
+
+  return res.status(200).json({
+    success: true,
+    message: "Purchase marked as posted",
+    data: expense,
+  });
+});

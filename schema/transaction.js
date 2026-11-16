@@ -18,6 +18,14 @@ const transactionFields = {
 export const createExpenseSchema = Joi.object({
   ...transactionFields,
   account: id,
+  // Card purchase the bank hasn't posted yet (ignored for other accounts)
+  isPending: Joi.boolean(),
+});
+
+export const postPendingExpenseSchema = Joi.object({
+  postedDate: Joi.date().required(),
+  // What the bank actually posted, when it differs from what was logged
+  amount: amount,
 });
 
 export const graphQuery = Joi.object({
