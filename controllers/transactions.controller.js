@@ -1,5 +1,5 @@
+import * as cashflowService from "../services/cashflowProjection.service.js";
 import * as transactionService from "../services/transactions.service.js";
-
 /* ---------------- GET HISTORY ---------------- */
 export const getHistory = async (req, res) => {
   try {
@@ -55,7 +55,7 @@ export const archiveTransaction = async (req, res) => {
     await transactionService.archiveTransaction(
       req.query.type,
       id,
-          req.user.id
+      req.user.id
     );
 
     return res.status(200).json({
@@ -87,6 +87,19 @@ export const restoreTransaction = async (req, res) => {
     message: "Transaction restored successfully",
   });
 };
+
+export const cashflowProjection = async (req, res) => {
+  const response = await cashflowService.getCashflowProjection(
+    req.user.id,
+    req.query.range
+  )
+
+  return res.status(200).json({
+    success: true,
+    message: "Projection fetched successfully",
+    ...response,
+  });
+}
 
 /* ---------------- DUE ---------------- */
 

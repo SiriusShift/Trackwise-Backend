@@ -2,6 +2,7 @@ import { Router } from "express";
 
 import {
   archiveTransaction,
+  cashflowProjection,
   getHistory,
   getStatistics,
   restoreTransaction,
@@ -77,6 +78,8 @@ router
   .patch(requireAuth, validate({ params: idParams }), catchAsync(cancelRecurring))
   .put(requireAuth, validate({ params: idParams, body: createRecurringSchema }), catchAsync(editRecurring));
 
+
+router.route("/projection").get(requireAuth, catchAsync(cashflowProjection))
 /*
 |--------------------------------------------------------------------------
 | Child Routes
