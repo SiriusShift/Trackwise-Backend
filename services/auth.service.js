@@ -196,6 +196,8 @@ export const isAuthenticatedService =async (user) => {
     select: {
       timezone: true,
       timeFormat: true,
+      dateFormat: true,
+      weekStartDay: true,
       currency: true,
     },
   });

@@ -20,16 +20,52 @@ export const getUserTimezone = async (userId) => {
   return tz && moment.tz.zone(tz) ? tz : "UTC";
 };
 
-// Postgres date_trunc('week') starts on Monday, so "week" maps to moment's isoWeek.
-const toUnit = (mode) => (mode === "week" ? "isoWeek" : mode);
+// The user's first day of the week (0 = Sunday … 6 = Saturday). Defaults to Sunday.
+export const getUserWeekStartDay = async (userId) => {
+  const settings = await prisma.settings.findFirst({
+    where: { userId: Number(userId) },
+    select: { weekStartDay: true },
+  });
+  const day = settings?.weekStartDay;
+  return Number.isInteger(day) && day >= 0 && day <= 6 ? day : 0;
+};
+
+// Postgres date_trunc('week') always starts on Monday. Shifting the date forward
+// by this many days before truncating (and back after) moves the boundary to
+// the user's week start day. 0 for every other mode.
+export const getWeekShiftDays = (mode, weekStartDay = 1) =>
+  mode === "week" ? (8 - weekStartDay) % 7 : 0;
+
+const startOfPeriod = (date, mode, weekStartDay) => {
+  if (mode !== "week") return date.clone().startOf(mode);
+  const day = date.clone().startOf("day");
+  return day.subtract((day.day() - weekStartDay + 7) % 7, "days");
+};
+
+const endOfPeriod = (date, mode, weekStartDay) => {
+  if (mode !== "week") return date.clone().endOf(mode);
+  return startOfPeriod(date, mode, weekStartDay).add(6, "days").endOf("day");
+};
 
 // Period bounds in the user's timezone: the requested range snapped to whole
-// periods, plus the start of the period before it (for trend comparison).
-export const getPeriodRange = (startDate, endDate, mode, timezone) => {
-  const unit = toUnit(mode);
+// periods, plus the period before it (for trend comparison).
+export const getPeriodRange = (
+  startDate,
+  endDate,
+  mode,
+  timezone,
+  weekStartDay = 1,
+) => {
+  const start = moment.tz(startDate, timezone);
+  const end = moment.tz(endDate, timezone);
   return {
-    start: moment.tz(startDate, timezone).startOf(unit).toDate(),
-    end: moment.tz(endDate, timezone).endOf(unit).toDate(),
-    prevStart: moment.tz(startDate, timezone).subtract(1, mode).startOf(unit).toDate(),
+    start: startOfPeriod(start, mode, weekStartDay).toDate(),
+    end: endOfPeriod(end, mode, weekStartDay).toDate(),
+    prevStart: startOfPeriod(
+      start.clone().subtract(1, mode),
+      mode,
+      weekStartDay,
+    ).toDate(),
+    prevEnd: endOfPeriod(end.clone().subtract(1, mode), mode, weekStartDay).toDate(),
   };
 };

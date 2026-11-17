@@ -5,6 +5,7 @@ const settingsSelect = {
   id: true,
   timezone: true,
   timeFormat: true,
+  dateFormat: true,
   currency: true,
   weekStartDay: true,
   recurringBehaviour: true,
@@ -100,11 +101,11 @@ export const updateSettings = async (userId, data, file) => {
   const results = await prisma.$transaction([
     ...(Object.keys(userUpdate).length
       ? [
-          prisma.user.update({
-            where: { id: userId },
-            data: userUpdate,
-          }),
-        ]
+        prisma.user.update({
+          where: { id: userId },
+          data: userUpdate,
+        }),
+      ]
       : []),
     prisma.settings.upsert({
       where: { userId },

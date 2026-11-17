@@ -8,7 +8,12 @@ import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
 import { prisma } from "../config/prisma.js";
-import { getPeriodRange, getUserTimezone } from "../utils/userTimezone.js";
+import {
+  getPeriodRange,
+  getUserTimezone,
+  getUserWeekStartDay,
+  getWeekShiftDays,
+} from "../utils/userTimezone.js";
 import { units } from "../schema/transaction.js";
 import { buildGraphFilters } from "../utils/graphFilters.js";
 import { buildInstallmentSchedule, hasDueRule } from "../utils/creditCycle.js";
@@ -301,11 +306,15 @@ export const getGraph = async (userId, query) => {
   const userIdNum = Number(userId);
 
   const timezone = await getUserTimezone(userIdNum);
+
+  const weekStartDay = await getUserWeekStartDay(userIdNum);
+  const weekShift = getWeekShiftDays(mode, weekStartDay);
   const { start, end, prevStart } = getPeriodRange(
     startDate,
     endDate,
     mode,
     timezone,
+    weekStartDay,
   );
 
   const { where: tableFilters, sql: trendFilters } = buildGraphFilters(
@@ -330,7 +339,7 @@ export const getGraph = async (userId, query) => {
 
   const trendData = await prisma.$queryRaw`
     SELECT
-      date_trunc(${mode}::text, ("date" AT TIME ZONE 'UTC') AT TIME ZONE ${timezone}::text) AS period,
+      date_trunc(${mode}::text, (("date" AT TIME ZONE 'UTC') AT TIME ZONE ${timezone}::text) + make_interval(days => ${weekShift}::int)) - make_interval(days => ${weekShift}::int) AS period,
       SUM(amount) AS total
     FROM "Expense"
     WHERE

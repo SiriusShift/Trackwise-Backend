@@ -617,6 +617,7 @@ model Settings {
   id                 Int                @id @default(autoincrement())
   timezone           String             @default("Asia/Manila")
   timeFormat         String             @default("hh:mm A")
+  dateFormat         String             @default("MMM D, YYYY")
   currency           String             @default("PHP")
   weekStartDay       Int                @default(0) // 0 = Sunday, 1 = Monday
   recurringBehaviour RecurringBehaviour @default(REMIND)

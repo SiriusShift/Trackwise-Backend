@@ -3,6 +3,7 @@ import Joi from "joi";
 export const updateSettingsSchema = Joi.object({
   timezone: Joi.string().trim(),
   timeFormat: Joi.string().trim(),
+  dateFormat: Joi.string().trim(),
   currency: Joi.string().trim().uppercase().length(3),
   weekStartDay: Joi.number().integer().min(0).max(6),
   recurringBehaviour: Joi.string().valid("AUTO_LOG", "REMIND"),

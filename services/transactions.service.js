@@ -6,7 +6,11 @@ import { validateTransfers } from "./transfers.service.js";
 
 import { prisma } from "../config/prisma.js";
 import { AppError } from "../utils/AppError.js";
-import { getUserTimezone } from "../utils/userTimezone.js";
+import {
+  getPeriodRange,
+  getUserTimezone,
+  getUserWeekStartDay,
+} from "../utils/userTimezone.js";
 import {
   assertCanReceive,
   assertCanSpend,
@@ -300,17 +304,19 @@ export const getLiquidBalance = async (userId, asOf, { categories } = {}) => {
 export const getStatistics = async (userId, data) => {
   const { startDate, endDate, mode } = data;
 
-  const tz = await getUserTimezone(userId);
+  const [tz, weekStartDay] = await Promise.all([
+    getUserTimezone(userId),
+    getUserWeekStartDay(userId),
+  ]);
 
-  const start = moment.tz(startDate, tz).startOf(mode).toDate();
-  const end = moment.tz(endDate, tz).endOf(mode).toDate();
-
-  const prevStart = moment
-    .tz(startDate, tz)
-    .subtract(1, mode)
-    .startOf(mode)
-    .toDate();
-  const prevEnd = moment.tz(endDate, tz).subtract(1, mode).endOf(mode).toDate();
+  // Weeks start on the user's week start day; other modes are unaffected.
+  const { start, end, prevStart, prevEnd } = getPeriodRange(
+    startDate,
+    endDate,
+    mode,
+    tz,
+    weekStartDay,
+  );
 
   const dateFilter = { gte: start, lte: end };
   const prevDateFilter = { gte: prevStart, lte: prevEnd };
