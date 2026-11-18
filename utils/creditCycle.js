@@ -32,6 +32,12 @@ export const creditDueDate = (closeDate, creditDetail) => {
   return dayInMonth(month.startOf("month"), dueDay);
 };
 
+// Estimate for the next, not yet closed statement: what the card owes, less
+// installment principal billed in later cycles and what is still unpaid on
+// the open statement (already its own bill).
+export const projectedBillEstimate = ({ balance, unbilled = 0, openUnpaid = 0 }) =>
+  Math.max(Number(balance ?? 0) - unbilled - openUnpaid, 0);
+
 // Most recent statement close on or before `today`.
 export const lastStatementClose = (today, statementDay) => {
   const thisMonth = dayInMonth(today.clone().startOf("month"), statementDay);
@@ -40,14 +46,9 @@ export const lastStatementClose = (today, statementDay) => {
     : thisMonth;
 };
 
-// Statement close one month after `lastClose`, clamped to short months.
+// Close of the cycle after the one that closed on `lastClose`.
 export const nextStatementClose = (lastClose, statementDay) =>
   dayInMonth(lastClose.clone().add(1, "month").startOf("month"), statementDay);
-
-// Next bill = balance minus future installment principal (unbilled) minus
-// what's still owed on the open statement (billed already). Never negative.
-export const projectedBillEstimate = ({ balance, unbilled = 0, openUnpaid = 0 }) =>
-  Math.max(0, Number(balance ?? 0) - Number(unbilled ?? 0) - Number(openUnpaid ?? 0));
 
 /**
  * How many of a plan's installments have been billed by the statement closing

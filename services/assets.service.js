@@ -1,8 +1,8 @@
 import { AppError } from "../utils/AppError.js";
 
 import { prisma } from "../config/prisma.js";
-import { getExchangeRates } from "./exchangeRate.service.js";
 import { postedExpenseWhere } from "../utils/postedExpenses.js";
+import { getExchangeRates } from "./exchangeRate.service.js";
 /*
 |--------------------------------------------------------------------------
 | Validate Asset
@@ -32,7 +32,7 @@ export const validateAsset = async (assetId, userId) => {
 */
 export const ACCOUNT_RULES = {
   expense: { categories: ["CASH", "BANK", "CREDIT"], label: "Expenses" },
-  income: { categories: ["CASH", "BANK"], label: "Income" },
+  income: { categories: ["CASH", "BANK", "CREDIT"], label: "Income" },
   transferFrom: { categories: ["CASH", "BANK", "CREDIT", "INVESTMENT"], label: "Transfers from" },
   transferTo: { categories: ["CASH", "BANK", "CREDIT", "INVESTMENT"], label: "Transfers to" },
 };
