@@ -3,7 +3,7 @@ import * as savingsGoalsService from "../services/savingsGoals.service.js";
 
 export const getSavingsGoals = asyncHandler(async (req, res) => {
   const data = await savingsGoalsService.getSavingsGoals(req.user.id, {
-    isActive: req.query.isActive,
+    status: req.query.status,
   });
 
   res.status(200).json({
