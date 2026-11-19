@@ -40,7 +40,7 @@ export const withdrawSavingsSchema = Joi.object({
 });
 
 export const getSavingsGoalsQuery = Joi.object({
-  isActive: Joi.boolean(),
+  status: Joi.string().valid("all", "active", "completed", "archived").default("all"),
 });
 
 export const getGoalContributionsQuery = Joi.object({

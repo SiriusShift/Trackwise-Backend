@@ -30,6 +30,9 @@ const findGoal = async (userId, id) => {
   return goal;
 };
 
+const statusOf = (g) => (!g.isActive ? "archived" : g.isCompleted ? "completed" : "active");
+
+
 // A goal can only track an active account the user owns that holds money,
 // and no other goal may track it: a goal's saved amount is the account's
 // whole balance, so sharing one would count that balance twice.
@@ -77,6 +80,7 @@ const goalSelect = {
   asset: { select: { id: true, name: true, currency: true, isActive: true } },
   createdAt: true,
   updatedAt: true,
+  archivedAt: true,
 };
 
 // Saved amount is the linked asset's balance, or the hand-entered amount
@@ -260,7 +264,7 @@ const progressFor = async (userId, goal) => {
 */
 export const getSavingsGoals = async (
   userId,
-  { isActive = false } = {},
+  { status = "all" } = {},
 ) => {
   const timezone = await getUserTimezone(userId);
   const now = moment().tz(timezone);
@@ -268,7 +272,6 @@ export const getSavingsGoals = async (
   const goals = await prisma.savingsGoal.findMany({
     where: {
       userId: Number(userId),
-      ...(isActive && { isActive: true }),
     },
     select: goalSelect,
     orderBy: [
@@ -290,6 +293,8 @@ export const getSavingsGoals = async (
   const goalsWithProgress = goals.map((g) =>
     withProgress(g, balanceByAssetId, contributions.byGoal, now),
   );
+  const counts = { all: goalsWithProgress.length, active: 0, completed: 0, archived: 0 };
+  for (const g of goalsWithProgress) counts[statusOf(g)]++;
   const active = goalsWithProgress.filter((g) => g.isActive);
   const dated = active.filter((g) => g.targetDate);
 
@@ -317,7 +322,10 @@ export const getSavingsGoals = async (
   const progressLastMonth = progressHistory[TREND_MONTHS - 2];
 
   return {
-    data: goalsWithProgress,
+    data: status === "all"
+      ? goalsWithProgress
+      : goalsWithProgress.filter((g) => statusOf(g) === status),
+    counts,
     summary: {
       totalSaved,
       activeGoals: active.length,
@@ -416,7 +424,10 @@ export const updateSavingsGoal = async (
       ...(currentAmount !== undefined && {
         currentAmount: parseFloat(currentAmount),
       }),
-      ...(isActive !== undefined && { isActive }),
+      ...(isActive !== undefined && {
+        isActive,
+        archivedAt: isActive ? null : new Date(),
+      }),
     },
     select: goalSelect,
   });

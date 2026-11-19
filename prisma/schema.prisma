@@ -229,8 +229,10 @@ model SavingsGoal {
 
   transfers Transfer[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  // Set when the goal is archived, cleared when it's restored
+  archivedAt DateTime?
 
   @@index([userId])
 }
