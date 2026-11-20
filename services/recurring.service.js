@@ -1,5 +1,6 @@
 import moment from "moment-timezone";
 
+import { assertAccountsActive } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 
 import { AppError } from "../utils/AppError.js";
@@ -60,6 +61,10 @@ export const postRecurring = async (userId, data) => {
   }
 
   await validateCategory(categoryId);
+  await assertAccountsActive(userId, [
+    assetFromId,
+    type === "Transfer" ? assetToId : null,
+  ]);
 
   const recurringData = {
     user: { connect: { id: userId } },
@@ -209,6 +214,10 @@ export const editRecurring = async (userId, id, data) => {
   }
 
   await validateCategory(categoryId);
+  await assertAccountsActive(userId, [
+    assetFromId,
+    type === "Transfer" ? assetToId : null,
+  ]);
 
   const updateData = {
     type,

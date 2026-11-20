@@ -10,6 +10,7 @@ import {
   projectedBillEstimate,
 } from "../../utils/creditCycle.js";
 import {
+  assertAccountsActive,
   assertCanReceive,
   assertCanSpend,
   validateAsset,
@@ -885,6 +886,7 @@ export const payCreditStatement = async (userId, id, data) => {
   if (fromAssetId === card.id)
     throw new AppError("Pay from a different account than the card", 400);
 
+  await assertAccountsActive(userId, [fromAssetId, card.id]);
   const fromAsset = await validateAsset(fromAssetId, userId);
   if (!PAYMENT_SOURCE_CATEGORIES.includes(fromAsset.category)) {
     throw new AppError("Pay the bill from a cash or bank account", 400);

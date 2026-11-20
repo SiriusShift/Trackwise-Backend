@@ -13,7 +13,11 @@ import {
   requireAuth
 } from "../middleware/requireAuth.js";
 import { validate } from "../middleware/validate.js";
-import { createAssetSchema, updateAssetSchema } from "../schema/asset.js";
+import {
+  archiveAssetSchema,
+  createAssetSchema,
+  updateAssetSchema,
+} from "../schema/asset.js";
 
 const router = Router();
 
@@ -41,6 +45,10 @@ router
     requireAuth,
     validate({ body: updateAssetSchema }),
     catchAsync(updateAsset),
-  ).patch(requireAuth, archiveAsset);
+  ).patch(
+    requireAuth,
+    validate({ body: archiveAssetSchema }),
+    catchAsync(archiveAsset),
+  );
 
 export default router;

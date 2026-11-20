@@ -1,6 +1,12 @@
 
 import { AppError } from "../utils/AppError.js";
-import { ACCOUNT_RULES, assertAccountCategory, validateAsset } from "./assets.service.js";
+import {
+  ACCOUNT_RULES,
+  assertAccountCategory,
+  assertAccountsActive,
+  editMovesMoney,
+  validateAsset,
+} from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 import { rebillCardIncome } from "./schedules/creditStatements.service.js";
@@ -19,9 +25,9 @@ import { buildGraphFilters } from "../utils/graphFilters.js";
    VALIDATION
 ========================= */
 
-export const validateIncome = async (id) => {
+export const validateIncome = async (id, userId) => {
   const income = await prisma.income.findFirst({
-    where: { id: Number(id) },
+    where: { id: Number(id), ...(userId != null && { userId: Number(userId) }) },
   });
 
   if (!income) {
@@ -150,11 +156,21 @@ export const getIncome = async (userId, query) => {
 ========================= */
 
 export const updateIncome = async (userId, data, file, id) => {
-  const income = await validateIncome(id);
+  const income = await validateIncome(id, userId);
 
   const amount = Number(data.amount);
   const categoryId = Number(data.category);
   const assetId = Number(data.account);
+
+  // An archived account's money can't change, but its income can still be
+  // recategorized or redescribed.
+  const movesMoney = editMovesMoney(income, { amount, date: data.date, assetId });
+  if (movesMoney) await assertAccountsActive(userId, [income.assetId]);
+  if (assetId) {
+    await assertAccountCategory(userId, assetId, ACCOUNT_RULES.income, {
+      allowArchived: !movesMoney,
+    });
+  }
 
   let image = income.image;
 

@@ -2,7 +2,9 @@ import { AppError } from "../utils/AppError.js";
 import {
   ACCOUNT_RULES,
   assertAccountCategory,
+  assertAccountsActive,
   assertCanSpend,
+  editMovesMoney,
 } from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
@@ -255,12 +257,20 @@ export const updateExpense = async (userId, data, file, id) => {
   const categoryId = Number(data.category);
   const assetId = Number(data.account);
 
-  if (assetId)
-    await assertAccountCategory(userId, assetId, ACCOUNT_RULES.expense);
+  // An archived account's money can't change, but its expenses can still be
+  // recategorized or redescribed.
+  const movesMoney = editMovesMoney(expense, { amount, date: data.date, assetId });
+  if (movesMoney) await assertAccountsActive(userId, [expense.assetId]);
+
+  const asset = assetId
+    ? await assertAccountCategory(userId, assetId, ACCOUNT_RULES.expense, {
+      allowArchived: !movesMoney,
+    })
+    : null;
 
   // The expense's current amount is already counted against its account when
   // it is Completed on the same one, so add it back before checking.
-  if (assetId && new Date(data.date) <= new Date()) {
+  if (asset?.isActive && new Date(data.date) <= new Date()) {
     await assertCanSpend(userId, assetId, amount, {
       restore:
         expense.status === "Completed" && expense.assetId === assetId
@@ -434,6 +444,7 @@ export const postPendingExpense = async (userId, id, data) => {
   });
   if (!expense) throw new AppError("Expense not found", 404);
   if (!expense.isPending) throw new AppError("This purchase is already posted", 400);
+  await assertAccountsActive(userId, [expense.assetId]);
 
   const postedDate = new Date(data.postedDate);
   if (postedDate < new Date(new Date(expense.date).setHours(0, 0, 0, 0))) {

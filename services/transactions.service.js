@@ -12,6 +12,7 @@ import {
   getUserWeekStartDay,
 } from "../utils/userTimezone.js";
 import {
+  assertAccountsActive,
   assertCanReceive,
   assertCanSpend,
   getAssetBalance,
@@ -484,18 +485,22 @@ export const getStatistics = async (userId, data) => {
 |--------------------------------------------------------------------------
 */
 export const archiveTransaction = async (type, id, userId) => {
-  let income;
+  let row;
   switch (type) {
     case "expense":
-      await validateExpense(id, userId);
+      row = await validateExpense(id, userId);
       break;
     case "income":
-      income = await validateIncome(id, userId);
+      row = await validateIncome(id, userId);
       break;
     case "transfer":
-      await validateTransfers(id, userId);
+      row = await validateTransfers(id, userId);
       break;
   }
+  const income = type === "income" ? row : undefined;
+
+  // Removing it would change an archived account's frozen balance.
+  await assertAccountsActive(userId, [row?.assetId, row?.fromAssetId, row?.toAssetId]);
 
   // Archiving a card purchase also stops its installment plan: drop the
   // installments not yet billed and cancel the plan, keeping billed ones as history.
@@ -577,6 +582,9 @@ export const restoreTransaction = async (type, id, userId) => {
 
   if (!row) throw new AppError("Transaction not found", 404);
   if (row.isActive) throw new AppError("Transaction is not archived", 400);
+
+  // Restoring it would change an archived account's frozen balance.
+  await assertAccountsActive(userId, [row.assetId, row.fromAssetId, row.toAssetId]);
 
   if (type === "expense" && row.creditInstallmentPlan) {
     throw new AppError(

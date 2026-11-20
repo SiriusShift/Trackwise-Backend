@@ -2,7 +2,7 @@ import moment from "moment-timezone";
 
 import { prisma } from "../../config/prisma.js";
 import { AppError } from "../../utils/AppError.js";
-import { assertCanSpend } from "../assets.service.js";
+import { assertAccountsActive, assertCanSpend } from "../assets.service.js";
 import { validateCategory } from "../categories.service.js";
 import { transactBill } from "../recurring.service.js";
 import {
@@ -244,6 +244,10 @@ export const payRecurringSchedule = async (userId, id, data) => {
 
   if (!accountId) throw new AppError("Account is required", 400);
   await validateCategory(categoryId);
+  await assertAccountsActive(userId, [
+    accountId,
+    recurring.type === "Transfer" ? recurring.toAssetId : null,
+  ]);
 
   // Money leaves the account for Expense/Transfer, so check it can cover it.
   if (recurring.type !== "Income" && date <= new Date()) {

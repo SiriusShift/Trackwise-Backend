@@ -44,9 +44,11 @@ export const updateAsset = asyncHandler(async (req, res) => {
 /* ---------------- GET ASSET ---------------- */
 export const getAsset = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { dateFrom, dateTo } = req.query;
+  const { dateFrom, dateTo, archived } = req.query;
 
-  const response = await assetService.getAsset(req.user.id, id, dateFrom, dateTo);
+  const response = await assetService.getAsset(req.user.id, id, dateFrom, dateTo, {
+    archived: archived === "true",
+  });
 
   return res.status(200).json({
     success: true,
@@ -60,7 +62,10 @@ export const archiveAsset = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const archived = req.body?.archived ?? true;
 
-  const response = await assetService.archiveAsset(req.user.id, id, archived);
+  const response = await assetService.archiveAsset(req.user.id, id, {
+    archived,
+    end: req.body?.end,
+  });
 
   return res.status(200).json({
     success: true,

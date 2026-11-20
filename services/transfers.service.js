@@ -1,5 +1,12 @@
 import { AppError } from "../utils/AppError.js";
-import { ACCOUNT_RULES, assertAccountCategory, assertCanReceive, assertCanSpend } from "./assets.service.js";
+import {
+  ACCOUNT_RULES,
+  assertAccountCategory,
+  assertAccountsActive,
+  assertCanReceive,
+  assertCanSpend,
+  editMovesMoney,
+} from "./assets.service.js";
 import { validateCategory } from "./categories.service.js";
 import { deleteFileFromS3, uploadFileToS3 } from "./s3.service.js";
 
@@ -14,9 +21,9 @@ import { units } from "../schema/transaction.js";
 
 /* ---------------- VALIDATION ---------------- */
 
-export const validateTransfers = async (id) => {
+export const validateTransfers = async (id, userId) => {
   const transfer = await prisma.transfer.findFirst({
-    where: { id: parseInt(id) },
+    where: { id: parseInt(id), ...(userId != null && { userId: Number(userId) }) },
   });
 
   if (!transfer) {
@@ -176,12 +183,29 @@ export const updateTransfer = async (userId, data, file, id) => {
 
   await validateCategory(categoryId);
 
-  if (fromAssetId) await assertAccountCategory(userId, fromAssetId, ACCOUNT_RULES.transferFrom);
-  if (toAssetId) await assertAccountCategory(userId, toAssetId, ACCOUNT_RULES.transferTo);
+  // An archived account's money can't change, but its transfers can still be
+  // recategorized or redescribed.
+  const movesMoney = editMovesMoney(transfer, {
+    amount,
+    date: data.date,
+    fromAssetId,
+    toAssetId,
+  });
+  if (movesMoney) {
+    await assertAccountsActive(userId, [transfer.fromAssetId, transfer.toAssetId]);
+  }
+
+  const allowArchived = { allowArchived: !movesMoney };
+  const fromAsset = fromAssetId
+    ? await assertAccountCategory(userId, fromAssetId, ACCOUNT_RULES.transferFrom, allowArchived)
+    : null;
+  const toAsset = toAssetId
+    ? await assertAccountCategory(userId, toAssetId, ACCOUNT_RULES.transferTo, allowArchived)
+    : null;
 
   // Balance check. If this transfer already counts against the same source account
   // (Completed), its current amount is already deducted, so add it back before comparing.
-  if (fromAssetId && new Date(data.date) <= new Date()) {
+  if (fromAsset?.isActive && new Date(data.date) <= new Date()) {
     await assertCanSpend(userId, fromAssetId, amount, {
       restore:
         transfer.status === "Completed" && transfer.fromAssetId === fromAssetId
@@ -190,7 +214,7 @@ export const updateTransfer = async (userId, data, file, id) => {
     });
   }
 
-  if (toAssetId && new Date(data.date) <= new Date()) {
+  if (toAsset?.isActive && new Date(data.date) <= new Date()) {
     await assertCanReceive(userId, toAssetId, amount, {
       restore:
         transfer.status === "Completed" && transfer.toAssetId === toAssetId

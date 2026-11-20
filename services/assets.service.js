@@ -1,7 +1,10 @@
 import { AppError } from "../utils/AppError.js";
 
+import moment from "moment-timezone";
 import { prisma } from "../config/prisma.js";
 import { postedExpenseWhere } from "../utils/postedExpenses.js";
+import { firstOccurrenceOnOrAfter } from "../utils/recurringSchedule.js";
+import { getUserTimezone } from "../utils/userTimezone.js";
 import { getExchangeRates } from "./exchangeRate.service.js";
 /*
 |--------------------------------------------------------------------------
@@ -25,6 +28,54 @@ export const validateAsset = async (assetId, userId) => {
 
 /*
 |--------------------------------------------------------------------------
+| Archived Accounts Are Read-Only
+|--------------------------------------------------------------------------
+| An archived account keeps its history, but its balance is frozen: nothing
+| can add, change or remove money on it until it's unarchived. Descriptive
+| edits (category, description, receipt) on its transactions are still fine.
+*/
+export const archivedAccountError = (asset) =>
+  new AppError(
+    `${asset.name} is archived. Unarchive it to add or change its transactions.`,
+    400,
+  );
+
+// Whether an edit moves money: a different amount, date or account. Only
+// those are blocked on archived accounts.
+export const editMovesMoney = (before, after) =>
+  Number(before.amount) !== Number(after.amount) ||
+  new Date(before.date).getTime() !== new Date(after.date).getTime() ||
+  ["assetId", "fromAssetId", "toAssetId"].some(
+    (key) => key in after && (Number(before[key]) || 0) !== (Number(after[key]) || 0),
+  );
+
+// Also checks the accounts belong to the user. Empty ids are ignored.
+export const assertAccountsActive = async (userId, assetIds) => {
+  const ids = [...new Set(assetIds.map(Number).filter(Boolean))];
+  if (!ids.length) return;
+
+  const assets = await prisma.asset.findMany({
+    where: { userId: Number(userId), id: { in: ids } },
+    select: { id: true, name: true, isActive: true },
+  });
+
+  if (assets.length !== ids.length) throw new AppError("Asset not found", 404);
+
+  const archived = assets.find((a) => !a.isActive);
+  if (archived) throw archivedAccountError(archived);
+};
+
+// getAssetBalance only covers active accounts, so a miss there is either an
+// archived account or one that doesn't exist.
+const accountUnavailableError = async (userId, assetId) => {
+  const asset = await validateAsset(assetId, userId);
+  return asset.isActive
+    ? new AppError("Account not found", 404)
+    : archivedAccountError(asset);
+};
+
+/*
+|--------------------------------------------------------------------------
 | Account Categories per Transaction
 |--------------------------------------------------------------------------
 | Which account categories each kind of transaction may use. LOAN is left out
@@ -37,8 +88,15 @@ export const ACCOUNT_RULES = {
   transferTo: { categories: ["CASH", "BANK", "CREDIT", "INVESTMENT"], label: "Transfers to" },
 };
 
-export const assertAccountCategory = async (userId, assetId, rule) => {
+// allowArchived: for edits that leave the account's money untouched.
+export const assertAccountCategory = async (
+  userId,
+  assetId,
+  rule,
+  { allowArchived = false } = {},
+) => {
   const asset = await validateAsset(assetId, userId);
+  if (!asset.isActive && !allowArchived) throw archivedAccountError(asset);
   if (!rule.categories.includes(asset.category)) {
     throw new AppError(`${rule.label} a ${asset.category.toLowerCase()} account isn't supported`, 400);
   }
@@ -164,29 +222,184 @@ export const createAsset = async (
 |--------------------------------------------------------------------------
 | Archive / Unarchive Asset
 |--------------------------------------------------------------------------
-| Idempotent: sets the state to `archived` and does nothing if it already
-| matches. Uses the existing `isActive` / `closedAt` soft-close fields.
+| An archived account keeps its history but is read-only (see
+| assertAccountsActive). Archiving pauses the recurring items that move money
+| out of or into it. Unarchiving resumes them from today on their original
+| schedule (missed cycles are skipped, not back-filled), except the ones the
+| user chose to end.
 */
-export const archiveAsset = async (userId, id, archived = true) => {
-  const asset = await validateAsset(id, userId);
-
-  if (asset.isActive === !archived) {
-    return asset;
-  }
-
-  return prisma.asset.update({
-    where: { id: asset.id },
-    data: {
-      isActive: !archived,
-      closedAt: archived ? new Date() : null,
-    },
-    include: {
-      creditDetail: true,
-      savingsGoals: { where: { isActive: true } },
-    },
-  });
+const archiveInclude = {
+  creditDetail: true,
+  savingsGoals: { where: { isActive: true } },
 };
 
+const linkedAssetSelect = { select: { id: true, name: true, isActive: true } };
+
+const pausedRecurringSelect = {
+  id: true,
+  type: true,
+  description: true,
+  amount: true,
+  nextDueDate: true,
+  startDate: true,
+  endDate: true,
+  interval: true,
+  unit: true,
+  daysOfMonth: true,
+  fromAsset: linkedAssetSelect,
+  toAsset: linkedAssetSelect,
+};
+
+// Recurring items that move money out of or into one of these accounts.
+const linkedRecurringWhere = (userId, assetIds) => ({
+  userId: Number(userId),
+  isActive: true,
+  OR: [{ fromAssetId: { in: assetIds } }, { toAssetId: { in: assetIds } }],
+});
+
+// What unarchiving `assetId` today does to a paused item: it resumes at its
+// next due date on the original schedule, or ends if that falls after its
+// end date. A transfer whose other account is still archived stays paused
+// until that account is unarchived too.
+const resumePlanFor = (item, assetId, today, timezone) => {
+  const blockedBy = [item.fromAsset, item.toAsset].find(
+    (a) => a && a.id !== assetId && !a.isActive,
+  );
+  if (blockedBy) {
+    return { action: "STAYS_PAUSED", nextDueDate: null, blockedBy: blockedBy.name };
+  }
+
+  const due = moment(item.nextDueDate).tz(timezone).startOf("day");
+  const next = due.isBefore(today) ? firstOccurrenceOnOrAfter(item, today, timezone) : due;
+  const ends =
+    item.endDate && next.isAfter(moment(item.endDate).tz(timezone).endOf("day"));
+
+  return ends
+    ? { action: "ENDS", nextDueDate: null, blockedBy: null }
+    : { action: "RESUMES", nextDueDate: next.toDate(), blockedBy: null };
+};
+
+// Archived accounts list the items paused with them and what unarchiving
+// today would do to each, for the unarchive dialog.
+const withPausedRecurring = async (userId, accounts) => {
+  if (!accounts.length) return accounts;
+
+  const [paused, timezone] = await Promise.all([
+    prisma.recurringTransaction.findMany({
+      where: {
+        ...linkedRecurringWhere(userId, accounts.map((a) => a.id)),
+        status: "PAUSED",
+      },
+      select: pausedRecurringSelect,
+      orderBy: { nextDueDate: "asc" },
+    }),
+    getUserTimezone(userId),
+  ]);
+  const today = moment().tz(timezone).startOf("day");
+
+  return accounts.map((account) => ({
+    ...account,
+    pausedRecurring: paused
+      .filter((item) => [item.fromAsset?.id, item.toAsset?.id].includes(account.id))
+      .map((item) => ({
+        id: item.id,
+        type: item.type,
+        description: item.description,
+        amount: item.amount,
+        fromAsset: item.fromAsset && { id: item.fromAsset.id, name: item.fromAsset.name },
+        toAsset: item.toAsset && { id: item.toAsset.id, name: item.toAsset.name },
+        resume: resumePlanFor(item, account.id, today, timezone),
+      })),
+  }));
+};
+
+// Cards have to be settled first: an archived account is read-only, so a
+// balance or bill left on one could never be paid. Other accounts can be
+// archived with a balance; it just drops out of net worth.
+const assertCanArchive = async (userId, asset) => {
+  if (asset.category !== "CREDIT") return;
+
+  const [{ data }, pendingCount] = await Promise.all([
+    getAssetBalance(userId, asset.id),
+    prisma.expense.count({
+      where: { assetId: asset.id, isActive: true, isPending: true },
+    }),
+  ]);
+
+  const card = data[0];
+  const owed = Number(card?.remainingBalance ?? 0);
+  const unpaidStatement = card?.openStatements?.some(
+    (s) => s.remainingOnStatement > 0.005,
+  );
+
+  if (owed > 0.005 || unpaidStatement) {
+    throw new AppError(
+      `Pay off ${asset.name} before archiving it. It still owes ${asset.currency} ${owed.toFixed(2)}.`,
+      400,
+    );
+  }
+  if (pendingCount) {
+    throw new AppError(
+      `${asset.name} has purchases that haven't posted yet. Mark them as posted before archiving it.`,
+      400,
+    );
+  }
+};
+
+// `end`: ids of paused items to end instead of resuming (unarchive only).
+export const archiveAsset = async (userId, id, { archived = true, end = [] } = {}) => {
+  const asset = await validateAsset(id, userId);
+  if (asset.isActive === !archived) return asset;
+
+  const assetData = {
+    isActive: !archived,
+    closedAt: archived ? new Date() : null,
+  };
+  const linked = linkedRecurringWhere(userId, [asset.id]);
+
+  /* ---------- Archive: pause its schedules ---------- */
+  if (archived) {
+    await assertCanArchive(userId, asset);
+
+    const [, updated] = await prisma.$transaction([
+      prisma.recurringTransaction.updateMany({
+        where: { ...linked, status: "ACTIVE" },
+        data: { status: "PAUSED" },
+      }),
+      prisma.asset.update({ where: { id: asset.id }, data: assetData, include: archiveInclude }),
+    ]);
+    return updated;
+  }
+
+  /* ---------- Unarchive: resume from today, or end ---------- */
+  const timezone = await getUserTimezone(userId);
+  const today = moment().tz(timezone).startOf("day");
+  const endIds = new Set(end.map(Number));
+
+  const paused = await prisma.recurringTransaction.findMany({
+    where: { ...linked, status: "PAUSED" },
+    select: pausedRecurringSelect,
+  });
+
+  return prisma.$transaction(async (tx) => {
+    for (const item of paused) {
+      const plan = endIds.has(item.id)
+        ? { action: "ENDS" }
+        : resumePlanFor(item, asset.id, today, timezone);
+      if (plan.action === "STAYS_PAUSED") continue;
+
+      await tx.recurringTransaction.update({
+        where: { id: item.id },
+        data:
+          plan.action === "ENDS"
+            ? { status: "ENDED", isActive: false, endedAt: new Date() }
+            : { status: "ACTIVE", nextDueDate: plan.nextDueDate },
+      });
+    }
+
+    return tx.asset.update({ where: { id: asset.id }, data: assetData, include: archiveInclude });
+  });
+};
 /*
 |--------------------------------------------------------------------------
 | Update Asset
@@ -260,15 +473,19 @@ export const updateAsset = async (
 | Get Asset Summary (with trend)
 |--------------------------------------------------------------------------
 */
-export const getAsset = async (userId, id, from, to) => {
+// archived: list archived accounts instead, with their paused recurring items.
+export const getAsset = async (userId, id, from, to, { archived = false } = {}) => {
   const { data, total, netWorth, liabilities } = await getAssetBalance(
     userId,
     id,
     {
       from,
       to,
+      archived,
     },
   );
+
+  if (archived) return { data: await withPausedRecurring(userId, data) };
 
   return {
     data,
@@ -285,7 +502,7 @@ export const getAsset = async (userId, id, from, to) => {
 export const getAssetBalance = async (
   userId,
   id,
-  { netWorthOnly = false, from, to, asOf, postedOnly = false } = {},
+  { netWorthOnly = false, from, to, asOf, postedOnly = false, archived = false } = {},
 ) => {
   const asOfFilter = asOf ? { date: { lte: new Date(asOf) } } : {};
 
@@ -318,7 +535,7 @@ export const getAssetBalance = async (
   const assets = await prisma.asset.findMany({
     where: {
       userId: Number(userId),
-      isActive: true,
+      isActive: !archived,
       ...(id && { id: Number(id) }),
       ...(netWorthOnly && { includeInNetWorth: true }),
     },
@@ -563,7 +780,7 @@ export const getAssetBalance = async (
 export const assertCanSpend = async (userId, assetId, amount, { restore = 0 } = {}) => {
   const result = await getAssetBalance(userId, assetId);
   const asset = result?.data?.[0];
-  if (!asset) throw new AppError("Account not found", 404);
+  if (!asset) throw await accountUnavailableError(userId, assetId);
 
   if (asset.category === "CREDIT") {
     const available = Number(asset.remainingCredit ?? 0) + Number(restore);
@@ -589,7 +806,7 @@ export const assertCanSpend = async (userId, assetId, amount, { restore = 0 } = 
 export const assertCanReceive = async (userId, assetId, amount, { restore = 0 } = {}) => {
   const result = await getAssetBalance(userId, assetId);
   const asset = result?.data?.[0];
-  if (!asset) throw new AppError("Account not found", 404);
+  if (!asset) throw await accountUnavailableError(userId, assetId);
 
   if (asset.category === "CREDIT") {
     const owed = Math.max(Number(asset.remainingBalance), 0) + Number(restore);

@@ -76,6 +76,13 @@ export const createAssetSchema = Joi.object({
   savingsGoal: accountSavingsGoalSchema.allow(null),
 });
 
+// PATCH /assets/:id. `end`: paused recurring items to end instead of
+// resuming when unarchiving.
+export const archiveAssetSchema = Joi.object({
+  archived: Joi.boolean().default(true),
+  end: Joi.array().items(Joi.number().integer().positive()).default([]),
+});
+
 export const updateAssetSchema = Joi.object({
   name: Joi.string().trim().max(100),
   color: Joi.string().trim().allow(null, ""),
